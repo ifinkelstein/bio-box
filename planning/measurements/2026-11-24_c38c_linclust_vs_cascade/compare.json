@@ -1,0 +1,310 @@
+{
+  "levels": {
+    "nr90": {
+      "n_proteins": 49102041,
+      "cascade_clusters": 33117773,
+      "cascade_singletons": 27561851,
+      "cascade_singleton_share": 0.8322374514735638,
+      "cascade_singleton_protein_share": 0.56131782790862,
+      "linclust_clusters": 33882143,
+      "linclust_singletons": 28387341,
+      "linclust_singleton_share": 0.8378260194462906,
+      "linclust_singleton_protein_share": 0.5781295527002636,
+      "delta_clusters": 764370,
+      "ratio_clusters": 1.0230803562787871,
+      "delta_singletons": 825490,
+      "ratio_singletons": 1.0299504557948593
+    },
+    "nr50": {
+      "n_proteins": 49102041,
+      "cascade_clusters": 9291312,
+      "cascade_singletons": 5933293,
+      "cascade_singleton_share": 0.6385850566636876,
+      "cascade_singleton_protein_share": 0.12083597502596684,
+      "linclust_clusters": 14943715,
+      "linclust_singletons": 10186340,
+      "linclust_singleton_share": 0.6816471004699969,
+      "linclust_singleton_protein_share": 0.20745247636447536,
+      "delta_clusters": 5652403,
+      "ratio_clusters": 1.6083535888150133,
+      "delta_singletons": 4253047,
+      "ratio_singletons": 1.7168105468582118
+    }
+  },
+  "nr50_splits": {
+    "all": {
+      "n_cascade_clusters": 9291312,
+      "n_proteins": 49102041,
+      "unsplit_clusters": 7231626,
+      "split_clusters": 2059686,
+      "split_share": 0.22167870371805404,
+      "mean_linclust_clusters": 1.6133535285436544,
+      "median_linclust_clusters": 1.0,
+      "p95_linclust_clusters": 4.0,
+      "max_linclust_clusters": 303,
+      "histogram": {
+        "1": {
+          "clusters": 7231626,
+          "proteins": 10769200
+        },
+        "2": {
+          "clusters": 1104398,
+          "proteins": 5213045
+        },
+        "3-5": {
+          "clusters": 680506,
+          "proteins": 8620049
+        },
+        "6-10": {
+          "clusters": 181996,
+          "proteins": 7493417
+        },
+        "11-50": {
+          "clusters": 90461,
+          "proteins": 14796132
+        },
+        ">50": {
+          "clusters": 2325,
+          "proteins": 2210198
+        }
+      }
+    },
+    "size>=2": {
+      "n_cascade_clusters": 3358019,
+      "n_proteins": 43168748,
+      "unsplit_clusters": 1298333,
+      "split_clusters": 2059686,
+      "split_share": 0.6133634145607871,
+      "mean_linclust_clusters": 2.6970895638172387,
+      "median_linclust_clusters": 2.0,
+      "p95_linclust_clusters": 7.0,
+      "max_linclust_clusters": 303,
+      "histogram": {
+        "1": {
+          "clusters": 1298333,
+          "proteins": 4835907
+        },
+        "2": {
+          "clusters": 1104398,
+          "proteins": 5213045
+        },
+        "3-5": {
+          "clusters": 680506,
+          "proteins": 8620049
+        },
+        "6-10": {
+          "clusters": 181996,
+          "proteins": 7493417
+        },
+        "11-50": {
+          "clusters": 90461,
+          "proteins": 14796132
+        },
+        ">50": {
+          "clusters": 2325,
+          "proteins": 2210198
+        }
+      }
+    },
+    "size>=10": {
+      "n_cascade_clusters": 652439,
+      "n_proteins": 33828126,
+      "unsplit_clusters": 61470,
+      "split_clusters": 590969,
+      "split_share": 0.9057842955433382,
+      "mean_linclust_clusters": 6.447494708317559,
+      "median_linclust_clusters": 5.0,
+      "p95_linclust_clusters": 18.0,
+      "max_linclust_clusters": 303,
+      "histogram": {
+        "1": {
+          "clusters": 61470,
+          "proteins": 1252935
+        },
+        "2": {
+          "clusters": 88055,
+          "proteins": 1923455
+        },
+        "3-5": {
+          "clusters": 243269,
+          "proteins": 6272087
+        },
+        "6-10": {
+          "clusters": 166859,
+          "proteins": 7373319
+        },
+        "11-50": {
+          "clusters": 90461,
+          "proteins": 14796132
+        },
+        ">50": {
+          "clusters": 2325,
+          "proteins": 2210198
+        }
+      }
+    },
+    "size>=100": {
+      "n_cascade_clusters": 64654,
+      "n_proteins": 18660161,
+      "unsplit_clusters": 725,
+      "split_clusters": 63929,
+      "split_share": 0.9887864633278683,
+      "mean_linclust_clusters": 18.354657097782038,
+      "median_linclust_clusters": 15.0,
+      "p95_linclust_clusters": 45.0,
+      "max_linclust_clusters": 303,
+      "histogram": {
+        "1": {
+          "clusters": 725,
+          "proteins": 128003
+        },
+        "2": {
+          "clusters": 1388,
+          "proteins": 243310
+        },
+        "3-5": {
+          "clusters": 6194,
+          "proteins": 1190925
+        },
+        "6-10": {
+          "clusters": 13207,
+          "proteins": 2721373
+        },
+        "11-50": {
+          "clusters": 40819,
+          "proteins": 12166734
+        },
+        ">50": {
+          "clusters": 2321,
+          "proteins": 2209816
+        }
+      }
+    }
+  },
+  "missed_joins_by_band": {
+    "nr90": [
+      {
+        "band": "<50%",
+        "cascade_nonrep": 1363,
+        "joined_by_linclust": 1318,
+        "missed_by_linclust": 45,
+        "missed_to_singleton": 0,
+        "missed_share": 0.03301540719002201,
+        "singleton_share_of_missed": 0.0
+      },
+      {
+        "band": "50-60%",
+        "cascade_nonrep": 101,
+        "joined_by_linclust": 92,
+        "missed_by_linclust": 9,
+        "missed_to_singleton": 1,
+        "missed_share": 0.0891089108910891,
+        "singleton_share_of_missed": 0.1111111111111111
+      },
+      {
+        "band": "60-70%",
+        "cascade_nonrep": 156,
+        "joined_by_linclust": 123,
+        "missed_by_linclust": 33,
+        "missed_to_singleton": 1,
+        "missed_share": 0.21153846153846154,
+        "singleton_share_of_missed": 0.030303030303030304
+      },
+      {
+        "band": "70-80%",
+        "cascade_nonrep": 1128,
+        "joined_by_linclust": 848,
+        "missed_by_linclust": 280,
+        "missed_to_singleton": 17,
+        "missed_share": 0.24822695035460993,
+        "singleton_share_of_missed": 0.060714285714285714
+      },
+      {
+        "band": "80-90%",
+        "cascade_nonrep": 378635,
+        "joined_by_linclust": 232409,
+        "missed_by_linclust": 146226,
+        "missed_to_singleton": 2007,
+        "missed_share": 0.3861925072959446,
+        "singleton_share_of_missed": 0.013725329284805712
+      },
+      {
+        "band": ">=90%",
+        "cascade_nonrep": 15602885,
+        "joined_by_linclust": 14452474,
+        "missed_by_linclust": 1150411,
+        "missed_to_singleton": 578931,
+        "missed_share": 0.07373065942612536,
+        "singleton_share_of_missed": 0.5032384078385899
+      }
+    ],
+    "nr50": [
+      {
+        "band": "<50%",
+        "cascade_nonrep": 3122229,
+        "joined_by_linclust": 301802,
+        "missed_by_linclust": 2820427,
+        "missed_to_singleton": 218415,
+        "missed_share": 0.9033376475588434,
+        "singleton_share_of_missed": 0.07744040175476975
+      },
+      {
+        "band": "50-60%",
+        "cascade_nonrep": 16679576,
+        "joined_by_linclust": 4672353,
+        "missed_by_linclust": 12007223,
+        "missed_to_singleton": 2141303,
+        "missed_share": 0.7198757930057694,
+        "singleton_share_of_missed": 0.1783345741142644
+      },
+      {
+        "band": "60-70%",
+        "cascade_nonrep": 9550468,
+        "joined_by_linclust": 5007305,
+        "missed_by_linclust": 4543163,
+        "missed_to_singleton": 701172,
+        "missed_share": 0.47570056252740706,
+        "singleton_share_of_missed": 0.15433564677296413
+      },
+      {
+        "band": "70-80%",
+        "cascade_nonrep": 5265449,
+        "joined_by_linclust": 4114922,
+        "missed_by_linclust": 1150527,
+        "missed_to_singleton": 208588,
+        "missed_share": 0.2185050125829725,
+        "singleton_share_of_missed": 0.18129778788329173
+      },
+      {
+        "band": "80-90%",
+        "cascade_nonrep": 3034061,
+        "joined_by_linclust": 2841185,
+        "missed_by_linclust": 192876,
+        "missed_to_singleton": 45953,
+        "missed_share": 0.06357024463252386,
+        "singleton_share_of_missed": 0.23825151911072398
+      },
+      {
+        "band": ">=90%",
+        "cascade_nonrep": 2158946,
+        "joined_by_linclust": 2143667,
+        "missed_by_linclust": 15279,
+        "missed_to_singleton": 4566,
+        "missed_share": 0.007077064456452361,
+        "singleton_share_of_missed": 0.29884154722167683
+      }
+    ]
+  },
+  "reverse_joins": {
+    "nr90": {
+      "linclust_nonrep": 15219898,
+      "not_in_same_cascade_cluster": 0,
+      "share": 0.0
+    },
+    "nr50": {
+      "linclust_nonrep": 34158326,
+      "not_in_same_cascade_cluster": 127013,
+      "share": 0.0037183613740322053
+    }
+  }
+}

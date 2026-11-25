@@ -1,0 +1,1802 @@
+{
+  "tniq_10g": {
+    "n_anchor_loci": 4545,
+    "n_neighbors": 90098,
+    "pfam_keys_cascade": 5613,
+    "pfam_keys_linclust": 5613,
+    "nr50_keys_cascade": 39161,
+    "nr50_keys_linclust": 43415,
+    "nr50_key_ratio": 1.108628482418733,
+    "top_cascade": [
+      {
+        "rank": 1,
+        "cluster_uid": "7b5fabc664912ed78fb01a3b9988aed8",
+        "model_name": "TnsB_C",
+        "n_loci": 637,
+        "share_of_loci": 0.1402,
+        "n_neighbors": 1265,
+        "n_genomes": 634,
+        "modal_offset": "-1"
+      },
+      {
+        "rank": 2,
+        "cluster_uid": "670e98ea8920884ccf372d1deb97133e",
+        "model_name": "DDE_Tnp_IS240",
+        "n_loci": 363,
+        "share_of_loci": 0.0799,
+        "n_neighbors": 536,
+        "n_genomes": 369,
+        "modal_offset": "-5"
+      },
+      {
+        "rank": 3,
+        "cluster_uid": "fd15b3d70d2582afb4f363e4035f9a1e",
+        "model_name": "Resolvase",
+        "n_loci": 353,
+        "share_of_loci": 0.0777,
+        "n_neighbors": 353,
+        "n_genomes": 360,
+        "modal_offset": "1"
+      },
+      {
+        "rank": 4,
+        "cluster_uid": "5ca257b3e0dad8b0cba1b3c2c35f673b",
+        "model_name": "MerR_1",
+        "n_loci": 311,
+        "share_of_loci": 0.0684,
+        "n_neighbors": 316,
+        "n_genomes": 319,
+        "modal_offset": "4"
+      },
+      {
+        "rank": 5,
+        "cluster_uid": "a9ae545986a3573249371176ae789b91",
+        "model_name": "DEDD_Tnp_IS110",
+        "n_loci": 237,
+        "share_of_loci": 0.0521,
+        "n_neighbors": 387,
+        "n_genomes": 239,
+        "modal_offset": "8"
+      },
+      {
+        "rank": 6,
+        "cluster_uid": "fb16ef263bae6a96fe61aba05307c7d7",
+        "model_name": "MerR-DNA-bind",
+        "n_loci": 236,
+        "share_of_loci": 0.0519,
+        "n_neighbors": 239,
+        "n_genomes": 239,
+        "modal_offset": "7"
+      },
+      {
+        "rank": 7,
+        "cluster_uid": "1477e34b54d0ea7681a17ea3ad36bca8",
+        "model_name": "Response_reg",
+        "n_loci": 214,
+        "share_of_loci": 0.0471,
+        "n_neighbors": 215,
+        "n_genomes": 207,
+        "modal_offset": "7"
+      },
+      {
+        "rank": 8,
+        "cluster_uid": "07ec6d931f9343e48f9767d496c4d066",
+        "model_name": "Tn7_TnsA-like_N",
+        "n_loci": 208,
+        "share_of_loci": 0.0458,
+        "n_neighbors": 216,
+        "n_genomes": 206,
+        "modal_offset": "-3"
+      },
+      {
+        "rank": 9,
+        "cluster_uid": "330163d69b0da29097c3bd3c9c93af0d",
+        "model_name": "AAA_22",
+        "n_loci": 207,
+        "share_of_loci": 0.0455,
+        "n_neighbors": 214,
+        "n_genomes": 205,
+        "modal_offset": "-1"
+      },
+      {
+        "rank": 10,
+        "cluster_uid": "6f685c0f5bd2e41cd2ef874f50bdafe9",
+        "model_name": "",
+        "n_loci": 207,
+        "share_of_loci": 0.0455,
+        "n_neighbors": 210,
+        "n_genomes": 205,
+        "modal_offset": "1"
+      },
+      {
+        "rank": 11,
+        "cluster_uid": "a32cae07c868d8d5c6ef4e8a51bb06e3",
+        "model_name": "TnsB_C",
+        "n_loci": 206,
+        "share_of_loci": 0.0453,
+        "n_neighbors": 223,
+        "n_genomes": 204,
+        "modal_offset": "-2"
+      },
+      {
+        "rank": 12,
+        "cluster_uid": "352ba82027b3ab060b0a987a55a3f7d9",
+        "model_name": "AAA_15",
+        "n_loci": 200,
+        "share_of_loci": 0.044,
+        "n_neighbors": 224,
+        "n_genomes": 198,
+        "modal_offset": "3"
+      },
+      {
+        "rank": 13,
+        "cluster_uid": "2299d4ca221077bd97d8338ba53a58f5",
+        "model_name": "PcoE",
+        "n_loci": 192,
+        "share_of_loci": 0.0422,
+        "n_neighbors": 192,
+        "n_genomes": 190,
+        "modal_offset": "5"
+      },
+      {
+        "rank": 14,
+        "cluster_uid": "f5e63c767676f01e400ae8f28c2423d0",
+        "model_name": "DUF305",
+        "n_loci": 192,
+        "share_of_loci": 0.0422,
+        "n_neighbors": 192,
+        "n_genomes": 190,
+        "modal_offset": "4"
+      },
+      {
+        "rank": 15,
+        "cluster_uid": "dab40a6b78a208ec7982d0e462459b23",
+        "model_name": "CusS",
+        "n_loci": 190,
+        "share_of_loci": 0.0418,
+        "n_neighbors": 195,
+        "n_genomes": 188,
+        "modal_offset": "6"
+      }
+    ],
+    "top_linclust": [
+      {
+        "rank": 1,
+        "cluster_uid": "7e488c1f327a72733982f4266d77ee7e",
+        "model_name": "TnsB_C",
+        "n_loci": 575,
+        "share_of_loci": 0.1265,
+        "n_neighbors": 1122,
+        "n_genomes": 580,
+        "modal_offset": "-2"
+      },
+      {
+        "rank": 2,
+        "cluster_uid": "7e6837af3637c5ead55947af00510997",
+        "model_name": "MerR_1",
+        "n_loci": 310,
+        "share_of_loci": 0.0682,
+        "n_neighbors": 314,
+        "n_genomes": 318,
+        "modal_offset": "4"
+      },
+      {
+        "rank": 3,
+        "cluster_uid": "5173936c276f2f07b032c8a4765dca46",
+        "model_name": "Resolvase",
+        "n_loci": 307,
+        "share_of_loci": 0.0675,
+        "n_neighbors": 307,
+        "n_genomes": 313,
+        "modal_offset": "1"
+      },
+      {
+        "rank": 4,
+        "cluster_uid": "41967d936d61324dd2e420a548a80925",
+        "model_name": "DEDD_Tnp_IS110",
+        "n_loci": 237,
+        "share_of_loci": 0.0521,
+        "n_neighbors": 387,
+        "n_genomes": 239,
+        "modal_offset": "8"
+      },
+      {
+        "rank": 5,
+        "cluster_uid": "7fa0c3fba5f358b9e725ba133f2c1374",
+        "model_name": "MerR-DNA-bind",
+        "n_loci": 233,
+        "share_of_loci": 0.0513,
+        "n_neighbors": 236,
+        "n_genomes": 237,
+        "modal_offset": "7"
+      },
+      {
+        "rank": 6,
+        "cluster_uid": "defc6e6ef08ab5717536965fcacd186a",
+        "model_name": "DDE_Tnp_IS240",
+        "n_loci": 231,
+        "share_of_loci": 0.0508,
+        "n_neighbors": 315,
+        "n_genomes": 233,
+        "modal_offset": "-5"
+      },
+      {
+        "rank": 7,
+        "cluster_uid": "b073e4062c77584ec71e46c4d384b527",
+        "model_name": "Resolvase",
+        "n_loci": 228,
+        "share_of_loci": 0.0502,
+        "n_neighbors": 231,
+        "n_genomes": 233,
+        "modal_offset": "1"
+      },
+      {
+        "rank": 8,
+        "cluster_uid": "190e0112778dc56ea4c14433f0bf31fc",
+        "model_name": "Tn7_TnsA-like_N",
+        "n_loci": 208,
+        "share_of_loci": 0.0458,
+        "n_neighbors": 216,
+        "n_genomes": 206,
+        "modal_offset": "-3"
+      },
+      {
+        "rank": 9,
+        "cluster_uid": "345b7bfe1d90fa815f012be69ac57e52",
+        "model_name": "AAA_22",
+        "n_loci": 207,
+        "share_of_loci": 0.0455,
+        "n_neighbors": 214,
+        "n_genomes": 205,
+        "modal_offset": "-1"
+      },
+      {
+        "rank": 10,
+        "cluster_uid": "88b3c3a1a37a9f1e26cbc9650976e352",
+        "model_name": "",
+        "n_loci": 207,
+        "share_of_loci": 0.0455,
+        "n_neighbors": 210,
+        "n_genomes": 205,
+        "modal_offset": "1"
+      },
+      {
+        "rank": 11,
+        "cluster_uid": "8937af415d6d9c1a7088a45d83ff759c",
+        "model_name": "TnsB_C",
+        "n_loci": 206,
+        "share_of_loci": 0.0453,
+        "n_neighbors": 221,
+        "n_genomes": 204,
+        "modal_offset": "-2"
+      },
+      {
+        "rank": 12,
+        "cluster_uid": "ddb0c8bf6cfc896fba816bb42eee896a",
+        "model_name": "AAA_15",
+        "n_loci": 200,
+        "share_of_loci": 0.044,
+        "n_neighbors": 219,
+        "n_genomes": 198,
+        "modal_offset": "3"
+      },
+      {
+        "rank": 13,
+        "cluster_uid": "9ab83a5d002d345c6b85ef4661ffb3b3",
+        "model_name": "Phage_int_SAM_4",
+        "n_loci": 197,
+        "share_of_loci": 0.0433,
+        "n_neighbors": 220,
+        "n_genomes": 202,
+        "modal_offset": "4"
+      },
+      {
+        "rank": 14,
+        "cluster_uid": "336a7d0aef3f4f16c6feabf61571aa29",
+        "model_name": "DUF305",
+        "n_loci": 192,
+        "share_of_loci": 0.0422,
+        "n_neighbors": 192,
+        "n_genomes": 190,
+        "modal_offset": "4"
+      },
+      {
+        "rank": 15,
+        "cluster_uid": "88b45c36f15b6c16e9e36badcd3aee1b",
+        "model_name": "PcoE",
+        "n_loci": 191,
+        "share_of_loci": 0.042,
+        "n_neighbors": 191,
+        "n_genomes": 189,
+        "modal_offset": "5"
+      }
+    ],
+    "top_models_fragmentation": [
+      {
+        "model_name": "TnsB_C",
+        "cascade_clusters": 327,
+        "linclust_clusters": 386,
+        "cascade_top_loci": 637,
+        "linclust_top_loci": 575,
+        "cascade_top_share": 0.1402,
+        "linclust_top_share": 0.1265
+      },
+      {
+        "model_name": "DDE_Tnp_IS240",
+        "cascade_clusters": 33,
+        "linclust_clusters": 40,
+        "cascade_top_loci": 363,
+        "linclust_top_loci": 231,
+        "cascade_top_share": 0.0799,
+        "linclust_top_share": 0.0508
+      },
+      {
+        "model_name": "Resolvase",
+        "cascade_clusters": 115,
+        "linclust_clusters": 152,
+        "cascade_top_loci": 353,
+        "linclust_top_loci": 307,
+        "cascade_top_share": 0.0777,
+        "linclust_top_share": 0.0675
+      },
+      {
+        "model_name": "MerR_1",
+        "cascade_clusters": 26,
+        "linclust_clusters": 17,
+        "cascade_top_loci": 311,
+        "linclust_top_loci": 310,
+        "cascade_top_share": 0.0684,
+        "linclust_top_share": 0.0682
+      },
+      {
+        "model_name": "DEDD_Tnp_IS110",
+        "cascade_clusters": 53,
+        "linclust_clusters": 76,
+        "cascade_top_loci": 237,
+        "linclust_top_loci": 237,
+        "cascade_top_share": 0.0521,
+        "linclust_top_share": 0.0521
+      },
+      {
+        "model_name": "MerR-DNA-bind",
+        "cascade_clusters": 18,
+        "linclust_clusters": 12,
+        "cascade_top_loci": 236,
+        "linclust_top_loci": 233,
+        "cascade_top_share": 0.0519,
+        "linclust_top_share": 0.0513
+      },
+      {
+        "model_name": "Response_reg",
+        "cascade_clusters": 116,
+        "linclust_clusters": 133,
+        "cascade_top_loci": 214,
+        "linclust_top_loci": 123,
+        "cascade_top_share": 0.0471,
+        "linclust_top_share": 0.0271
+      },
+      {
+        "model_name": "Tn7_TnsA-like_N",
+        "cascade_clusters": 295,
+        "linclust_clusters": 374,
+        "cascade_top_loci": 208,
+        "linclust_top_loci": 208,
+        "cascade_top_share": 0.0458,
+        "linclust_top_share": 0.0458
+      },
+      {
+        "model_name": "(unannotated)",
+        "cascade_clusters": 12595,
+        "linclust_clusters": 13967,
+        "cascade_top_loci": 207,
+        "linclust_top_loci": 207,
+        "cascade_top_share": 0.0455,
+        "linclust_top_share": 0.0455
+      },
+      {
+        "model_name": "AAA_22",
+        "cascade_clusters": 622,
+        "linclust_clusters": 844,
+        "cascade_top_loci": 207,
+        "linclust_top_loci": 207,
+        "cascade_top_share": 0.0455,
+        "linclust_top_share": 0.0455
+      },
+      {
+        "model_name": "AAA_15",
+        "cascade_clusters": 116,
+        "linclust_clusters": 133,
+        "cascade_top_loci": 200,
+        "linclust_top_loci": 200,
+        "cascade_top_share": 0.044,
+        "linclust_top_share": 0.044
+      },
+      {
+        "model_name": "DUF305",
+        "cascade_clusters": 17,
+        "linclust_clusters": 20,
+        "cascade_top_loci": 192,
+        "linclust_top_loci": 192,
+        "cascade_top_share": 0.0422,
+        "linclust_top_share": 0.0422
+      },
+      {
+        "model_name": "PcoE",
+        "cascade_clusters": 3,
+        "linclust_clusters": 4,
+        "cascade_top_loci": 192,
+        "linclust_top_loci": 191,
+        "cascade_top_share": 0.0422,
+        "linclust_top_share": 0.042
+      },
+      {
+        "model_name": "CusS",
+        "cascade_clusters": 5,
+        "linclust_clusters": 8,
+        "cascade_top_loci": 190,
+        "linclust_top_loci": 190,
+        "cascade_top_share": 0.0418,
+        "linclust_top_share": 0.0418
+      },
+      {
+        "model_name": "HTH_3",
+        "cascade_clusters": 292,
+        "linclust_clusters": 286,
+        "cascade_top_loci": 185,
+        "linclust_top_loci": 185,
+        "cascade_top_share": 0.0407,
+        "linclust_top_share": 0.0407
+      }
+    ]
+  },
+  "tniq_20kb": {
+    "n_anchor_loci": 4545,
+    "n_neighbors": 174549,
+    "pfam_keys_cascade": 7381,
+    "pfam_keys_linclust": 7381,
+    "nr50_keys_cascade": 70995,
+    "nr50_keys_linclust": 79600,
+    "nr50_key_ratio": 1.1212057187125855,
+    "top_cascade": [
+      {
+        "rank": 1,
+        "cluster_uid": "7b5fabc664912ed78fb01a3b9988aed8",
+        "model_name": "TnsB_C",
+        "n_loci": 665,
+        "share_of_loci": 0.1463,
+        "n_neighbors": 1337,
+        "n_genomes": 659,
+        "modal_offset": "-1"
+      },
+      {
+        "rank": 2,
+        "cluster_uid": "670e98ea8920884ccf372d1deb97133e",
+        "model_name": "DDE_Tnp_IS240",
+        "n_loci": 490,
+        "share_of_loci": 0.1078,
+        "n_neighbors": 989,
+        "n_genomes": 493,
+        "modal_offset": "-5"
+      },
+      {
+        "rank": 3,
+        "cluster_uid": "fd15b3d70d2582afb4f363e4035f9a1e",
+        "model_name": "Resolvase",
+        "n_loci": 361,
+        "share_of_loci": 0.0794,
+        "n_neighbors": 366,
+        "n_genomes": 363,
+        "modal_offset": "1"
+      },
+      {
+        "rank": 4,
+        "cluster_uid": "5ca257b3e0dad8b0cba1b3c2c35f673b",
+        "model_name": "MerR_1",
+        "n_loci": 354,
+        "share_of_loci": 0.0779,
+        "n_neighbors": 372,
+        "n_genomes": 357,
+        "modal_offset": "4"
+      },
+      {
+        "rank": 5,
+        "cluster_uid": "4b3cdaee4f1b959c4dfe0a1e0ea94af1",
+        "model_name": "Pyr_redox_2",
+        "n_loci": 311,
+        "share_of_loci": 0.0684,
+        "n_neighbors": 421,
+        "n_genomes": 312,
+        "modal_offset": "4"
+      },
+      {
+        "rank": 6,
+        "cluster_uid": "1f72a304db205d135c67ac04f5f825c4",
+        "model_name": "HMA",
+        "n_loci": 310,
+        "share_of_loci": 0.0682,
+        "n_neighbors": 322,
+        "n_genomes": 312,
+        "modal_offset": "6"
+      },
+      {
+        "rank": 7,
+        "cluster_uid": "9cd313e10c4153fc5b09c137a09a30bd",
+        "model_name": "MerT",
+        "n_loci": 304,
+        "share_of_loci": 0.0669,
+        "n_neighbors": 315,
+        "n_genomes": 306,
+        "modal_offset": "7"
+      },
+      {
+        "rank": 8,
+        "cluster_uid": "a9ae545986a3573249371176ae789b91",
+        "model_name": "DEDD_Tnp_IS110",
+        "n_loci": 303,
+        "share_of_loci": 0.0667,
+        "n_neighbors": 656,
+        "n_genomes": 305,
+        "modal_offset": "8"
+      },
+      {
+        "rank": 9,
+        "cluster_uid": "fb16ef263bae6a96fe61aba05307c7d7",
+        "model_name": "MerR-DNA-bind",
+        "n_loci": 298,
+        "share_of_loci": 0.0656,
+        "n_neighbors": 374,
+        "n_genomes": 299,
+        "modal_offset": "7"
+      },
+      {
+        "rank": 10,
+        "cluster_uid": "1477e34b54d0ea7681a17ea3ad36bca8",
+        "model_name": "Response_reg",
+        "n_loci": 274,
+        "share_of_loci": 0.0603,
+        "n_neighbors": 276,
+        "n_genomes": 250,
+        "modal_offset": "7"
+      },
+      {
+        "rank": 11,
+        "cluster_uid": "9d59a4e51be231b836bac67875ac78d3",
+        "model_name": "ACR_tran",
+        "n_loci": 234,
+        "share_of_loci": 0.0515,
+        "n_neighbors": 443,
+        "n_genomes": 223,
+        "modal_offset": "11"
+      },
+      {
+        "rank": 12,
+        "cluster_uid": "d52d48e59e8af602a7220b575d421595",
+        "model_name": "Hydrolase",
+        "n_loci": 225,
+        "share_of_loci": 0.0495,
+        "n_neighbors": 231,
+        "n_genomes": 215,
+        "modal_offset": "13"
+      },
+      {
+        "rank": 13,
+        "cluster_uid": "77657f17dca21c4fd2be3e4bd9f34075",
+        "model_name": "Phage_integrase",
+        "n_loci": 221,
+        "share_of_loci": 0.0486,
+        "n_neighbors": 227,
+        "n_genomes": 219,
+        "modal_offset": "3"
+      },
+      {
+        "rank": 14,
+        "cluster_uid": "3e179ddb1ac3c0052edaf738d6e4fed7",
+        "model_name": "SMC_ScpB",
+        "n_loci": 211,
+        "share_of_loci": 0.0464,
+        "n_neighbors": 215,
+        "n_genomes": 210,
+        "modal_offset": "1"
+      },
+      {
+        "rank": 15,
+        "cluster_uid": "07ec6d931f9343e48f9767d496c4d066",
+        "model_name": "Tn7_TnsA-like_N",
+        "n_loci": 208,
+        "share_of_loci": 0.0458,
+        "n_neighbors": 216,
+        "n_genomes": 206,
+        "modal_offset": "-3"
+      }
+    ],
+    "top_linclust": [
+      {
+        "rank": 1,
+        "cluster_uid": "7e488c1f327a72733982f4266d77ee7e",
+        "model_name": "TnsB_C",
+        "n_loci": 603,
+        "share_of_loci": 0.1327,
+        "n_neighbors": 1192,
+        "n_genomes": 605,
+        "modal_offset": "-2"
+      },
+      {
+        "rank": 2,
+        "cluster_uid": "defc6e6ef08ab5717536965fcacd186a",
+        "model_name": "DDE_Tnp_IS240",
+        "n_loci": 360,
+        "share_of_loci": 0.0792,
+        "n_neighbors": 679,
+        "n_genomes": 360,
+        "modal_offset": "-5"
+      },
+      {
+        "rank": 3,
+        "cluster_uid": "7e6837af3637c5ead55947af00510997",
+        "model_name": "MerR_1",
+        "n_loci": 352,
+        "share_of_loci": 0.0774,
+        "n_neighbors": 361,
+        "n_genomes": 355,
+        "modal_offset": "4"
+      },
+      {
+        "rank": 4,
+        "cluster_uid": "5173936c276f2f07b032c8a4765dca46",
+        "model_name": "Resolvase",
+        "n_loci": 313,
+        "share_of_loci": 0.0689,
+        "n_neighbors": 316,
+        "n_genomes": 314,
+        "modal_offset": "1"
+      },
+      {
+        "rank": 5,
+        "cluster_uid": "52bd6174f93739db3e39dc7a47268624",
+        "model_name": "HMA",
+        "n_loci": 310,
+        "share_of_loci": 0.0682,
+        "n_neighbors": 321,
+        "n_genomes": 312,
+        "modal_offset": "6"
+      },
+      {
+        "rank": 6,
+        "cluster_uid": "69590693ea001f282cac1a22c8255ac8",
+        "model_name": "Pyr_redox_2",
+        "n_loci": 310,
+        "share_of_loci": 0.0682,
+        "n_neighbors": 416,
+        "n_genomes": 311,
+        "modal_offset": "4"
+      },
+      {
+        "rank": 7,
+        "cluster_uid": "67c2860b1b9235c497c7b85d651a9dae",
+        "model_name": "MerT",
+        "n_loci": 304,
+        "share_of_loci": 0.0669,
+        "n_neighbors": 315,
+        "n_genomes": 306,
+        "modal_offset": "7"
+      },
+      {
+        "rank": 8,
+        "cluster_uid": "41967d936d61324dd2e420a548a80925",
+        "model_name": "DEDD_Tnp_IS110",
+        "n_loci": 303,
+        "share_of_loci": 0.0667,
+        "n_neighbors": 656,
+        "n_genomes": 305,
+        "modal_offset": "8"
+      },
+      {
+        "rank": 9,
+        "cluster_uid": "7fa0c3fba5f358b9e725ba133f2c1374",
+        "model_name": "MerR-DNA-bind",
+        "n_loci": 295,
+        "share_of_loci": 0.0649,
+        "n_neighbors": 371,
+        "n_genomes": 297,
+        "modal_offset": "7"
+      },
+      {
+        "rank": 10,
+        "cluster_uid": "9ab83a5d002d345c6b85ef4661ffb3b3",
+        "model_name": "Phage_int_SAM_4",
+        "n_loci": 258,
+        "share_of_loci": 0.0568,
+        "n_neighbors": 309,
+        "n_genomes": 261,
+        "modal_offset": "4"
+      },
+      {
+        "rank": 11,
+        "cluster_uid": "b073e4062c77584ec71e46c4d384b527",
+        "model_name": "Resolvase",
+        "n_loci": 246,
+        "share_of_loci": 0.0541,
+        "n_neighbors": 253,
+        "n_genomes": 247,
+        "modal_offset": "1"
+      },
+      {
+        "rank": 12,
+        "cluster_uid": "c51fd2134f8e3ef3d4358187c959f5e2",
+        "model_name": "ACR_tran",
+        "n_loci": 235,
+        "share_of_loci": 0.0517,
+        "n_neighbors": 443,
+        "n_genomes": 224,
+        "modal_offset": "11"
+      },
+      {
+        "rank": 13,
+        "cluster_uid": "28200f0265cfd24b98ef375082159b38",
+        "model_name": "Phage_integrase",
+        "n_loci": 216,
+        "share_of_loci": 0.0475,
+        "n_neighbors": 222,
+        "n_genomes": 214,
+        "modal_offset": "3"
+      },
+      {
+        "rank": 14,
+        "cluster_uid": "190e0112778dc56ea4c14433f0bf31fc",
+        "model_name": "Tn7_TnsA-like_N",
+        "n_loci": 208,
+        "share_of_loci": 0.0458,
+        "n_neighbors": 216,
+        "n_genomes": 206,
+        "modal_offset": "-3"
+      },
+      {
+        "rank": 15,
+        "cluster_uid": "345b7bfe1d90fa815f012be69ac57e52",
+        "model_name": "AAA_22",
+        "n_loci": 207,
+        "share_of_loci": 0.0455,
+        "n_neighbors": 214,
+        "n_genomes": 205,
+        "modal_offset": "-1"
+      }
+    ],
+    "top_models_fragmentation": [
+      {
+        "model_name": "TnsB_C",
+        "cascade_clusters": 331,
+        "linclust_clusters": 391,
+        "cascade_top_loci": 665,
+        "linclust_top_loci": 603,
+        "cascade_top_share": 0.1463,
+        "linclust_top_share": 0.1327
+      },
+      {
+        "model_name": "DDE_Tnp_IS240",
+        "cascade_clusters": 41,
+        "linclust_clusters": 52,
+        "cascade_top_loci": 490,
+        "linclust_top_loci": 360,
+        "cascade_top_share": 0.1078,
+        "linclust_top_share": 0.0792
+      },
+      {
+        "model_name": "Resolvase",
+        "cascade_clusters": 145,
+        "linclust_clusters": 203,
+        "cascade_top_loci": 361,
+        "linclust_top_loci": 313,
+        "cascade_top_share": 0.0794,
+        "linclust_top_share": 0.0689
+      },
+      {
+        "model_name": "MerR_1",
+        "cascade_clusters": 38,
+        "linclust_clusters": 25,
+        "cascade_top_loci": 354,
+        "linclust_top_loci": 352,
+        "cascade_top_share": 0.0779,
+        "linclust_top_share": 0.0774
+      },
+      {
+        "model_name": "Pyr_redox_2",
+        "cascade_clusters": 101,
+        "linclust_clusters": 95,
+        "cascade_top_loci": 311,
+        "linclust_top_loci": 310,
+        "cascade_top_share": 0.0684,
+        "linclust_top_share": 0.0682
+      },
+      {
+        "model_name": "HMA",
+        "cascade_clusters": 51,
+        "linclust_clusters": 60,
+        "cascade_top_loci": 310,
+        "linclust_top_loci": 310,
+        "cascade_top_share": 0.0682,
+        "linclust_top_share": 0.0682
+      },
+      {
+        "model_name": "MerT",
+        "cascade_clusters": 10,
+        "linclust_clusters": 13,
+        "cascade_top_loci": 304,
+        "linclust_top_loci": 304,
+        "cascade_top_share": 0.0669,
+        "linclust_top_share": 0.0669
+      },
+      {
+        "model_name": "DEDD_Tnp_IS110",
+        "cascade_clusters": 71,
+        "linclust_clusters": 118,
+        "cascade_top_loci": 303,
+        "linclust_top_loci": 303,
+        "cascade_top_share": 0.0667,
+        "linclust_top_share": 0.0667
+      },
+      {
+        "model_name": "MerR-DNA-bind",
+        "cascade_clusters": 29,
+        "linclust_clusters": 21,
+        "cascade_top_loci": 298,
+        "linclust_top_loci": 295,
+        "cascade_top_share": 0.0656,
+        "linclust_top_share": 0.0649
+      },
+      {
+        "model_name": "Response_reg",
+        "cascade_clusters": 228,
+        "linclust_clusters": 269,
+        "cascade_top_loci": 274,
+        "linclust_top_loci": 178,
+        "cascade_top_share": 0.0603,
+        "linclust_top_share": 0.0392
+      },
+      {
+        "model_name": "ACR_tran",
+        "cascade_clusters": 76,
+        "linclust_clusters": 100,
+        "cascade_top_loci": 234,
+        "linclust_top_loci": 235,
+        "cascade_top_share": 0.0515,
+        "linclust_top_share": 0.0517
+      },
+      {
+        "model_name": "Hydrolase",
+        "cascade_clusters": 60,
+        "linclust_clusters": 60,
+        "cascade_top_loci": 225,
+        "linclust_top_loci": 49,
+        "cascade_top_share": 0.0495,
+        "linclust_top_share": 0.0108
+      },
+      {
+        "model_name": "Phage_integrase",
+        "cascade_clusters": 342,
+        "linclust_clusters": 366,
+        "cascade_top_loci": 221,
+        "linclust_top_loci": 216,
+        "cascade_top_share": 0.0486,
+        "linclust_top_share": 0.0475
+      },
+      {
+        "model_name": "SMC_ScpB",
+        "cascade_clusters": 11,
+        "linclust_clusters": 26,
+        "cascade_top_loci": 211,
+        "linclust_top_loci": 127,
+        "cascade_top_share": 0.0464,
+        "linclust_top_share": 0.0279
+      },
+      {
+        "model_name": "Tn7_TnsA-like_N",
+        "cascade_clusters": 296,
+        "linclust_clusters": 382,
+        "cascade_top_loci": 208,
+        "linclust_top_loci": 208,
+        "cascade_top_share": 0.0458,
+        "linclust_top_share": 0.0458
+      }
+    ]
+  },
+  "rnap_10g": {
+    "n_anchor_loci": 2667,
+    "n_neighbors": 47600,
+    "pfam_keys_cascade": 1068,
+    "pfam_keys_linclust": 1068,
+    "nr50_keys_cascade": 7270,
+    "nr50_keys_linclust": 8724,
+    "nr50_key_ratio": 1.2,
+    "top_cascade": [
+      {
+        "rank": 1,
+        "cluster_uid": "e6f6105cf485f42d78926cb3cc8d4c94",
+        "model_name": "DNA_ligase_A_M",
+        "n_loci": 665,
+        "share_of_loci": 0.2493,
+        "n_neighbors": 669,
+        "n_genomes": 659,
+        "modal_offset": "4"
+      },
+      {
+        "rank": 2,
+        "cluster_uid": "b03b93e4638525d3babbccfea1d6cd7b",
+        "model_name": "Phage_T7_1_1",
+        "n_loci": 493,
+        "share_of_loci": 0.1849,
+        "n_neighbors": 493,
+        "n_genomes": 484,
+        "modal_offset": "2"
+      },
+      {
+        "rank": 3,
+        "cluster_uid": "b1c638396fadfe2bc5c9ccb1496a8238",
+        "model_name": "Phage_T7_kinase",
+        "n_loci": 492,
+        "share_of_loci": 0.1845,
+        "n_neighbors": 497,
+        "n_genomes": 489,
+        "modal_offset": "-1"
+      },
+      {
+        "rank": 4,
+        "cluster_uid": "750e3a35bbd6af8ef543a66af8abd22e",
+        "model_name": "Amidase_2",
+        "n_loci": 414,
+        "share_of_loci": 0.1552,
+        "n_neighbors": 527,
+        "n_genomes": 411,
+        "modal_offset": "10"
+      },
+      {
+        "rank": 5,
+        "cluster_uid": "e314b4bced2affe623847167fdf6d08f",
+        "model_name": "BC10",
+        "n_loci": 386,
+        "share_of_loci": 0.1447,
+        "n_neighbors": 390,
+        "n_genomes": 383,
+        "modal_offset": "5"
+      },
+      {
+        "rank": 6,
+        "cluster_uid": "ed5e054d1caf9f4d1e9b1d0f94057d83",
+        "model_name": "SBB_T7",
+        "n_loci": 369,
+        "share_of_loci": 0.1384,
+        "n_neighbors": 369,
+        "n_genomes": 367,
+        "modal_offset": "9"
+      },
+      {
+        "rank": 7,
+        "cluster_uid": "a75cb39408b86020e32c9eb705aa0dfe",
+        "model_name": "",
+        "n_loci": 368,
+        "share_of_loci": 0.138,
+        "n_neighbors": 371,
+        "n_genomes": 363,
+        "modal_offset": "5"
+      },
+      {
+        "rank": 8,
+        "cluster_uid": "5322e8a788ba0cdc2d74fb1fef2aef86",
+        "model_name": "DUF3310",
+        "n_loci": 367,
+        "share_of_loci": 0.1376,
+        "n_neighbors": 367,
+        "n_genomes": 365,
+        "modal_offset": "6"
+      },
+      {
+        "rank": 9,
+        "cluster_uid": "7f3d52d5edac69b5816428caa631e7bc",
+        "model_name": "Terminase-T7_RNaseH-like",
+        "n_loci": 355,
+        "share_of_loci": 0.1331,
+        "n_neighbors": 364,
+        "n_genomes": 353,
+        "modal_offset": "-7"
+      },
+      {
+        "rank": 10,
+        "cluster_uid": "681a7ca6e0305c2430d088832e62ae3b",
+        "model_name": "SBB_T7",
+        "n_loci": 344,
+        "share_of_loci": 0.129,
+        "n_neighbors": 345,
+        "n_genomes": 341,
+        "modal_offset": "9"
+      },
+      {
+        "rank": 11,
+        "cluster_uid": "eb9c25c3c916325df8c65576c9194736",
+        "model_name": "",
+        "n_loci": 299,
+        "share_of_loci": 0.1121,
+        "n_neighbors": 299,
+        "n_genomes": 297,
+        "modal_offset": "3"
+      },
+      {
+        "rank": 12,
+        "cluster_uid": "84b248838008bdf663aec954c90d36bc",
+        "model_name": "RNA_pol_inhib",
+        "n_loci": 279,
+        "share_of_loci": 0.1046,
+        "n_neighbors": 289,
+        "n_genomes": 277,
+        "modal_offset": "9"
+      },
+      {
+        "rank": 13,
+        "cluster_uid": "016dd47f36fa4e14564b701817989ba6",
+        "model_name": "RNA_pol_inhib",
+        "n_loci": 269,
+        "share_of_loci": 0.1009,
+        "n_neighbors": 269,
+        "n_genomes": 265,
+        "modal_offset": "8"
+      },
+      {
+        "rank": 14,
+        "cluster_uid": "eb4f50cb168eba454cd3a4bca985bb7d",
+        "model_name": "T7-like_gp12",
+        "n_loci": 264,
+        "share_of_loci": 0.099,
+        "n_neighbors": 264,
+        "n_genomes": 262,
+        "modal_offset": "2"
+      },
+      {
+        "rank": 15,
+        "cluster_uid": "fe7db599c155c6314adf0e02fd37847f",
+        "model_name": "DUF8272",
+        "n_loci": 261,
+        "share_of_loci": 0.0979,
+        "n_neighbors": 277,
+        "n_genomes": 261,
+        "modal_offset": "8"
+      }
+    ],
+    "top_linclust": [
+      {
+        "rank": 1,
+        "cluster_uid": "a6d250c331f4cd617ac920f4ea367b1d",
+        "model_name": "DNA_ligase_A_M",
+        "n_loci": 654,
+        "share_of_loci": 0.2452,
+        "n_neighbors": 658,
+        "n_genomes": 648,
+        "modal_offset": "4"
+      },
+      {
+        "rank": 2,
+        "cluster_uid": "a69d47d1911234ea7fdbf00b52f10c00",
+        "model_name": "Phage_T7_1_1",
+        "n_loci": 491,
+        "share_of_loci": 0.1841,
+        "n_neighbors": 491,
+        "n_genomes": 482,
+        "modal_offset": "2"
+      },
+      {
+        "rank": 3,
+        "cluster_uid": "3e78b0882e64d96cf5cbea815a69772e",
+        "model_name": "SBB_T7",
+        "n_loci": 339,
+        "share_of_loci": 0.1271,
+        "n_neighbors": 340,
+        "n_genomes": 336,
+        "modal_offset": "9"
+      },
+      {
+        "rank": 4,
+        "cluster_uid": "268ca00fe78fbb0cd3252173a37db1d6",
+        "model_name": "Amidase_2",
+        "n_loci": 338,
+        "share_of_loci": 0.1267,
+        "n_neighbors": 427,
+        "n_genomes": 336,
+        "modal_offset": "10"
+      },
+      {
+        "rank": 5,
+        "cluster_uid": "59701e142f50555397b620040f25243b",
+        "model_name": "BC10",
+        "n_loci": 301,
+        "share_of_loci": 0.1129,
+        "n_neighbors": 305,
+        "n_genomes": 299,
+        "modal_offset": "5"
+      },
+      {
+        "rank": 6,
+        "cluster_uid": "67c577f928bc37e8c1b72bb4c33dca59",
+        "model_name": "Phage_T7_kinase",
+        "n_loci": 298,
+        "share_of_loci": 0.1117,
+        "n_neighbors": 302,
+        "n_genomes": 296,
+        "modal_offset": "-1"
+      },
+      {
+        "rank": 7,
+        "cluster_uid": "9617c6a4ab50fea16511912aa766c20c",
+        "model_name": "RNA_pol_inhib",
+        "n_loci": 279,
+        "share_of_loci": 0.1046,
+        "n_neighbors": 289,
+        "n_genomes": 277,
+        "modal_offset": "9"
+      },
+      {
+        "rank": 8,
+        "cluster_uid": "63e9915c88ca91ea0fb30a510eb9c360",
+        "model_name": "",
+        "n_loci": 253,
+        "share_of_loci": 0.0949,
+        "n_neighbors": 254,
+        "n_genomes": 250,
+        "modal_offset": "5"
+      },
+      {
+        "rank": 9,
+        "cluster_uid": "a54dcd30216a7e333460649673d4d093",
+        "model_name": "Phage_T3_1_05",
+        "n_loci": 251,
+        "share_of_loci": 0.0941,
+        "n_neighbors": 254,
+        "n_genomes": 249,
+        "modal_offset": "1"
+      },
+      {
+        "rank": 10,
+        "cluster_uid": "18f12f3d5057734fc4d0c72ff8870a26",
+        "model_name": "",
+        "n_loci": 250,
+        "share_of_loci": 0.0937,
+        "n_neighbors": 251,
+        "n_genomes": 248,
+        "modal_offset": "-2"
+      },
+      {
+        "rank": 11,
+        "cluster_uid": "d4811c98d40849c826afb20a1493c6fd",
+        "model_name": "Terminase-T7_RNaseH-like",
+        "n_loci": 250,
+        "share_of_loci": 0.0937,
+        "n_neighbors": 258,
+        "n_genomes": 248,
+        "modal_offset": "-7"
+      },
+      {
+        "rank": 12,
+        "cluster_uid": "382f4035befde2135089612bd1d973bc",
+        "model_name": "RNA_pol_inhib",
+        "n_loci": 248,
+        "share_of_loci": 0.093,
+        "n_neighbors": 248,
+        "n_genomes": 246,
+        "modal_offset": "7"
+      },
+      {
+        "rank": 13,
+        "cluster_uid": "cffad1dd80a1c9fb02f62c5182787e6e",
+        "model_name": "SBB_T7",
+        "n_loci": 248,
+        "share_of_loci": 0.093,
+        "n_neighbors": 248,
+        "n_genomes": 246,
+        "modal_offset": "9"
+      },
+      {
+        "rank": 14,
+        "cluster_uid": "ed748999d293dc285c2288942bee2787",
+        "model_name": "DUF8272",
+        "n_loci": 248,
+        "share_of_loci": 0.093,
+        "n_neighbors": 264,
+        "n_genomes": 248,
+        "modal_offset": "8"
+      },
+      {
+        "rank": 15,
+        "cluster_uid": "8a0f792177adbbeab2de0d8043b81568",
+        "model_name": "DUF3310",
+        "n_loci": 229,
+        "share_of_loci": 0.0859,
+        "n_neighbors": 229,
+        "n_genomes": 227,
+        "modal_offset": "6"
+      }
+    ],
+    "top_models_fragmentation": [
+      {
+        "model_name": "DNA_ligase_A_M",
+        "cascade_clusters": 28,
+        "linclust_clusters": 40,
+        "cascade_top_loci": 665,
+        "linclust_top_loci": 654,
+        "cascade_top_share": 0.2493,
+        "linclust_top_share": 0.2452
+      },
+      {
+        "model_name": "Phage_T7_1_1",
+        "cascade_clusters": 21,
+        "linclust_clusters": 34,
+        "cascade_top_loci": 493,
+        "linclust_top_loci": 491,
+        "cascade_top_share": 0.1849,
+        "linclust_top_share": 0.1841
+      },
+      {
+        "model_name": "Phage_T7_kinase",
+        "cascade_clusters": 22,
+        "linclust_clusters": 31,
+        "cascade_top_loci": 492,
+        "linclust_top_loci": 298,
+        "cascade_top_share": 0.1845,
+        "linclust_top_share": 0.1117
+      },
+      {
+        "model_name": "Amidase_2",
+        "cascade_clusters": 20,
+        "linclust_clusters": 31,
+        "cascade_top_loci": 414,
+        "linclust_top_loci": 338,
+        "cascade_top_share": 0.1552,
+        "linclust_top_share": 0.1267
+      },
+      {
+        "model_name": "BC10",
+        "cascade_clusters": 3,
+        "linclust_clusters": 12,
+        "cascade_top_loci": 386,
+        "linclust_top_loci": 301,
+        "cascade_top_share": 0.1447,
+        "linclust_top_share": 0.1129
+      },
+      {
+        "model_name": "SBB_T7",
+        "cascade_clusters": 38,
+        "linclust_clusters": 52,
+        "cascade_top_loci": 369,
+        "linclust_top_loci": 339,
+        "cascade_top_share": 0.1384,
+        "linclust_top_share": 0.1271
+      },
+      {
+        "model_name": "(unannotated)",
+        "cascade_clusters": 5002,
+        "linclust_clusters": 5862,
+        "cascade_top_loci": 368,
+        "linclust_top_loci": 253,
+        "cascade_top_share": 0.138,
+        "linclust_top_share": 0.0949
+      },
+      {
+        "model_name": "DUF3310",
+        "cascade_clusters": 34,
+        "linclust_clusters": 54,
+        "cascade_top_loci": 367,
+        "linclust_top_loci": 229,
+        "cascade_top_share": 0.1376,
+        "linclust_top_share": 0.0859
+      },
+      {
+        "model_name": "Terminase-T7_RNaseH-like",
+        "cascade_clusters": 6,
+        "linclust_clusters": 10,
+        "cascade_top_loci": 355,
+        "linclust_top_loci": 250,
+        "cascade_top_share": 0.1331,
+        "linclust_top_share": 0.0937
+      },
+      {
+        "model_name": "RNA_pol_inhib",
+        "cascade_clusters": 17,
+        "linclust_clusters": 25,
+        "cascade_top_loci": 279,
+        "linclust_top_loci": 279,
+        "cascade_top_share": 0.1046,
+        "linclust_top_share": 0.1046
+      },
+      {
+        "model_name": "T7-like_gp12",
+        "cascade_clusters": 12,
+        "linclust_clusters": 22,
+        "cascade_top_loci": 264,
+        "linclust_top_loci": 206,
+        "cascade_top_share": 0.099,
+        "linclust_top_share": 0.0772
+      },
+      {
+        "model_name": "DUF8272",
+        "cascade_clusters": 21,
+        "linclust_clusters": 30,
+        "cascade_top_loci": 261,
+        "linclust_top_loci": 248,
+        "cascade_top_share": 0.0979,
+        "linclust_top_share": 0.093
+      },
+      {
+        "model_name": "S-AdoMet_lyase",
+        "cascade_clusters": 20,
+        "linclust_clusters": 29,
+        "cascade_top_loci": 253,
+        "linclust_top_loci": 166,
+        "cascade_top_share": 0.0949,
+        "linclust_top_share": 0.0622
+      },
+      {
+        "model_name": "Phage_T3_1_05",
+        "cascade_clusters": 46,
+        "linclust_clusters": 58,
+        "cascade_top_loci": 251,
+        "linclust_top_loci": 251,
+        "cascade_top_share": 0.0941,
+        "linclust_top_share": 0.0941
+      },
+      {
+        "model_name": "ocr",
+        "cascade_clusters": 4,
+        "linclust_clusters": 10,
+        "cascade_top_loci": 238,
+        "linclust_top_loci": 226,
+        "cascade_top_share": 0.0892,
+        "linclust_top_share": 0.0847
+      }
+    ]
+  },
+  "rnap_5g": {
+    "n_anchor_loci": 2667,
+    "n_neighbors": 25321,
+    "pfam_keys_cascade": 567,
+    "pfam_keys_linclust": 567,
+    "nr50_keys_cascade": 4008,
+    "nr50_keys_linclust": 4768,
+    "nr50_key_ratio": 1.1896207584830338,
+    "top_cascade": [
+      {
+        "rank": 1,
+        "cluster_uid": "e6f6105cf485f42d78926cb3cc8d4c94",
+        "model_name": "DNA_ligase_A_M",
+        "n_loci": 663,
+        "share_of_loci": 0.2486,
+        "n_neighbors": 667,
+        "n_genomes": 657,
+        "modal_offset": "4"
+      },
+      {
+        "rank": 2,
+        "cluster_uid": "b03b93e4638525d3babbccfea1d6cd7b",
+        "model_name": "Phage_T7_1_1",
+        "n_loci": 493,
+        "share_of_loci": 0.1849,
+        "n_neighbors": 493,
+        "n_genomes": 484,
+        "modal_offset": "2"
+      },
+      {
+        "rank": 3,
+        "cluster_uid": "b1c638396fadfe2bc5c9ccb1496a8238",
+        "model_name": "Phage_T7_kinase",
+        "n_loci": 492,
+        "share_of_loci": 0.1845,
+        "n_neighbors": 496,
+        "n_genomes": 489,
+        "modal_offset": "-1"
+      },
+      {
+        "rank": 4,
+        "cluster_uid": "e314b4bced2affe623847167fdf6d08f",
+        "model_name": "BC10",
+        "n_loci": 321,
+        "share_of_loci": 0.1204,
+        "n_neighbors": 321,
+        "n_genomes": 321,
+        "modal_offset": "5"
+      },
+      {
+        "rank": 5,
+        "cluster_uid": "eb9c25c3c916325df8c65576c9194736",
+        "model_name": "",
+        "n_loci": 299,
+        "share_of_loci": 0.1121,
+        "n_neighbors": 299,
+        "n_genomes": 297,
+        "modal_offset": "3"
+      },
+      {
+        "rank": 6,
+        "cluster_uid": "a75cb39408b86020e32c9eb705aa0dfe",
+        "model_name": "",
+        "n_loci": 279,
+        "share_of_loci": 0.1046,
+        "n_neighbors": 279,
+        "n_genomes": 279,
+        "modal_offset": "5"
+      },
+      {
+        "rank": 7,
+        "cluster_uid": "eb4f50cb168eba454cd3a4bca985bb7d",
+        "model_name": "T7-like_gp12",
+        "n_loci": 264,
+        "share_of_loci": 0.099,
+        "n_neighbors": 264,
+        "n_genomes": 262,
+        "modal_offset": "2"
+      },
+      {
+        "rank": 8,
+        "cluster_uid": "dd4299690e8d61227f321e586ec5a145",
+        "model_name": "Phage_T3_1_05",
+        "n_loci": 251,
+        "share_of_loci": 0.0941,
+        "n_neighbors": 254,
+        "n_genomes": 249,
+        "modal_offset": "1"
+      },
+      {
+        "rank": 9,
+        "cluster_uid": "7bcb0dccb7d17b1b0921fe8b6dbd41c1",
+        "model_name": "",
+        "n_loci": 250,
+        "share_of_loci": 0.0937,
+        "n_neighbors": 250,
+        "n_genomes": 248,
+        "modal_offset": "-2"
+      },
+      {
+        "rank": 10,
+        "cluster_uid": "95e5017c1d8bf4fda6b188cb1a07113a",
+        "model_name": "S-AdoMet_lyase",
+        "n_loci": 230,
+        "share_of_loci": 0.0862,
+        "n_neighbors": 294,
+        "n_genomes": 229,
+        "modal_offset": "-4"
+      },
+      {
+        "rank": 11,
+        "cluster_uid": "32d668cc412fb6dac8daf09b4a5e67e8",
+        "model_name": "Head-tail_con",
+        "n_loci": 219,
+        "share_of_loci": 0.0821,
+        "n_neighbors": 219,
+        "n_genomes": 216,
+        "modal_offset": "3"
+      },
+      {
+        "rank": 12,
+        "cluster_uid": "ca6ca835bd22d4b16246c4a39d38a21b",
+        "model_name": "",
+        "n_loci": 217,
+        "share_of_loci": 0.0814,
+        "n_neighbors": 217,
+        "n_genomes": 217,
+        "modal_offset": "4"
+      },
+      {
+        "rank": 13,
+        "cluster_uid": "29fd4585678d849279eb12b4d368253a",
+        "model_name": "",
+        "n_loci": 213,
+        "share_of_loci": 0.0799,
+        "n_neighbors": 213,
+        "n_genomes": 210,
+        "modal_offset": "2"
+      },
+      {
+        "rank": 14,
+        "cluster_uid": "adfa5a32f59dc49791a2fdfd316eb5d5",
+        "model_name": "",
+        "n_loci": 212,
+        "share_of_loci": 0.0795,
+        "n_neighbors": 212,
+        "n_genomes": 209,
+        "modal_offset": "1"
+      },
+      {
+        "rank": 15,
+        "cluster_uid": "224dbeb944df9d9cde5c52573e1a42a0",
+        "model_name": "BC10",
+        "n_loci": 209,
+        "share_of_loci": 0.0784,
+        "n_neighbors": 211,
+        "n_genomes": 209,
+        "modal_offset": "5"
+      }
+    ],
+    "top_linclust": [
+      {
+        "rank": 1,
+        "cluster_uid": "a6d250c331f4cd617ac920f4ea367b1d",
+        "model_name": "DNA_ligase_A_M",
+        "n_loci": 652,
+        "share_of_loci": 0.2445,
+        "n_neighbors": 656,
+        "n_genomes": 646,
+        "modal_offset": "4"
+      },
+      {
+        "rank": 2,
+        "cluster_uid": "a69d47d1911234ea7fdbf00b52f10c00",
+        "model_name": "Phage_T7_1_1",
+        "n_loci": 491,
+        "share_of_loci": 0.1841,
+        "n_neighbors": 491,
+        "n_genomes": 482,
+        "modal_offset": "2"
+      },
+      {
+        "rank": 3,
+        "cluster_uid": "67c577f928bc37e8c1b72bb4c33dca59",
+        "model_name": "Phage_T7_kinase",
+        "n_loci": 298,
+        "share_of_loci": 0.1117,
+        "n_neighbors": 301,
+        "n_genomes": 296,
+        "modal_offset": "-1"
+      },
+      {
+        "rank": 4,
+        "cluster_uid": "59701e142f50555397b620040f25243b",
+        "model_name": "BC10",
+        "n_loci": 251,
+        "share_of_loci": 0.0941,
+        "n_neighbors": 251,
+        "n_genomes": 251,
+        "modal_offset": "5"
+      },
+      {
+        "rank": 5,
+        "cluster_uid": "a54dcd30216a7e333460649673d4d093",
+        "model_name": "Phage_T3_1_05",
+        "n_loci": 251,
+        "share_of_loci": 0.0941,
+        "n_neighbors": 254,
+        "n_genomes": 249,
+        "modal_offset": "1"
+      },
+      {
+        "rank": 6,
+        "cluster_uid": "18f12f3d5057734fc4d0c72ff8870a26",
+        "model_name": "",
+        "n_loci": 250,
+        "share_of_loci": 0.0937,
+        "n_neighbors": 250,
+        "n_genomes": 248,
+        "modal_offset": "-2"
+      },
+      {
+        "rank": 7,
+        "cluster_uid": "66d732a0084a49660c1d3f594230b6a8",
+        "model_name": "",
+        "n_loci": 216,
+        "share_of_loci": 0.081,
+        "n_neighbors": 216,
+        "n_genomes": 216,
+        "modal_offset": "4"
+      },
+      {
+        "rank": 8,
+        "cluster_uid": "ac8e2c5fee21aa5ae8ee4a0dacbc8b3e",
+        "model_name": "",
+        "n_loci": 213,
+        "share_of_loci": 0.0799,
+        "n_neighbors": 213,
+        "n_genomes": 210,
+        "modal_offset": "2"
+      },
+      {
+        "rank": 9,
+        "cluster_uid": "2f1f37bbd6f2a065268845d06b4c8a9d",
+        "model_name": "Head-tail_con",
+        "n_loci": 211,
+        "share_of_loci": 0.0791,
+        "n_neighbors": 211,
+        "n_genomes": 208,
+        "modal_offset": "3"
+      },
+      {
+        "rank": 10,
+        "cluster_uid": "ac5cb54a49c169ed587689c8187aee29",
+        "model_name": "T7-like_gp12",
+        "n_loci": 206,
+        "share_of_loci": 0.0772,
+        "n_neighbors": 206,
+        "n_genomes": 204,
+        "modal_offset": "2"
+      },
+      {
+        "rank": 11,
+        "cluster_uid": "3fb056170647d8b879d5f4ab81d00223",
+        "model_name": "",
+        "n_loci": 205,
+        "share_of_loci": 0.0769,
+        "n_neighbors": 205,
+        "n_genomes": 202,
+        "modal_offset": "1"
+      },
+      {
+        "rank": 12,
+        "cluster_uid": "3b94e641b17becd0fd9f8d898e1d3dba",
+        "model_name": "Phage_T7_kinase",
+        "n_loci": 194,
+        "share_of_loci": 0.0727,
+        "n_neighbors": 195,
+        "n_genomes": 193,
+        "modal_offset": "-1"
+      },
+      {
+        "rank": 13,
+        "cluster_uid": "cd26c074dda0f96d3d97ad3f78ae0fd5",
+        "model_name": "",
+        "n_loci": 187,
+        "share_of_loci": 0.0701,
+        "n_neighbors": 187,
+        "n_genomes": 185,
+        "modal_offset": "-4"
+      },
+      {
+        "rank": 14,
+        "cluster_uid": "704bd886a2a3c323fa4be13719ad1c60",
+        "model_name": "Endonuclease_7",
+        "n_loci": 182,
+        "share_of_loci": 0.0682,
+        "n_neighbors": 182,
+        "n_genomes": 181,
+        "modal_offset": "-3"
+      },
+      {
+        "rank": 15,
+        "cluster_uid": "a1bb2cd8b78a5d08230d72b08fe37adc",
+        "model_name": "DNA_ligase_A_M",
+        "n_loci": 179,
+        "share_of_loci": 0.0671,
+        "n_neighbors": 185,
+        "n_genomes": 176,
+        "modal_offset": "5"
+      }
+    ],
+    "top_models_fragmentation": [
+      {
+        "model_name": "DNA_ligase_A_M",
+        "cascade_clusters": 16,
+        "linclust_clusters": 26,
+        "cascade_top_loci": 663,
+        "linclust_top_loci": 652,
+        "cascade_top_share": 0.2486,
+        "linclust_top_share": 0.2445
+      },
+      {
+        "model_name": "Phage_T7_1_1",
+        "cascade_clusters": 21,
+        "linclust_clusters": 34,
+        "cascade_top_loci": 493,
+        "linclust_top_loci": 491,
+        "cascade_top_share": 0.1849,
+        "linclust_top_share": 0.1841
+      },
+      {
+        "model_name": "Phage_T7_kinase",
+        "cascade_clusters": 22,
+        "linclust_clusters": 31,
+        "cascade_top_loci": 492,
+        "linclust_top_loci": 298,
+        "cascade_top_share": 0.1845,
+        "linclust_top_share": 0.1117
+      },
+      {
+        "model_name": "BC10",
+        "cascade_clusters": 3,
+        "linclust_clusters": 11,
+        "cascade_top_loci": 321,
+        "linclust_top_loci": 251,
+        "cascade_top_share": 0.1204,
+        "linclust_top_share": 0.0941
+      },
+      {
+        "model_name": "(unannotated)",
+        "cascade_clusters": 2863,
+        "linclust_clusters": 3330,
+        "cascade_top_loci": 299,
+        "linclust_top_loci": 250,
+        "cascade_top_share": 0.1121,
+        "linclust_top_share": 0.0937
+      },
+      {
+        "model_name": "T7-like_gp12",
+        "cascade_clusters": 12,
+        "linclust_clusters": 22,
+        "cascade_top_loci": 264,
+        "linclust_top_loci": 206,
+        "cascade_top_share": 0.099,
+        "linclust_top_share": 0.0772
+      },
+      {
+        "model_name": "Phage_T3_1_05",
+        "cascade_clusters": 43,
+        "linclust_clusters": 55,
+        "cascade_top_loci": 251,
+        "linclust_top_loci": 251,
+        "cascade_top_share": 0.0941,
+        "linclust_top_share": 0.0941
+      },
+      {
+        "model_name": "S-AdoMet_lyase",
+        "cascade_clusters": 16,
+        "linclust_clusters": 25,
+        "cascade_top_loci": 230,
+        "linclust_top_loci": 146,
+        "cascade_top_share": 0.0862,
+        "linclust_top_share": 0.0547
+      },
+      {
+        "model_name": "Head-tail_con",
+        "cascade_clusters": 33,
+        "linclust_clusters": 61,
+        "cascade_top_loci": 219,
+        "linclust_top_loci": 211,
+        "cascade_top_share": 0.0821,
+        "linclust_top_share": 0.0791
+      },
+      {
+        "model_name": "Endonuclease_7",
+        "cascade_clusters": 27,
+        "linclust_clusters": 47,
+        "cascade_top_loci": 197,
+        "linclust_top_loci": 182,
+        "cascade_top_share": 0.0739,
+        "linclust_top_share": 0.0682
+      },
+      {
+        "model_name": "ocr",
+        "cascade_clusters": 3,
+        "linclust_clusters": 8,
+        "cascade_top_loci": 194,
+        "linclust_top_loci": 155,
+        "cascade_top_share": 0.0727,
+        "linclust_top_share": 0.0581
+      },
+      {
+        "model_name": "DUF3310",
+        "cascade_clusters": 21,
+        "linclust_clusters": 28,
+        "cascade_top_loci": 142,
+        "linclust_top_loci": 142,
+        "cascade_top_share": 0.0532,
+        "linclust_top_share": 0.0532
+      },
+      {
+        "model_name": "Metallophos",
+        "cascade_clusters": 5,
+        "linclust_clusters": 5,
+        "cascade_top_loci": 125,
+        "linclust_top_loci": 121,
+        "cascade_top_share": 0.0469,
+        "linclust_top_share": 0.0454
+      },
+      {
+        "model_name": "DNMK",
+        "cascade_clusters": 5,
+        "linclust_clusters": 5,
+        "cascade_top_loci": 122,
+        "linclust_top_loci": 122,
+        "cascade_top_share": 0.0457,
+        "linclust_top_share": 0.0457
+      },
+      {
+        "model_name": "Phage_T7_GP04",
+        "cascade_clusters": 18,
+        "linclust_clusters": 29,
+        "cascade_top_loci": 117,
+        "linclust_top_loci": 116,
+        "cascade_top_share": 0.0439,
+        "linclust_top_share": 0.0435
+      }
+    ]
+  }
+}
