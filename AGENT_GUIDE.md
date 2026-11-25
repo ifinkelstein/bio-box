@@ -41,9 +41,11 @@ wilkcomp02 (local disk: gone after a reboot) holds
 
 | Release | Content | Built by | Search pack |
 |---|---|---|---|
-| `rN.1` | 27,258 phage + 2,497 complete prokaryote genomes, stages `S1,P1,P2`; 10,620,684 proteins; NR90, NR50; no Pfam | tree `740d049` (before B-27, B-21, B-39) | `/tmp/if2453/w19/packs` (with `pack_verified.json`; an older copy without it at `/tmp/if2453/w16/packs`), until the operator copies it into the profile's pack directory `/tmp/if2453/bio-box/packs` (card W-22) |
-| `rN.2` | the same with Pfam 38.2 | tree `740d049` | none |
-| `rN.3` | the same stages, release steps rebuilt with current code (card C-17); being built | current | none |
+| `rN.1` | 27,258 phage + 2,497 complete prokaryote genomes, stages `S1,P1,P2`; 10,620,684 proteins; NR90, NR50; no Pfam | tree `740d049` (before B-27, B-21, B-39) | archived (`DEC-66`) |
+| `rN.2` | the same with Pfam 38.2 | tree `740d049` | archived (`DEC-66`) |
+| `rN.3` | the same stages, release steps rebuilt with current code (card C-17) | current | archived (`DEC-66`) |
+| `r26.11.2` | 74.16 Gbp, 11 stages (`S1..V1`, all `annotated` Pfam 38.2), 285,014 genomes, 57,780,176 proteins (*measured*, `2026-11-21_release_r26.11.2.md`) | `release_train.sh` | `/tmp/if2453/bio-box/packs/release=r26.11.2` (`02dec831…`, 36.01 GB) |
+| `r26.11.3` | 119.90 Gbp, 13 stages (`S1..V1, G1` `annotated` Pfam 38.2; `SPX1` `called`), 3,121,518 genomes, 4,338,167 contigs, 102,337,875 proteins, 71,208,987 NR90 / 22,155,373 NR50 clusters (*measured*, `2026-11-24_release_r26.11.3.md`); **`--release latest`** | `release_train.sh` | `/tmp/if2453/bio-box/packs/release=r26.11.3` (`2c94c11d…`, 89.01 GB) |
 
 Find the current state; do not trust the table above. `releases` (card W-23; `src/biobox/cli.py`,
 `release_summary`) prints one line per release of the root, with a manifest or only a `release_def`: stages,
