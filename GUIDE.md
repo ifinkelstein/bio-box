@@ -2,7 +2,8 @@
 
 For a scientist who wants hits and gene neighbourhoods, not operations. State as of 2026-11-11 (keeping results:
 2026-11-12; the worked examples in `examples/`: 2026-11-13; the 50 Gbp release `rM.2`: 2026-11-15; the 59.88 Gbp
-rolling release `r26.11.1`: 2026-11-19; the 74.16 Gbp rolling release `r26.11.2`: 2026-11-22); releases,
+rolling release `r26.11.1`: 2026-11-19; the 74.16 Gbp rolling release `r26.11.2`: 2026-11-22; the 119.90 Gbp rolling
+release `r26.11.3`: 2026-11-25); releases,
 paths and costs will change. The operator's version of every command is `RUNBOOK.md` (sections 0, 7, 10, 11).
 Numbers carry a label: *measured* (with the file it comes from) or *derived* (with the formula).
 
@@ -27,7 +28,8 @@ host profile's pack directory `/tmp/if2453/bio-box/packs`, card W-22):
 | `rN.3` | the same genomes with Pfam 38.2, built by the current code (card C-17): the one to use for the 10 Gbp set; the worked commands of this guide were run on it | yes, in the profile's pack directory (`/tmp/if2453/bio-box/packs`), found with `--profile` alone |
 | `rM.2` | the 50 Gbp set (superseded as `--release latest` by `r26.11.1` on 2026-11-19, still available): the genomes of `rN.3` and 9,469 more complete prokaryote genomes (stages `P3` to `P6`; *derived*: 39,224 less 29,755), 39,224 genomes in all; 45,815,843 distinct proteins; NR50 8,192,065 and NR90 31,183,876 clusters; Pfam 38.2 on every stage (*measured*, `planning/tasks/STATUS.md` handoff of 2026-11-14). Both worked examples hold on it (*measured*, `planning/measurements/2026-11-14_release_examples_rM2.md`). A search costs about four times what it costs on `rN.3` (the RNA polymerase search 40.9 CPU-minutes, *measured*, the same note). Two limits: it holds no CRISPR arrays; and its stages `S1`, `P1` and `P2` have no label table in its manifest, so a command that looks a contig up by accession prints one `note:` line and scans those stages (a few seconds; card W-36) | yes, in the profile's pack directory, found with `--profile` alone (pack `26e10f05401faeefb78769e83f7f6cb4`, 25.8 GB, built in parts, card W-35) |
 | `r26.11.1` | the 59.88 Gbp nine-stage rolling release (`S1`, `P1` to `P6`, `H1` huge phages, `PL1` PLSDB plasmids; superseded as `--release latest` by `r26.11.2` on 2026-11-22, still available): 114,629 genomes, 122,626 contigs (7,046 shared across genomes), 57,086,886 genes, 49,102,041 distinct proteins, NR50 9,291,312 and NR90 33,117,773 clusters, Pfam 38.2, both CRISPR array producers (16,067 default 3-repeat and 493 filtered 2-repeat near-Cas arrays) and `contig_label` on every stage (*measured*, `planning/measurements/2026-11-16_release_r26.11.1.md`). Both worked examples hold on it, all 39 invariants including the CRISPR array checks; the RNA polymerase example took 53.5 CPU-minutes (*derived*, the same note) | yes, in the profile's pack directory, found with `--profile` alone (pack `f8ab9bd5c5a6c8858e60bf639323c457`, 29.29 GB, built in 10 parts, *measured*, `planning/measurements/2026-11-16_release_r26.11.1.md`) |
-| `r26.11.2` | the 74.16 Gbp eleven-stage rolling release (`S1`, `P1` to `P6`, `H1` huge phages, `PL1` PLSDB plasmids, `C5` complete prokaryote strains, `V1` UHGV gut viruses), since 2026-11-22 **the one to use** (and what `--release latest` resolves to): 285,014 genomes, 293,637 contigs (9,593 shared across genomes), 72,927,956 genes, 57,780,176 distinct proteins, NR50 10,091,519 and NR90 35,475,280 clusters, Pfam 38.2, both CRISPR array producers (18,553 default 3-repeat and 589 filtered 2-repeat near-Cas arrays) and `contig_label` on every stage (*measured*, `planning/measurements/2026-11-21_release_r26.11.2.md`). Both worked examples hold on it, all 39 invariants including the CRISPR array checks; the RNA polymerase example took 64.0 CPU-minutes (*derived*, the same note) | yes, in the profile's pack directory, found with `--profile` alone (pack `02dec8312fff239cfed68b255e02f60e`, 36.01 GB, built in 10 parts, *measured*, `planning/measurements/2026-11-21_release_r26.11.2.md`) |
+| `r26.11.2` | the 74.16 Gbp eleven-stage rolling release (`S1`, `P1` to `P6`, `H1` huge phages, `PL1` PLSDB plasmids, `C5` complete prokaryote strains, `V1` UHGV gut viruses; superseded as `--release latest` by `r26.11.3` on 2026-11-25, still available): 285,014 genomes, 293,637 contigs (9,593 shared across genomes), 72,927,956 genes, 57,780,176 distinct proteins, NR50 10,091,519 and NR90 35,475,280 clusters, Pfam 38.2, both CRISPR array producers (18,553 default 3-repeat and 589 filtered 2-repeat near-Cas arrays) and `contig_label` on every stage (*measured*, `planning/measurements/2026-11-21_release_r26.11.2.md`). Both worked examples hold on it, all 39 invariants including the CRISPR array checks; the RNA polymerase example took 64.0 CPU-minutes (*derived*, the same note) | yes, in the profile's pack directory, found with `--profile` alone (pack `02dec8312fff239cfed68b255e02f60e`, 36.01 GB, built in 10 parts, *measured*, `planning/measurements/2026-11-21_release_r26.11.2.md`) |
+| `r26.11.3` | the 119.90 Gbp (*derived*) thirteen-stage rolling release (`S1`, `P1` to `P6`, `H1`, `PL1`, `C5`, `V1`, `G1` GlobDB archaea, `SPX1` SPIRE unbinned `>= 5 kb` metagenomes at `--depth called`), since 2026-11-25 **the one to use** (and what `--release latest` resolves to): 3,121,518 genomes, 4,338,167 contigs (21,710 shared across genomes), 119,876,311 genes, 102,337,875 distinct proteins, NR50 22,155,373 and NR90 71,208,987 clusters, Pfam 38.2 on 12 `annotated` stages (`SPX1` `called`), 25,659 default 3-repeat and 716 filtered 2-repeat near-Cas CRISPR arrays, and `contig_label` on all 13 stages (*measured*, `planning/measurements/2026-11-24_release_r26.11.3.md`). Both worked examples hold on it, all 39 invariants including the CRISPR array checks; the RNA polymerase example took 127.2 CPU-minutes (*derived*, the same note) | yes, in the profile's pack directory, found with `--profile` alone (pack `2c94c11d5ddacf0e1f0dc8a2724ae1a6`, 89.01 GB, built in 16 parts, *measured*, `planning/measurements/2026-11-24_release_r26.11.3.md`) |
 
 ## 2. Before you start
 
@@ -438,14 +440,15 @@ runs as one command and checks its answer; both are rerun on every milestone rel
 ## 8. Limits and rough edges today
 
 - The active data root lives on the pod's local disk (`/tmp/if2453/r10/root`), with verified `.tar` backups of the
-  stages and releases through `r26.11.2` on durable storage (`/stor/work/Wilke/if2453/all-the-data/root_backups/`,
+  stages and releases through `r26.11.3` on durable storage (`/stor/work/Wilke/if2453/all-the-data/root_backups/`,
   mirrored to `tower`, `STATUS.md` handoff). Your own search results can be kept (section 5, *Keeping your results*)
   under the pod's bulk area.
-- `r26.11.2` (`--release latest`), `r26.11.1`, `rM.2` and `rN.3` have verified search packs in the profile's pack
-  directory (`/tmp/if2453/bio-box/packs`, card W-22), found with `--profile` alone; `rN.1` and `rN.2` do not
-  (`RUNBOOK.md` section 7).
-- `r26.11.2` and `r26.11.1` have `member_cluster`, `contig_label`, `domain_family_tokens` and both CRISPR array
-  producers on every stage (`S1`, `P1` to `P6`, `H1`, `PL1`, plus `C5` and `V1` in `r26.11.2`), so lookups prune and
+- `r26.11.3` (`--release latest`), `r26.11.2`, and `r26.11.1` have verified search packs in the profile's pack
+  directory (`/tmp/if2453/bio-box/packs`, card W-22), found with `--profile` alone; older releases `rN.1a`..`rM.2` are
+  archived (`DEC-66`).
+- `r26.11.3`, `r26.11.2` and `r26.11.1` have `member_cluster`, `contig_label`, `domain_family_tokens` and CRISPR
+  arrays on every stage (`S1`, `P1` to `P6`, `H1`, `PL1`, plus `C5`, `V1` in `r26.11.2`, plus `G1` `annotated` and
+  `SPX1` `called` in `r26.11.3`), so lookups prune and
   print no slow-path note. Older releases lack some lookup tables: `rN.1` and `rN.2` were built before card B-27, so
   cluster and contig-name lookups read whole tables and print a `note: ... slow path` line; `rN.3` has the cluster
   lookup table but prints the note for contig names; `rM.2` has `contig_label` for stages `P3` to `P6` only

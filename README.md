@@ -2,16 +2,15 @@
 
 **Documentation map:** **[`DOCS.md`](DOCS.md)** indexes every user guide, operator runbook, catalog register, design note, measurement report, and archived spec in one place.
 
-**Status, 2026-11-23:** the 74.16 Gbp rolling release `r26.11.2` (eleven stages `S1`, `P1` to `P6`, `H1`, `PL1`, `C5`
-and `V1`, Pfam 38.2, both CRISPR array producers and `contig_label` on every stage; *measured*,
-[`2026-11-21_release_r26.11.2.md`](planning/measurements/2026-11-21_release_r26.11.2.md)) is **the live release to
-search** (`--release latest` resolves to `r26.11.2`), and `r26.11.1` (59.88 Gbp) stays live beside it (`DEC-66` `S-4`;
+**Status, 2026-11-25:** the 119.90 Gbp rolling release `r26.11.3` (thirteen stages `S1`, `P1` to `P6`, `H1`, `PL1`, `C5`,
+`V1`, `G1` `annotated` Pfam 38.2, and `SPX1` `called`; *measured*,
+[`2026-11-24_release_r26.11.3.md`](planning/measurements/2026-11-24_release_r26.11.3.md)) is **the live release to
+search** (`--release latest` resolves to `r26.11.3`), with `r26.11.2` (74.16 Gbp) live beside it (`DEC-66` `S-4`;
 pre-rolling releases `rN.1a`..`rM.2` are durably archived on `/stor/work` and `tower` via `bio-box release retire`,
-card C-54). Stages **`G1`** (10.04 Gbp GlobDB archaea, `annotated`, [`2026-11-23_stage_G1.md`](planning/measurements/2026-11-23_stage_G1.md))
-and **`SPX1`** (35.69 Gbp SPIRE unbinned metagenomes `>= 5 kb`, `called`, [`2026-11-23_stage_SPX1.md`](planning/measurements/2026-11-23_stage_SPX1.md))
-are built, verified, and backed up, and rolling release **`r26.11.3`** (13 stages, 119.89 Gbp, 119,876,311 genes,
-102,337,875 distinct proteins, *measured*) is currently building (`DEC-67`). No release has been signed yet. The running
-record is [`planning/tasks/STATUS.md`](planning/tasks/STATUS.md); where this file and that one differ, that one is newer.
+card C-54). `r26.11.3` holds `3,121,518` genomes, `4,338,167` contigs, `119,876,311` genes, `102,337,875` distinct
+proteins, `71,208,987` NR90 and `22,155,373` NR50 clusters, and verified search pack `2c94c11d…` (`89.01 GB`, *measured*).
+No release has been signed yet. The running record is [`planning/tasks/STATUS.md`](planning/tasks/STATUS.md); where this
+file and that one differ, that one is newer.
 
 Numbers here carry the labels [`AGENTS.md`](AGENTS.md) §6 requires: *measured* (on the pod unless stated, with the
 date and the record cited beside it), *derived* (with its formula) or *estimate*.
@@ -83,7 +82,7 @@ are counts, not significance: no enrichment statistic exists yet, and identical 
 
 The data are not in this repository. Built stages and releases live in one data root on the local disk of a shared
 university server (the pod, `wilkcomp02` in [`AGENTS.md`](AGENTS.md) §7), with verified `.tar` backups of the stages
-and releases through `r26.11.2` on the server's durable storage (`/stor/work/Wilke/if2453/all-the-data/root_backups/`,
+and releases through `r26.11.3` on the server's durable storage (`/stor/work/Wilke/if2453/all-the-data/root_backups/`,
 mirrored to the PI's NAS `tower`, STATUS handoff). Fetched inputs are archived on the server's network storage, each file with a sha256 in
 [`sources.yaml`](sources.yaml); reference libraries are pinned in [`refdb.yaml`](refdb.yaml). The repository holds
 code, plans, decisions, measurement records and tests.
@@ -125,7 +124,8 @@ command prints the name it took and records that name, and `bio-box releases` ma
 | `rM.1` | `S1`, `P1` to `P6` | the same stages and proteins as `rM.2`; its cluster files are byte-identical to `rM.2`'s (*measured*, 2026-11-14, STATUS handoff) | clustered only, left so on purpose (it would be a second copy of `rM.2`; STATUS open items 1 and 6) |
 | `rM.2` | `S1`, `P1` to `P6` | 54,265 contigs, 39,224 genomes, 45,815,843 distinct proteins, 31,183,876 NR90 and 8,192,065 NR50 clusters, Pfam 38.2 on every stage (*measured*, 2026-11-14, STATUS handoff; the cluster counts are `rM.1`'s, whose cluster files are the same bytes) | verified (2026-11-14); search pack `26e10f05…` (25.8 GB); both worked examples hold, 37 invariants (*measured*, 2026-11-15, [`2026-11-14_release_examples_rM2.md`](planning/measurements/2026-11-14_release_examples_rM2.md)); superseded as `--release latest` by `r26.11.1`, still available |
 | `r26.11.1` | `S1`, `P1` to `P6`, `H1`, `PL1` | 59.88 Gbp stored across 122,626 contigs (7,046 shared across genomes) and 114,629 genomes; 57,086,886 genes, 49,102,041 distinct proteins, 33,117,773 NR90 and 9,291,312 NR50 clusters, Pfam 38.2, both CRISPR producers (16,067 default 3-repeat and 493 filtered 2-repeat near-Cas arrays) and `contig_label` on every stage (*measured*, 2026-11-18/19, [`2026-11-16_release_r26.11.1.md`](planning/measurements/2026-11-16_release_r26.11.1.md)) | verified (manifest hash `202b4cad…`); search pack `f8ab9bd5…` (29.29 GB); both worked examples hold, all 39 invariants (*measured*, 2026-11-19); superseded as `--release latest` by `r26.11.2`, still available |
-| `r26.11.2` | `S1`, `P1` to `P6`, `H1`, `PL1`, `C5`, `V1` | 74.16 Gbp stored across 293,637 contigs (9,593 shared across genomes) and 285,014 genomes; 72,927,956 genes, 57,780,176 distinct proteins, 35,475,280 NR90 and 10,091,519 NR50 clusters, Pfam 38.2, both CRISPR producers (18,553 default 3-repeat and 589 filtered 2-repeat near-Cas arrays) and `contig_label` on every stage (*measured*, 2026-11-21/22, [`2026-11-21_release_r26.11.2.md`](planning/measurements/2026-11-21_release_r26.11.2.md)) | verified (manifest hash `46454d51…`); search pack `02dec831…` (36.01 GB); both worked examples hold, all 39 invariants including the CRISPR array checks (*measured*, 2026-11-22): **the one to use** (`--release latest`) |
+| `r26.11.2` | `S1`, `P1` to `P6`, `H1`, `PL1`, `C5`, `V1` | 74.16 Gbp stored across 293,637 contigs (9,593 shared across genomes) and 285,014 genomes; 72,927,956 genes, 57,780,176 distinct proteins, 35,475,280 NR90 and 10,091,519 NR50 clusters, Pfam 38.2, both CRISPR producers (18,553 default 3-repeat and 589 filtered 2-repeat near-Cas arrays) and `contig_label` on every stage (*measured*, 2026-11-21/22, [`2026-11-21_release_r26.11.2.md`](planning/measurements/2026-11-21_release_r26.11.2.md)) | verified (manifest hash `46454d51…`); search pack `02dec831…` (36.01 GB); both worked examples hold, all 39 invariants (*measured*, 2026-11-22); superseded as `--release latest` by `r26.11.3`, still available |
+| `r26.11.3` | `S1`, `P1` to `P6`, `H1`, `PL1`, `C5`, `V1`, `G1`, `SPX1` | 119.90 Gbp (*derived*) stored across 4,338,167 contigs (21,710 shared across genomes) and 3,121,518 genomes; 119,876,311 genes, 102,337,875 distinct proteins (44,557,699 new vs `r26.11.2`), 71,208,987 NR90 and 22,155,373 NR50 clusters, Pfam 38.2 on 12 `annotated` stages (`SPX1` `called`), 25,659 default 3-repeat and 716 filtered 2-repeat near-Cas CRISPR arrays, and `contig_label` on all 13 stages (*measured*, 2026-11-23/25, [`2026-11-24_release_r26.11.3.md`](planning/measurements/2026-11-24_release_r26.11.3.md)) | verified (manifest hash `956c237f…`); search pack `2c94c11d…` (89.01 GB); both worked examples hold, all 39 invariants including the CRISPR array checks (*measured*, 2026-11-25): **the one to use** (`--release latest`) |
 
 Non-coding RNA: the producer and its frozen model set exist (DEC-28, DEC-30), but no built stage has been scanned, so no
 release has ncRNA features.
@@ -210,19 +210,21 @@ The specification and plan behind these are [`00-spec.md`](docs/archive/00-spec.
 | 2026-11-18 to 19 | First rolling release `r26.11.1` over `S1`, `P1` to `P6`, `H1` and `PL1` (59.88 Gbp, 114,629 genomes, 49,102,041 distinct proteins, 33,117,773 NR90 and 9,291,312 NR50 clusters, 16,067 + 493 CRISPR arrays, *measured*): verified, backed up onto `/stor/work`, search-packed (29.29 GB) and passed all 39 worked-example invariants (card C-35) | [`2026-11-16_release_r26.11.1.md`](planning/measurements/2026-11-16_release_r26.11.1.md) |
 | 2026-11-19 to 22 | Stages `C5` (9.11 Gbp, 2,029 complete prokaryote genomes, card C-47) and `V1` (5.18 Gbp, 168,536 UHGV gut viral genomes, card C-48c part 1) built; representative-based Pfam domain inference evaluated against `C5`'s full scan and `r26.11.2` NR90 clusters (1.07% and 1.18% missed pairs, stopping at DEC-35 (6); DEC-62 chooses full scans for `C1` to `C4` and `C6`); second rolling release `r26.11.2` cut by `release_train.sh` over all 11 stages (74.16 Gbp, 285,014 genomes, 57,780,176 distinct proteins, 35,475,280 NR90 and 10,091,519 NR50 clusters, 18,553 + 589 CRISPR arrays, *measured*), verified, backed up onto `/stor/work`, mirrored to `tower`, search-packed (36.01 GB) and passed all 39 worked-example invariants (cards C-46, A-15 to A-20, B-54, B-61 to B-65) | [`2026-11-20_stage_C5.md`](planning/measurements/2026-11-20_stage_C5.md), [`2026-11-20_stage_V1.md`](planning/measurements/2026-11-20_stage_V1.md), [`2026-11-20_c5_pfam_by_representatives.md`](planning/measurements/2026-11-20_c5_pfam_by_representatives.md), [`2026-11-21_release_r26.11.2.md`](planning/measurements/2026-11-21_release_r26.11.2.md) |
 
-**Now** (2026-11-22; STATUS handoff)
+| 2026-11-23 to 25 | Stages `G1` (10.04 Gbp GlobDB archaea, `annotated`) and `SPX1` (35.69 Gbp SPIRE unbinned `>= 5 kb`, `called`) cut into rolling release `r26.11.3` over 13 stages (119.90 Gbp *derived*, 3,121,518 genomes, 4,338,167 contigs, 119,876,311 genes, 102,337,875 distinct proteins, 71,208,987 NR90 and 22,155,373 NR50 clusters, 25,659 + 716 CRISPR arrays, *measured*), verified, backed up onto `/stor/work`, search-packed (89.01 GB) and passed all 39 worked-example invariants (cards B-68, B-70, W-41, A-25b, W-42); `DEC-77` hybrid clustering (`B-71`, `B-72`, `A-27`) merged for `r26.11.4` | [`2026-11-23_stage_G1.md`](planning/measurements/2026-11-23_stage_G1.md), [`2026-11-23_stage_SPX1.md`](planning/measurements/2026-11-23_stage_SPX1.md), [`2026-11-24_release_r26.11.3.md`](planning/measurements/2026-11-24_release_r26.11.3.md) |
 
-- `r26.11.2`, the 74.16 Gbp eleven-stage rolling release (`S1`, `P1` to `P6`, `H1`, `PL1`, `C5` and `V1`), is the
-  release to use since 2026-11-22 (`--release latest` resolves to it). It holds 285,014 genomes, 293,637 contigs
-  (9,593 shared across genomes), 57,780,176 distinct proteins (8,678,135 not in `r26.11.1`), 35,475,280 NR90 and
-  10,091,519 NR50 clusters, Pfam 38.2, `contig_label`, and both CRISPR array producers (18,553 default 3-repeat and
-  589 filtered 2-repeat near-Cas arrays, *measured*, [`2026-11-21_release_r26.11.2.md`](planning/measurements/2026-11-21_release_r26.11.2.md)).
-  Every unchanged cluster of `r26.11.1` kept its exact `cluster_uid` (32,521,095 of 32,521,095 at NR90 and 8,777,492 of
-  8,777,492 at NR50, *measured*). Its search pack (`02dec8312fff239cfed68b255e02f60e`, 36.01 GB) is verified, both
-  worked examples pass all 39 invariants (91 of 155 TniQ+Cas7f loci carry a CRISPR array, including 59 from the
-  filtered two-repeat producer; 2,735 RNA polymerase hit proteins across 3,378 genes, *measured*), and the root and
-  its additions through `r26.11.2` are backed up onto `/stor/work/Wilke/if2453/all-the-data/root_backups/` and mirrored
-  to `tower`.
+**Now** (2026-11-25; STATUS handoff)
+
+- `r26.11.3`, the 119.90 Gbp (*derived*) thirteen-stage rolling release (`S1`, `P1` to `P6`, `H1`, `PL1`, `C5`, `V1`,
+  `G1`, and `SPX1`), is the release to use since 2026-11-25 (`--release latest` resolves to it). It holds 3,121,518
+  genomes, 4,338,167 contigs (21,710 shared across genomes), 102,337,875 distinct proteins (44,557,699 not in
+  `r26.11.2`), 71,208,987 NR90 and 22,155,373 NR50 clusters, Pfam 38.2 on 12 `annotated` stages (`SPX1` `called`),
+  `contig_label` on all 13 stages, and 25,659 default 3-repeat plus 716 filtered 2-repeat near-Cas CRISPR arrays
+  (*measured*, [`2026-11-24_release_r26.11.3.md`](planning/measurements/2026-11-24_release_r26.11.3.md)). Every unchanged
+  cluster of `r26.11.2` kept its exact `cluster_uid` (34,062,365 of 34,062,365 at NR90 and 7,802,761 of 7,802,761 at
+  NR50, *measured*). Its search pack (`2c94c11d5ddacf0e1f0dc8a2724ae1a6`, 89.01 GB) is verified, both worked examples
+  pass all 39 invariants (91 of 155 TniQ+Cas7f loci carry a CRISPR array; 3,728 RNA polymerase hit proteins across
+  4,392 genes, *measured*), and its additions (`43,744,563,200` B) are backed up onto
+  `/stor/work/Wilke/if2453/all-the-data/root_backups/added_r26_11_3.tar` (`tower` mirror pending).
 - External sequence fetching is paused (`STATUS.md` handoff): work focuses on ingesting the genomes, plasmids, viruses
   and metagenomes already staged on disk into the DuckDB/Parquet corpus through `stage_queue.sh` and `release_train.sh`
   (cards A-12, C-46).
