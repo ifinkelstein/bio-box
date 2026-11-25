@@ -46,6 +46,9 @@ RECORD_ABOVE = 1.20  # DEC-64 (amending DEC-53): a judged step over this ratio i
 STOP_ABOVE = 1.50  # DEC-64: a judged step whose reported (three-decimal) ratio is over this stops the train
 CALIBRATION_DEADBAND = 0.15  # Card B-64: within ±15% of current B-54 model, keep factor=1.0 instead of amplifying noise
 GENE_SCALED_STEPS = ("tokens", "postings", "dim", "manifest", "catalog")
+CLUSTERING_MODES = ("cascade", "hybrid-a", "hybrid-b1", "linclust")  # card B-71 / A-27 (DEC-77)
+DEFAULT_TRAIN_CLUSTER_METHOD = "hybrid-b1"
+FINISH_LEVEL_STEPS = ("cluster.finish.nr90", "cluster.finish.nr50")  # card B-72 (DEC-77)
 
 # Card B-68: stdlib-only model for shared-index `.cut` (`mmseqs createindex`, 18 threads) fitted across the
 # 5 measured records of r26.11.1, r26.11.2, and r26.11.3 (CPU-min per 10^9 residues at 10M targets).
@@ -254,6 +257,11 @@ def before(a) -> int:
     root = Path(a.root)
     stages = [s for s in a.stages.split(",") if s]
     prof = bprofile.load(a.profile)
+    mode = getattr(a, "cluster_method", None) or l2.DEFAULT_CLUSTERING_MODE
+    l2._check_mode(mode)
+    active_calls = {c.name for c in l2.calls(mode)}
+    active_split_calls = {c.name for c in l2.calls(mode) if c.split}
+    active_shared_index_calls = {c.name for c in l2.calls(mode) if c.shares_index}
 
     per_stage: dict[str, dict] = {}
     files_of: dict[str, list[Path]] = {}
@@ -282,7 +290,7 @@ def before(a) -> int:
     reuse_reasons: dict[str, str] = {}
     plan_rels = l2._plan_releases(root)
     if plan_rels:
-        inputs = l2.plan_inputs(root, a.release, GCV, stages, cut)
+        inputs = l2.plan_inputs(root, a.release, GCV, stages, cut, mode=mode)
         for src in plan_rels:
             why = l2._source_problem(root, a.release, src, inputs)
             reuse_reasons[src] = "qualifies" if why is None else why
@@ -330,6 +338,8 @@ def before(a) -> int:
         projected_calls: dict[str, tuple[int, int, int, int]] = {}
         for c in calib["calls"]:
             name = c["call"]
+            if name not in active_calls:
+                continue
             rows_ = calib["part_rows"][name]
             k_old = len(rows_)
             u_old = sum(x["units"] or 0 for x in rows_)
@@ -383,15 +393,32 @@ def before(a) -> int:
                 "raw_calibration_factor": round(raw_factor, 6),
                 "peak_rss_gb_projected": round((c["max_peak_rss_gb"] or 0) * r, 1),
             })
+        earlier_other_steps = {o["step"] for o in calib["others"]}
+        earlier_has_level_finish = any(fs in earlier_other_steps for fs in FINISH_LEVEL_STEPS)
         for o in calib["others"]:
             step = o["step"]
+            if step.startswith("cluster"):
+                if step == "cluster":
+                    if not earlier_has_level_finish:
+                        # Card B-72 / A-27: unsplit earlier `cluster` splits ~50/50 across level finish steps;
+                        # omit `cluster` so the lightweight B-72 publish step is not misjudged against unsplit finish.
+                        half = round(0.5 * o["cpu_min"] * r, 3)
+                        for fs in FINISH_LEVEL_STEPS:
+                            steps[fs] = half
+                        continue
+                elif step == "cluster.plan" or step in FINISH_LEVEL_STEPS or step in active_calls:
+                    pass
+                elif step.endswith(".cut") and step[:-len(".cut")] in active_split_calls:
+                    pass
+                else:
+                    continue
             if step.endswith(".cut"):
                 call_name = step[:-len(".cut")]
                 if call_name in SHARED_INDEX_PREFILTER_SENS and call_name in projected_calls:
                     u_new, t_new, k_new, k_old = projected_calls[call_name]
                     if k_new > 1:
                         steps[step] = round(
-                            createindex_cpu_min(u_new, t_new, SHARED_INDEX_PREFILTER_SENS[call_name]), 3
+                            l2.createindex_cpu_min(u_new, t_new, SHARED_INDEX_PREFILTER_SENS[call_name]), 3
                         )
                     else:
                         steps[step] = round(o["cpu_min"] * r, 3) if k_old == 1 else 1.0
@@ -407,15 +434,18 @@ def before(a) -> int:
                 scale = r
             steps[step] = round(o["cpu_min"] * scale, 3)
         for call_name, sens in SHARED_INDEX_PREFILTER_SENS.items():
+            if call_name not in active_shared_index_calls:
+                continue
             cut_step = f"{call_name}.cut"
             if cut_step not in steps and call_name in projected_calls:
                 u_new, t_new, k_new, _ = projected_calls[call_name]
                 if k_new > 1:
-                    steps[cut_step] = round(createindex_cpu_min(u_new, t_new, sens), 3)
+                    steps[cut_step] = round(l2.createindex_cpu_min(u_new, t_new, sens), 3)
 
     others_total = sum(v for k_, v in steps.items() if k_.startswith("cluster"))
     doc = {
         "release": a.release,
+        "cluster_method": mode,
         "stages": stages,
         "earlier": earlier,
         "earlier_stages": estages,
@@ -468,7 +498,15 @@ def check_rates(root: Path, release: str, est_path: Path, *, out_path: Path | No
 
     rows, over_bad, under_bad, bad, unknown, accepted, recorded = [], [], [], [], [], [], []
     cuts: dict[str, dict] = {}
-    for f in sorted(runs.glob("*.json")) if runs.is_dir() else []:
+    run_files = sorted(runs.glob("*.json")) if runs.is_dir() else []
+    run_names = {f.name[:-len(".json")] for f in run_files if not f.name.endswith(".publishing.json")}
+    has_level_finish_runs = any(fs in run_names for fs in FINISH_LEVEL_STEPS)
+    legacy_unsplit_finish_est = (
+        has_level_finish_runs
+        and "cluster" in steps
+        and not any(fs in steps for fs in FINISH_LEVEL_STEPS)
+    )
+    for f in run_files:
         if f.name.endswith(".publishing.json"):
             continue
         name = f.name[:-len(".json")]
@@ -501,8 +539,13 @@ def check_rates(root: Path, release: str, est_path: Path, *, out_path: Path | No
                 fac = factors.get(name) or 1.0
                 e = cut["parts"][0]["cpu_min"] * fac
                 basis = f"one part: cut estimate x factor {fac}"
-        if e is None and name in steps:
-            e, basis = steps[name], "earlier record x ratio"
+        if e is None:
+            if legacy_unsplit_finish_est and name in FINISH_LEVEL_STEPS:
+                e, basis = 0.5 * steps["cluster"], "unsplit earlier cluster x 0.5"
+            elif legacy_unsplit_finish_est and name == "cluster":
+                pass  # lightweight B-72 publish step; not judged against legacy unsplit `cluster` estimate
+            elif name in steps:
+                e, basis = steps[name], "earlier record x ratio"
 
         row = {
             "step": name,
@@ -578,6 +621,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--stages", default="")
     ap.add_argument("--earlier", default=None)
     ap.add_argument("--parts", type=int, default=None)
+    ap.add_argument("--cluster-method", choices=CLUSTERING_MODES, default=DEFAULT_TRAIN_CLUSTER_METHOD)
     ap.add_argument("--profile")
     ap.add_argument("--jobs", type=int, default=None)
     ap.add_argument("--cpus", type=int, default=None)
