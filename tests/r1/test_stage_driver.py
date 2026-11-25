@@ -445,8 +445,8 @@ def _repo_confs():
 
 def test_the_repository_has_a_conf_for_each_stage_whose_note_gives_every_value():
     assert {p.stem for p in _repo_confs()} == {
-        "V2", "GV1", "G1", "SPX1", "C1", "C2", "C3", "C4", "C6", "PL2", "PL3", "CG1", "MGE1", "SAT1", "ECE1", "O1", "O2", "LPL1", "SYM1", "LRV1", "LGRT1",
-    }  # A-17, A-18, C-52, C-61, C-57, C-55, C-65, C-59, C-59a, C-58, C-67, C-64
+        "V2", "GV1", "G1", "SPX1", "C1", "C2", "C3", "C4", "C6", "PL2", "PL3", "CG1", "MGE1", "SAT1", "ECE1", "O1", "O2", "LPL1", "SYM1", "LRV1", "LGRT1", "MGE2", "MV1", "V3", "LR1", "GART1", "GART2",
+    }  # A-17, A-18, C-52, C-61, C-57, C-55, C-65, C-59, C-59a, C-58, C-67, C-64, A-26
 
 
 def test_pl2_and_pl3_confs_follow_dec63_and_dec65():
@@ -481,11 +481,12 @@ def test_each_repository_conf_is_valid_and_its_sums_and_figures_are_its_notes(pa
 def test_gv1_comes_after_v2_judges_its_gene_calling_against_the_notes_figure_and_expects_v2s_contigs():
     est = _module("stage_est")
     c = est.read_conf(STAGES / "GV1.conf", "GV1", tree=REPO)
-    assert c.after == ("V2", "PL3")
+    assert c.after == ("V2", "PL3", "GART2")
     assert c.judge["genecall"][0] == 236.0
     assert c.expect["V2"][0] == 17649
     assert c.expect["SPX1"][0] == 3
     assert c.expect["PL3"][0] == 2
+    assert c.expect["MV1"][0] == 130131
 
 
 @pytest.mark.covers("A-24")
@@ -499,12 +500,110 @@ def test_a24_pl2_pl3_gv1_follow_dec71_build_order():
     assert "GV1" not in c3.after and "GV1" not in c3.expect
     assert sum(n for n, _ in c3.expect.values()) == 7746
     cg = est.read_conf(STAGES / "GV1.conf", "GV1", tree=REPO)
-    assert cg.after == ("V2", "PL3")
+    assert cg.after == ("V2", "PL3", "GART2")
     assert cg.expect["H1"][0] == 6
     assert cg.expect["SPX1"][0] == 3
     assert cg.expect["V2"][0] == 17649
     assert cg.expect["PL3"][0] == 2
-    assert sum(n for n, _ in cg.expect.values()) == 17660
+    assert cg.expect["MV1"][0] == 130131
+    assert sum(n for n, _ in cg.expect.values()) == 147791
+
+
+@pytest.mark.covers("A-26")
+def test_a26_r26_11_4_strict_linear_chain_and_deferred_gv1():
+    est = _module("stage_est")
+    chain = (
+        "V2", "PL2", "PL3", "CG1", "MGE1", "SAT1", "ECE1", "O1", "O2", "LPL1",
+        "SYM1", "LRV1", "LGRT1", "MGE2", "MV1", "V3", "LR1", "GART1", "GART2",
+    )
+    assert len(chain) == 19
+    assert len(_repo_confs()) == 27
+    confs = {st: est.read_conf(STAGES / f"{st}.conf", st, tree=REPO) for st in chain}
+    assert confs["V2"].after == ("G1", "SPX1")
+    assert confs["PL2"].after == ("G1", "SPX1", "V2")
+    for prev, cur in zip(chain[1:], chain[2:]):
+        assert confs[cur].after == (prev,), f"{cur}.conf must strictly follow {prev}"
+    assert confs["MGE2"].depth == "annotated"
+    assert confs["MGE2"].library == ("pfam", "38.2", "gathering")
+    assert confs["MGE2"].crispr and confs["MGE2"].min_contig_len is None and confs["MGE2"].genecall_mode == "default"
+    for st in ("MV1", "V3", "GART1", "GART2"):
+        c = confs[st]
+        assert c.depth == "called" and c.library is None and c.crispr
+        assert c.min_contig_len is None and c.genecall_mode == "default"
+    clr = confs["LR1"]
+    assert clr.depth == "called" and clr.library is None and clr.crispr
+    assert clr.min_contig_len == 5000 and clr.genecall_mode == "gv-meta-c25"
+    cg = est.read_conf(STAGES / "GV1.conf", "GV1", tree=REPO)
+    assert cg.after == ("V2", "PL3", "GART2")
+    assert cg.expect["V2"][0] == 17649
+    assert cg.expect["PL3"][0] == 2
+    assert cg.expect["MV1"][0] > 0
+
+
+@pytest.mark.covers("A-26")
+def test_a26_chain_ownership_and_objects_rewrite(tmp_path):
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    from biobox import ids
+
+    mod = _module("a26_r26_11_4_chain")
+    # Synthetic root with stage S1 holding u0
+    s0, s1, s2, s3, s_short = b"A" * 6000, b"C" * 6000, b"G" * 6000, b"T" * 6000, b"ACGT" * 200
+    u0, u1, u2, u3, us = (ids.contig_uid(s) for s in (s0, s1, s2, s3, s_short))
+    root = tmp_path / "root"
+    idx_dir = root / "l0seq" / "contig_index" / "stage=S1"
+    idx_dir.mkdir(parents=True)
+    pq.write_table(
+        pa.table({
+            "contig_uid": pa.array([u0], type=pa.binary(16)),
+            "is_default_variant": pa.array([True], type=pa.bool_()),
+        }),
+        idx_dir / "part-00000.parquet",
+    )
+
+    def write_stage(name: str, recs: list[tuple[str, bytes]], genomes: list[list[bytes]]) -> Path:
+        d = tmp_path / "inputs" / name
+        d.mkdir(parents=True)
+        fna = d / f"{name.lower()}.fna"
+        fna.write_text("".join(f">{h}\n{seq.decode()}\n" for h, seq in recs))
+        (d / "objects.json").write_text(json.dumps([
+            {"path": str(fna), "source_name": name, "source_release": "1", "license": "MIT", "redistributable": True}
+        ]))
+        (d / "genomes.json").write_text(json.dumps([
+            {"contig_uids": [u.hex() for u in g], "genetic_code": 11, "kind": "virus", "circular": [],
+             "assembly_quality": "contig"}
+            for g in genomes
+        ]))
+        return d
+
+    d_a = write_stage("AA1", [("r0", s0), ("r1", s1)], [[u0], [u1]])
+    d_b = write_stage("BB1", [("r0", s0), ("r1", s1), ("r2", s2), ("rs", s_short)], [[u0], [u1], [u2]])
+    d_c = write_stage("CC1", [("r1", s1), ("r2", s2), ("r3", s3)], [[u1, u2], [u3]])
+
+    res = mod.compute_chain_ownership(
+        root=root,
+        stages=[("AA1", d_a, None), ("BB1", d_b, 5000), ("CC1", d_c, None)],
+        tmp_dir=tmp_path / "work",
+    )
+    assert res["AA1"]["held_by"] == {"S1": 1}
+    assert res["AA1"]["new_contigs"] == 1 and res["AA1"]["new_bases"] == 6000
+    assert res["BB1"]["held_by"] == {"AA1": 1, "S1": 1}
+    assert res["BB1"]["new_contigs"] == 1 and res["BB1"]["new_bases"] == 6000
+    assert res["CC1"]["held_by"] == {"AA1": 1, "BB1": 1}
+    assert res["CC1"]["new_contigs"] == 1 and res["CC1"]["new_bases"] == 6000
+
+    # Rewrite objects.json helper
+    src_obj = tmp_path / "orig_objects.json"
+    src_obj.write_text(json.dumps([
+        {"path": "/stor/scratch/Wilke/if2453/bio-box-staging/MV1/metavr_mv1.fna",
+         "source_name": "metavr", "source_release": "2026", "license": "JGI", "redistributable": False}
+    ], indent=2) + "\n")
+    dst_obj = tmp_path / "new_objects.json"
+    mod.rewrite_objects_json(src_obj, dst_obj, Path("/tmp/if2453/s2/inputs/MV1"))
+    rewritten = json.loads(dst_obj.read_text())
+    assert rewritten[0]["path"] == "/tmp/if2453/s2/inputs/MV1/metavr_mv1.fna"
+    assert rewritten[0]["redistributable"] is False
 
 
 @pytest.mark.parametrize("extra,why", [
