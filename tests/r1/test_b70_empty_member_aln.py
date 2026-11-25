@@ -151,9 +151,9 @@ def test_b70_empty_0m_alignments_normalized_and_conformant(tmp_path, monkeypatch
 
 @pytest.mark.covers("C-11")
 def test_b70_nonempty_alignment_output_and_plan_format_unchanged(tmp_path, monkeypatch):
-    """`PLAN_FORMAT` stays 1 so existing `cluster.plan` and scratch DBs resume directly at `finish`,
+    """`PLAN_FORMAT` is 2 since card B-71 (DEC-77, with format-1 read compatibility),
     and non-empty `alnlen > 0` rows produce identical bytes."""
-    assert cluster.PLAN_FORMAT == 1
+    assert cluster.PLAN_FORMAT == 2
     monkeypatch.setattr(cluster.provenance, "tool_versions", lambda *names: {n: "test" for n in names})
 
     rep_seq = "M" + "K" * 79
