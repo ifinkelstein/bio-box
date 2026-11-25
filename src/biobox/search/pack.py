@@ -150,6 +150,7 @@ import itertools
 import json
 import math
 import os
+import re
 import resource
 import shutil
 import signal
@@ -1247,6 +1248,17 @@ def verify_dir(root: Path, release: str, out: Path, pack_id: bytes | None = None
     return problems + _problems(rf, release, out, manifest, min_shard_bytes, scratch)
 
 
+_SHARD_PART_RE = re.compile(r"^(.*(?:^|/))part-(\d+)(\.[^/]*)?$")
+
+
+def _shard_sort_key(path: str) -> tuple[int, str, int, str]:
+    """Numeric sort key for `.../part-<k>.<ext>` shard paths (card W-41); deterministic fallback for other paths."""
+    m = _SHARD_PART_RE.match(path)
+    if m:
+        return (0, m.group(1), int(m.group(2)), m.group(3) or "")
+    return (1, path, 0, "")
+
+
 def _problems(rf: ReleaseFiles, release: str, out: Path, manifest: dict, min_shard_bytes: int,
               scratch: Path | None) -> list[str]:
     """The checks of `verify_dir` on the pack's contents, whatever its directory is called (the build runs them on
@@ -1276,7 +1288,7 @@ def _problems(rf: ReleaseFiles, release: str, out: Path, manifest: dict, min_sha
         if sum(s["n_seq"] for s in shards) != info["n_seq"]:
             problems.append(f"{target}: shard counts do not sum to the target's n_seq")
         # models are one file per library (small by nature, SEARCH_PLAN §3.2), not size-cut shards
-        for s in (sorted(shards, key=lambda s: s["path"])[:-1] if target != "models" else []):
+        for s in (sorted(shards, key=lambda s: _shard_sort_key(s["path"]))[:-1] if target != "models" else []):
             if s["bytes"] < min_shard_bytes:
                 problems.append(f"{s['path']}: {s['bytes']} bytes, under {min_shard_bytes} and not the last shard")
         if target == "models":
