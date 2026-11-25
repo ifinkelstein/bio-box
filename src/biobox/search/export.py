@@ -332,9 +332,37 @@ _BITS = {"seq_bitscore", "hit_seq_bitscore"}
 _EVALUE = {"seq_evalue_zref"}
 _STRAND = {"strand"}  # card W-20: `+1` or `-1` in every table a person opens (AGENTS §3.1), as `bio-box find` writes it
 EXPORT_THREADS = 4  # DuckDB threads of an export without --threads (DuckDB's own default is every core of the host)
-EXPORT_MEMORY_LIMIT = "2GB"  # larger sorts and aggregations spill into a scratch directory outside the data root
+EXPORT_MEMORY_LIMIT = "2GB"  # base floor for <=4 threads; scales with threads via duck_memory_limit (card W-42)
+_AUTO_CGROUP = object()
 _BATCH_ROWS = 8192
 _SAFE = re.compile(r"[^A-Za-z0-9._-]")
+
+
+def _cgroup_memory_bytes() -> int | None:
+    """Active cgroup v2 `memory.max` in bytes, or None when absent or unlimited (`max`)."""
+    from biobox import doctor
+
+    cg = doctor.cgroup_memory()
+    if cg.get("available") and cg.get("memory_max_bytes") is not None:
+        return int(cg["memory_max_bytes"])
+    try:
+        raw = Path("/sys/fs/cgroup/memory.max").read_text().strip()
+        return int(raw) if raw.isdigit() else None
+    except OSError:
+        return None
+
+
+def duck_memory_limit(threads: int, *, base_gb: int = 2, cap_gb: int = 16,
+                      cgroup_bytes: int | None | object = _AUTO_CGROUP) -> str:
+    """DuckDB `memory_limit` scaled to `threads` (~0.5 GB/thread, floor `base_gb`, cap `cap_gb`), clamped to 50%
+    of an active cgroup v2 `memory.max` so multi-threaded exports do not OOM on per-thread hash/spill buffers
+    while tight test cgroups stay bounded (card W-42)."""
+    t = max(1, int(threads))
+    want_gb = max(base_gb, min(cap_gb, (t + 1) // 2))
+    limit = _cgroup_memory_bytes() if cgroup_bytes is _AUTO_CGROUP else cgroup_bytes
+    if limit is not None:
+        want_gb = min(want_gb, max(1, int(limit) // 2_000_000_000))
+    return f"{want_gb}GB"
 
 # The store relations the exports read: registry table, the partitions a file must match (values from
 # open_store's arguments; a null value matches no file), the columns, and partition values kept as columns.
@@ -545,8 +573,9 @@ class open_store:
 
     def __init__(self, root: Path, *, release: str | None, gene_call_version: str, tape_version: str | None = None,
                  manifest: dict | None = None, threads: int | None = None, tmp=None,
-                 relations: tuple[str, ...] = tuple(_RELATIONS)):
-        self.args = (Path(root), release, gene_call_version, tape_version, manifest, threads, tmp, relations)
+                 relations: tuple[str, ...] = tuple(_RELATIONS), memory_limit: str | None = None):
+        self.args = (Path(root), release, gene_call_version, tape_version, manifest, threads, tmp, relations,
+                     memory_limit)
 
     def __enter__(self) -> _Store:
         import duckdb
@@ -554,10 +583,12 @@ class open_store:
         from biobox.catalog import row_groups_of, set_join_key_filter
         from biobox.search.nbr import _merged_round_files, _store_files, slow_path_note
 
-        root, release, gcv, tv, manifest, threads, tmp, relations = self.args
+        root, release, gcv, tv, manifest, threads, tmp, relations, memory_limit = self.args
         manifest = release_files(root, release, manifest)  # refuses an undefined release before anything is opened
         self.scratch = Path(tempfile.mkdtemp(prefix="biobox-export-", dir=tmp))
-        self.con = duckdb.connect(config={"threads": threads or EXPORT_THREADS, "memory_limit": EXPORT_MEMORY_LIMIT,
+        t = threads or EXPORT_THREADS
+        mem = duck_memory_limit(t) if memory_limit is None else memory_limit
+        self.con = duckdb.connect(config={"threads": t, "memory_limit": mem,
                                           "preserve_insertion_order": False,
                                           "temp_directory": str(self.scratch / "duckdb")})
         values = {"gene_call_version": gcv, "release": release, "tape_version": tv}
