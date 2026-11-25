@@ -101,5 +101,38 @@ Every dataset in Tier 2 is **already species/vOTU-dereplicated or long-read cMAG
 
 - **Skip `OpenGenome2`** (`>85%` superseded/stripped; `MGD DB` splits scaffolds at `>=5 N`s & drops metadata).
 - **Skip standalone `SMAG` (Ma 2023):** Already absorbed into our on-disk `GlobDB r226` (`6,216` reps, `18.70 Gbp`, `*measured*`).
+- **Skip `AllTheBacteria` (ATB):** `2.44M` assemblies collapse to only `11,273` GTDB species (`216×` clinical strain redundancy, `*published*`). Also skip `BV-BRC`, `BiG-FAM`/`MIBiG` (use as oracles, not sequence stages), bulk `MetaSUB`/`ISS`/`Plastisphere`, and raw-read-only `NEON`/`AusMicrobiome`/`EMP500`/`TREC` (harvest assembled outputs via `NMDC`/`MGnify`/`Logan` instead).
 - **Do NOT bulk-pull raw `PRJEB58634` (`254.7 Gbp`) or `PRJEB122849` (`2.55 Tbp`)** before `MFD-LR` (`20.8 GB`) & `MiDAS Global` (`12,047` species).
-- **Embargoed / portal-gated (do not schedule yet):** Chinese Saline Lakes (`zenodo.22827828`, `48,830` MAGs — **embargoed until 2027-12-31**); `MEER` Hadal (`OEP004067` / `CNP0004890` — JS-portal-only); `V4` `PEONY`/`PIGEON 3.0` (`dryad.prr4xgz35` — needs PI Dryad ORCID token); `Chlorarachniophyte` nucleomorphs (`>850` pygmy introns -> defer to `C-60`).
+- **Embargoed / portal-gated (do not schedule yet):** Chinese Saline Lakes (`zenodo.22827828`, `48,830` MAGs — **embargoed until 2027-12-31**; replaced by open **`SODA1` `PRJNA857294`** below); `MEER` Hadal (`OEP004067` / `CNP0004890` — JS-portal-only; replaced by open **`ATAC1` Atacama Trench `PRJEB57745`** below); `V4` `PEONY`/`PIGEON 3.0` (`dryad.prr4xgz35` — needs PI Dryad ORCID token); `Chlorarachniophyte` nucleomorphs (`>850` pygmy introns -> defer to `C-60`).
+
+---
+
+## 5. Addendum — Aquatic & Unknown-Unknown Blind-Spot Scouts (`r5-aquatic-scout` & `r5-blindspots`, 2026-11-25)
+
+Follow-up scouts expanded **clean aquatic compendia** (16 net-new sets) and **untapped ecological niches & public databases** (15 net-new sets) ranked strictly by **cleanliness × expected diversity yield**:
+
+### 5.1 Top Clean Aquatic Picks (All Open `CC BY 4.0` / `INSDC`, Zero Overlap with `r26.11.4` or §3)
+
+| Stage | Dataset & Primary Source / DOI | Counts & Size (*published* / *estimate*) | Why High Cleanliness × Diversity |
+|---|---|---|---|
+| **`FUTM1` + `GXM1`** | **Futian Mangrove 7-Yr (`figshare.30883646`, *Sci. Data* 2026)** + **Guangxi Mangrove (`figshare.29320385` / `PRJEB96880`, 2025/2026)** | `3,404` spp reps (`336` Arch, **82 phyla**) + `2,965` MAGs (**582 Arch = 19.6%**, **78 phyla**); `~15–19 Gbp` pre-joint-dedup | Intertidal anoxic mangrove sediments; `<10%` overlap with `GlobDB`/`OMD v2`; dedup jointly at 96% ANI |
+| **`FLHC1`** | **Freshwater Lake metaHi-C Genomes & Virome (`zenodo.15856862`, 2025/2026)** | **`>900` Hi-C-resolved MAGs + `>33,000` viral genomes** with physical virus-host links (`~2.5–4.0 Gbp`) | Physical Hi-C linkage resolves freshwater phage-host pairs (*Synechococcus*, *Limnohabitans*, *Planktophila*) |
+| **`GFS1`** | **Vanishing Glaciers — Glacier-Fed Streams (`PRJNA781406`, *Nat. Microbiol.* Jan 2025)** | **`2,855` bacterial MAGs** (+ archaea/fungi/algae/viruses) across 9 mountain ranges (`~7–9 Gbp`) | High-altitude glacial-stream cryosphere dark matter |
+| **`MOS1`** | **MOSAiC Central Arctic Ocean & Sea-Ice (`figshare.25746222` / `PRJNA1106878`, *Sci. Data* Feb 2025)** | **`2,407` prokaryotic + `56` eukaryotic MAGs** (`~5–7 Gbp`) | Multi-year Arctic sea-ice, melt-pond, & ice-ridge microbiome |
+| **`SODA1`** | **Global Soda Lake Biogeography (`PRJNA857294` + `figshare.28152113`, *Front. Microbiol.* Jul 2025)** | `2,227` MAGs -> **`1,330` species** across 4 continents (`~3.5–5.5 Gbp`) | **Open non-embargoed replacement** for embargoed Chinese Saline Lakes (`zenodo.22827828`) |
+| **`MACA1`** | **Macroalgal Epiphytic Bacterial Atlas (`zenodo.21563086`, *Phycology* Sep 2026)** | **`1,915` QC MAGs** from paired long/short-read kelp/macroalgae (`~5–7 Gbp`) | Under-sampled marine algal epibiont niche (`<10%` overlap) |
+| **`NGOM1` + `ATAC1`** | **Northern Gulf of Mexico (`PRJNA1171802`, `1,313` strict-QC MAGs)** + **Atacama Trench Hadal (`PRJEB57745`, `1,357` MAGs to 8,085 m)** | `2,670` MAGs (`~5.5–7.5 Gbp`) | **`ATAC1` is open ENA replacement for JS-gated `MEER` Hadal**; `NGOM1` is `>=75%` comp / `<=5%` cont incl. *Asgardarchaeota* |
+| **Wave B Aquatic** | **`GROWdb`** (`2,093` unique river MAGs), **`DWGC`** (`1,141` drinking water spp), **`LakePulse`** (`1,008` Canadian lake spp), **`GPDC`/`PRJNA858913`** aquifer defensome (`141` phyla), **`HYP1`** Great Salt Lake + Cryopeg brines | `~15–20 Gbp` combined | Clean freshwater/river/aquifer/brine depth for `r26.11.6` |
+
+### 5.2 Top Unknown-Unknown Blind Spots (Untapped Biomes & Open Portals)
+
+| Stage / Portal | Dataset & Primary Source / DOI | Counts & Size (*published* / *estimate*) | Why High Cleanliness × Diversity |
+|---|---|---|---|
+| **`CANDI1`** | **`CAnDi` — Catalogue of Anaerobic Digestion (`zenodo.23322224`)** | **`36,480` MAGs -> `11,149` prok spp + `~1.9M` viral seqs (`~536k` vOTUs)** across `1,256` global AD/biogas reactors | Massive syntrophic methanogen/anaerobic-bacteria + virome reservoir; direct open Zenodo |
+| **`SEGC1`** | **`SEGC` — Standardized Extremophilic Genomic Catalogue (*bioRxiv* Apr 2026, `10.64898/2026.04.17.719132`)** | **`54,661` MQ/HQ MAGs -> `21,805` spp (`66.1%` novel!) + `162,855` BGCs** across 7 extreme niches incl. Acid Mine Drainage (AMD) | Fills AMD, cryogenic, and saline-alkaline extremophile gaps in one standardized catalog (verify bulk FASTA mirror first) |
+| **`OIL1`** | **Chinese Oilfield / Deep Petroleum Reservoirs (Zhou *AEM* 2026, `figshare.31337758`)** | **`3,057` MQ/HQ MAGs (`73.77%` novel species!)** across 13 deep oilfields (`~6–8 Gbp`) | Open `CC BY 4.0` Figshare; deep hydrocarbon-biosphere dark matter |
+| **`DTOL1`** | **Sanger Tree of Life / DToL / EBP HiFi Cobionts (`MarkerScan`/`ASCC`, ENA REST API)** | Closed circular PacBio HiFi intracellular endosymbionts (`110` complete *Wolbachia* from 368 UK insects alone + ongoing `PRJEB*` cobionts) | Systematically discarded by CheckM/GTDB/GlobDB; unauthenticated ENA REST API |
+| **`CFMD1`** | **`cFMD` — Curated Food Metagenomic Data (Carlino *Cell* 2024, `zenodo.10891046` / `13285428`)** | `10,899` MAGs -> **`1,144` SGBs (`1,036` prok + `108` euk, `320` novel)** (`~3 Gbp`) | Clean open Zenodo fermented/food microbiome catalog (rich in lactic acid bacteria, phages & yeasts) |
+| **`PLNT1`** | **Non-Soil Plant Micro-Pack**: Forest Phyllosphere (`PRJEB93989`, `423` MAGs `>400` novel spp) + Boreal Moss (`PRJNA1189183`) + *Sphagnum* (`PRJNA1048504`) + Deadwood (`figshare.14821752`) | `~1.5–2.5 Gbp` combined | Targets `SPIRE`’s highest-retention host niche (`plant host` `568k` NR50/Gbp @ `98.1%` retention) |
+| **Open Portals** | **EMBL-EBI `MGnify Genomes`** (`ftp.ebi.ac.uk/pub/databases/metagenomics/mgnify_genomes/` — `non-model-fish-gut`, `honeybee-gut`, `maize-rhizosphere`, `HoloFood`), **`DOE NMDC` open REST API** (`api.microbiomedata.org`), **`CNCB-NGDC GWH`** (`ftp://download.big.ac.cn/gwh/`, unauthenticated FTP unlike JS-gated `NODE`/`OEP`) | Modular per-biome pulls | Clean unauthenticated programmatic access for `r26.11.6+` |
+
