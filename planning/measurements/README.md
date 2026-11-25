@@ -34,12 +34,13 @@ Stage build records, runtime/rate measurements, `stage_check.py` audits, and `/s
 | [`2026-11-15_stage_H1.md`](2026-11-15_stage_H1.md) | Stage H1, the huge phages, built into the data root (card C-24 as amended on 2026-11-15) |
 | [`2026-11-10_build_stage_pod.md`](2026-11-10_build_stage_pod.md) | First real build with `build-stage` on the pod (card C-10, wilkcomp02, 2026-11-10) |
 
-## Source Surveys, Crosswalks, Staging & Storage Relays (25)
+## Source Surveys, Crosswalks, Staging & Storage Relays (26)
 
 External sequence/metadata inventories, JGI/SPIRE/GlobDB/PlasmidScope/virus staging, `DEC-65` terminal-repeat trims, deferred-accession registers, and `tower` NAS mirroring.
 
 | Date / File | Summary Heading |
 |---|---|
+| [`2026-11-25_r26_11_5_diversity_survey.md`](2026-11-25_r26_11_5_diversity_survey.md) | `r26.11.5+` diversity expansion survey: cleanest × highest-diversity sources, OpenAlex citation chains & `OpenGenome2` audit |
 | [`2026-11-22_v2_gv1_dec65.md`](2026-11-22_v2_gv1_dec65.md) | Stage `V2` re-staged under DEC-65 and `V2.conf` / `GV1.conf` updated for build order after `G1` and `SPX1` (card C-53) |
 | [`2026-11-21_pl2_pl3_dec63.md`](2026-11-21_pl2_pl3_dec63.md) | Stages PL2 and PL3 under DEC-63 and DEC-65: circular flags, terminal repeats, and final staging (card C-52) |
 | [`2026-11-21_c51_deferred_list.md`](2026-11-21_c51_deferred_list.md) | The complete genomes that S2C phase 2's selection left out, by accession (card C-51, DEC-59) |
