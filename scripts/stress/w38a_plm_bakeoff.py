@@ -1107,7 +1107,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    b = sub.add_parser("build-holdout", help="Build strict <20% ID & E>10 holdout + 1M trap-enriched background.")
+    b = sub.add_parser("build-holdout", help="Build strict <20%% ID & E>10 holdout + 1M trap-enriched background.")
     b.add_argument("--root", type=Path, default=None, help="bio-box data root (manifest-backed ReleaseFiles).")
     b.add_argument("--release", default=DEFAULT_RELEASE, help=f"Live release ID (default: {DEFAULT_RELEASE}).")
     b.add_argument("--positives", type=Path, required=True, help="Candidate positives JSONL.")
