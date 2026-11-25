@@ -4,9 +4,10 @@
 #
 #   . "$TREE/examples/_shared/launch.sh"
 #
-# Defines die, note, cap, room, bb and tool. They read, when called: ROOT (the data root, bound read-only), OUT
+# Defines die, note, cap, room, search_mem_gb, bb and tool. They read, when called: ROOT (the data root, bound read-only), OUT
 # (the caller's scratch directory; `bb` writes OUT/logs/NAME.log and NAME.launch), TREE, PROFILE, IMAGE, DIGEST,
-# THREADS (threads of one launch), MEM (pod_run.sh --mem), BIND (the directory bound read-write into the image,
+# THREADS (threads of one launch), MEM (pod_run.sh --mem), SEARCH_MEM_GB (optional override for `search_mem_gb`),
+# BIND (the directory bound read-write into the image,
 # holding TREE, OUT, the pack directory and the image), UNIT (unit name prefix), CAP (optional: the account's thread
 # cap; default 40 Mon-Fri 08:00-20:00, else 80 when no other login user uses > 0.5 CPUs; AGENTS 7.2, DEC-74, C-28),
 # PFAM_DIR (optional: a directory bound read-only into `tool`, the Pfam file's) and ME (the name in messages; default
@@ -56,6 +57,29 @@ room() {  # wait until this account's CPU (ps %CPU, summed) plus THREADS fits un
     note "waiting for room: account at ${total}% CPU, cap $c threads"
     sleep 60
   done
+}
+
+search_mem_gb() {  # derive `search hmm --mem-gb` from MEM (2G headroom, min 1); SEARCH_MEM_GB overrides (A-25b)
+  if [ -n "${SEARCH_MEM_GB:-}" ]; then
+    echo "$SEARCH_MEM_GB"
+    return
+  fi
+  local raw=${MEM:-16G} gb
+  if [[ "$raw" =~ ^([0-9]+)[Gg]([Ii]?[Bb]?)?$ ]]; then
+    gb=$((10#${BASH_REMATCH[1]}))
+  elif [[ "$raw" =~ ^([0-9]+)[Mm]([Ii]?[Bb]?)?$ ]]; then
+    gb=$((10#${BASH_REMATCH[1]} / 1024))
+  elif [[ "$raw" =~ ^([0-9]+)[Tt]([Ii]?[Bb]?)?$ ]]; then
+    gb=$((10#${BASH_REMATCH[1]} * 1024))
+  else
+    echo 14
+    return
+  fi
+  if [ "$gb" -gt 2 ]; then
+    echo $((gb - 2))
+  else
+    echo 1
+  fi
 }
 
 bb() {  # bb NAME ARGS...: one bio-box command in its own unit through the runbook's launcher; waits for it
