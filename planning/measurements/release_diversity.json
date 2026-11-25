@@ -1,0 +1,238 @@
+{
+  "schema_version": 2,
+  "description": "Canonical per-release corpus source diversity, per-stage novelty, and published external benchmarks for scripts/plot_release_diversity.py. Append each newly verified release as status='measured' and update the trailing status='queued' entry for the next cut.",
+  "categories": [
+    {
+      "id": "prok_iso",
+      "label": "Complete prokaryote isolates (GTDB P1–P6, C5)",
+      "color": "#8C96A0",
+      "dark_text": true
+    },
+    {
+      "id": "arch_mag",
+      "label": "Uncultured archaea & MAGs (GlobDB G1, GART1–2, SYM1)",
+      "color": "#0072B2",
+      "dark_text": false
+    },
+    {
+      "id": "virus",
+      "label": "Viruses & phages (S1, H1, V1–V3, CG1, MV1, SAT1)",
+      "color": "#E69F00",
+      "dark_text": true
+    },
+    {
+      "id": "plasmid",
+      "label": "Plasmids & MGEs (PL1–PL3, MGE1, ECE1, LPL1)",
+      "color": "#009E73",
+      "dark_text": false
+    },
+    {
+      "id": "metagenome",
+      "label": "Unbinned & long-read metagenomes (SPX1, LR1, LGRT1)",
+      "color": "#CC79A7",
+      "dark_text": false
+    },
+    {
+      "id": "organelle",
+      "label": "Organelles (RefSeq plastids & mito O1–O2)",
+      "color": "#F0E442",
+      "dark_text": true
+    }
+  ],
+  "releases": [
+    {
+      "id": "rN.3",
+      "date_label": "Nov 11",
+      "status": "measured",
+      "gbp_by_category": {
+        "prok_iso": 10.613,
+        "arch_mag": 0.0,
+        "virus": 1.664,
+        "plasmid": 0.0,
+        "metagenome": 0.0,
+        "organelle": 0.0
+      },
+      "proteins_m": 10.62,
+      "nr90_m": null,
+      "nr50_m": 2.97,
+      "source_note": "planning/measurements/2026-11-11_build_r50.md; planning/measurements/2026-11-13_crispr_arrays.md"
+    },
+    {
+      "id": "rM.2",
+      "date_label": "Nov 15",
+      "status": "measured",
+      "gbp_by_category": {
+        "prok_iso": 50.469,
+        "arch_mag": 0.0,
+        "virus": 1.664,
+        "plasmid": 0.0,
+        "metagenome": 0.0,
+        "organelle": 0.0
+      },
+      "proteins_m": 45.82,
+      "nr90_m": 30.89,
+      "nr50_m": 8.19,
+      "source_note": "planning/measurements/2026-11-16_release_r26.11.1.md; README.md"
+    },
+    {
+      "id": "r26.11.1",
+      "date_label": "Nov 19",
+      "status": "measured",
+      "gbp_by_category": {
+        "prok_iso": 50.469,
+        "arch_mag": 0.0,
+        "virus": 3.484,
+        "plasmid": 5.925,
+        "metagenome": 0.0,
+        "organelle": 0.0
+      },
+      "proteins_m": 49.10,
+      "nr90_m": 33.12,
+      "nr50_m": 9.29,
+      "source_note": "planning/measurements/2026-11-16_release_r26.11.1.md; 2026-11-15_stage_H1.md; 2026-11-15_stage_PL1.md"
+    },
+    {
+      "id": "r26.11.2",
+      "date_label": "Nov 22",
+      "status": "measured",
+      "gbp_by_category": {
+        "prok_iso": 59.578,
+        "arch_mag": 0.0,
+        "virus": 8.662,
+        "plasmid": 5.925,
+        "metagenome": 0.0,
+        "organelle": 0.0
+      },
+      "proteins_m": 57.78,
+      "nr90_m": 35.48,
+      "nr50_m": 10.09,
+      "source_note": "planning/measurements/2026-11-21_release_r26.11.2.md; 2026-11-20_stage_C5.md; 2026-11-20_stage_V1.md"
+    },
+    {
+      "id": "r26.11.3",
+      "date_label": "Nov 25",
+      "status": "measured",
+      "gbp_by_category": {
+        "prok_iso": 59.578,
+        "arch_mag": 10.043,
+        "virus": 8.662,
+        "plasmid": 5.925,
+        "metagenome": 35.689,
+        "organelle": 0.0
+      },
+      "proteins_m": 102.34,
+      "nr90_m": 71.21,
+      "nr50_m": 22.16,
+      "source_note": "planning/measurements/2026-11-24_release_r26.11.3.md; 2026-11-23_stage_G1.md; 2026-11-23_stage_SPX1.md"
+    },
+    {
+      "id": "r26.11.4",
+      "date_label": "queued",
+      "status": "queued",
+      "gbp_by_category": {
+        "prok_iso": 59.578,
+        "arch_mag": 60.891,
+        "virus": 83.200,
+        "plasmid": 24.417,
+        "metagenome": 56.295,
+        "organelle": 2.653
+      },
+      "proteins_m": 265.0,
+      "nr90_m": null,
+      "nr50_m": 64.0,
+      "source_note": "planning/measurements/2026-11-24_a26_r26_11_4_confs.md; planning/design/hybrid_linclust_nr90_cascade_nr50.md"
+    }
+  ],
+  "benchmarks": {
+    "gbp_refs": [
+      {
+        "id": "opengenome1",
+        "label": "OpenGenome 1 (Evo, 300 Gbp)",
+        "value_gbp": 300.0,
+        "source": "Nguyen et al., Science 2024 (prokaryote + phage + plasmid pretraining corpus)"
+      }
+    ],
+    "protein_refs": [
+      {
+        "id": "ncbi_clustered_nr",
+        "label": "NCBI ClusteredNR (~286M, 90% ID; full nr >595M)",
+        "value_m": 286.0,
+        "color": "#555555",
+        "source": "NCBI BLAST ClusteredNR default (Aug 2025, 90% ID / 90% cov; full nr >595M, no synteny)"
+      },
+      {
+        "id": "uniref100",
+        "label": "UniRef100 (227.1M, 100% ID, 2026_04)",
+        "value_m": 227.09,
+        "color": "#3A7CA5",
+        "source": "UniProt Release 2026_04 (all domains of life, 100% ID)"
+      },
+      {
+        "id": "uniref50",
+        "label": "UniRef50 (41.2M, 50% ID, 2026_04)",
+        "value_m": 41.24,
+        "color": "#B85000",
+        "source": "UniProt Release 2026_04 (41,243,524 clusters; all domains of life, 50% ID / 80% cov)"
+      }
+    ],
+    "counterfactual": {
+      "anchor_release": "r26.11.2",
+      "baseline_stage": "C5",
+      "rate_nr50_k_per_gbp": 10.463,
+      "label_template": "Isolate-only counterfactual ({val:.1f}M at C5 rate)"
+    }
+  },
+  "callout": {
+    "release_id": "r26.11.3",
+    "text": "r26.11.3: +120% NR50\nfrom G1 + SPX1"
+  },
+  "stage_novelty_nr50_per_gbp_k": [
+    {
+      "stage": "H1",
+      "label": "H1 · Huge phages\n(r26.11.1)",
+      "value_k": 489.4,
+      "category": "virus",
+      "release": "r26.11.1"
+    },
+    {
+      "stage": "SPX1",
+      "label": "SPX1 · SPIRE ≥5 kb\n(r26.11.3)",
+      "value_k": 267.4,
+      "category": "metagenome",
+      "release": "r26.11.3"
+    },
+    {
+      "stage": "G1",
+      "label": "G1 · GlobDB archaea\n(r26.11.3)",
+      "value_k": 266.0,
+      "category": "arch_mag",
+      "release": "r26.11.3"
+    },
+    {
+      "stage": "V1",
+      "label": "V1 · UHGV gut phages\n(r26.11.2)",
+      "value_k": 135.0,
+      "category": "virus",
+      "release": "r26.11.2"
+    },
+    {
+      "stage": "PL1",
+      "label": "PL1 · PLSDB plasmids\n(r26.11.1)",
+      "value_k": 33.9,
+      "category": "plasmid",
+      "release": "r26.11.1"
+    },
+    {
+      "stage": "C5",
+      "label": "C5 · GTDB strains\n(r26.11.2)",
+      "value_k": 10.5,
+      "category": "prok_iso",
+      "release": "r26.11.2"
+    }
+  ],
+  "novelty_baseline_stage": {
+    "stage": "C5",
+    "exact_value_k": 10.463
+  },
+  "footnote": "bio-box: rN.3–r26.11.3 measured on wilkcomp02 (c35_check.py / release notes); r26.11.4* hatched/open = staged Gbp (A-26 measured) & 265M / 64M estimate (DEC-77). Benchmarks: OpenGenome 1 (Evo, Science 2024, 300 Gbp); UniRef50 (41.24M) & UniRef100 (227.09M), UniProt 2026_04; NCBI ClusteredNR (~286M 90% ID, Aug 2025 default; full nr >595M, no synteny)."
+}

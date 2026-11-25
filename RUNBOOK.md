@@ -988,6 +988,26 @@ unit's log, so a reused name would show the watch the old unit's exit line. The 
 `$WORK/tmp/scratch`, which a resume needs: the clustering's finished steps are read from there. A first launch that
 published nothing is launched again as a first launch, under a new unit name.
 
+### Release diversity figure (required at every release closeout)
+
+At every release closeout, once the new release passes `release verify`, `c35_check.py`, and worked examples:
+
+1. Update [`planning/measurements/release_diversity.json`](planning/measurements/release_diversity.json):
+   - Convert the completed release entry from `status: "queued"` to `status: "measured"` with its verified stored Gbp per
+     source category, distinct protein count, NR90/NR50 cluster counts, release date label, and measurement-note citation.
+   - Append measured per-stage novelty yields (`new NR50 / stored Gbp` from `c35_check.py`) to `stage_novelty_nr50_per_gbp_k`.
+   - Append the next queued release as `status: "queued"` with staged Gbp and central protein/NR50 estimates (and update the
+     footnote and benchmark versions if refreshed).
+2. Render the 4-panel Claus Wilke / Okabe-Ito release figure (300-DPI PNG + editable SVG) beside the release measurement note:
+
+```bash
+uv run --project /Users/ilya/projects/dataviz-python python3 scripts/plot_release_diversity.py \
+  --out planning/measurements/<YYYY-MM-DD>_release_<REL>/source_diversity_<REL>
+```
+
+3. Visually inspect the rendered `.png` for label clarity and zero overlaps, then link/embed it in
+   `planning/measurements/<YYYY-MM-DD>_release_<REL>.md` and present it with the release announcement.
+
 ## Mirror to tower
 
 The durable tars, and later source archives, get a second copy on the PI's NAS `tower` (card C-49; the design and

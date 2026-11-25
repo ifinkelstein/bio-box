@@ -4,12 +4,13 @@ Topical index of all **108** empirical measurement notes, stage build reports, a
 
 See [`../../DOCS.md`](../../DOCS.md) for the repository-wide documentation map and [`../DECISIONS.md`](../DECISIONS.md) for standing decisions.
 
-## Releases & Worked-Example Release Gates (7)
+## Releases & Worked-Example Release Gates (8)
 
-End-to-end builds, verifications, search packs, worked-example invariant checks, and durable backups of published releases.
+End-to-end builds, verifications, search packs, worked-example invariant checks, per-release source-diversity figures ([`release_diversity.json`](release_diversity.json) rendered by `scripts/plot_release_diversity.py`), and durable backups of published releases.
 
 | Date / File | Summary Heading |
 |---|---|
+| [`2026-11-24_release_r26.11.3.md`](2026-11-24_release_r26.11.3.md) | Release `r26.11.3` over the thirteen stages (wilkcomp02, 2026-11-23 to 2026-11-25) + [`source_diversity_r26.11.3.png`](2026-11-24_release_r26.11.3/source_diversity_r26.11.3.png) |
 | [`2026-11-21_release_r26.11.2.md`](2026-11-21_release_r26.11.2.md) | Release `r26.11.2` over the eleven stages (wilkcomp02, 2026-11-20 to 2026-11-22) |
 | [`2026-11-19_release_train.md`](2026-11-19_release_train.md) | Card C-46: Release train rehearsal and real-root dry-run (wilkcomp02, 2026-11-19) |
 | [`2026-11-16_release_r26.11.1.md`](2026-11-16_release_r26.11.1.md) | Release `r26.11.1` over the nine stages (wilkcomp02, 2026-11-16 to 2026-11-19) |
