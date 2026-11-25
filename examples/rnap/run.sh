@@ -61,8 +61,9 @@ sha256sum "$OUT/hmm/RNA_pol.hmm" > "$OUT/hmm/SHA256SUMS"
 bb find-t7 find --root "$ROOT" --release "$RELEASE" --accession "$POS_T7"
 
 # 3. The search, as GUIDE.md section 4 runs it: 30 bits, 5 genes on each side.
+SEARCH_MEM=$(search_mem_gb)
 S="--root $ROOT --release $RELEASE --profile $PROFILE --runs $OUT/runs --work $OUT/work --neighbors 5"
-S="$S --cpus $THREADS --mem-gb $(search_mem_gb) --threads $THREADS"
+S="$S --cpus $THREADS --mem-gb $SEARCH_MEM --threads $THREADS"
 bb search search hmm $S --hmm "$OUT/hmm/RNA_pol.hmm" --bits "$BITS" --positive "$POS_T7" --out "$OUT/rnap"
 RUN=$(run_id "$OUT/logs/search.log")
 [ -n "$RUN" ] || die "no run id in the search log"
