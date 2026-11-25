@@ -83,8 +83,11 @@ def _q(s) -> str:
 def _connect(tmp, threads: int | None):
     import duckdb
 
+    from biobox.search.export import duck_memory_limit
+
+    t = threads or THREADS
     scratch = Path(tempfile.mkdtemp(prefix="biobox-arrays-", dir=tmp))
-    con = duckdb.connect(config={"threads": threads or THREADS, "memory_limit": MEMORY_LIMIT,
+    con = duckdb.connect(config={"threads": t, "memory_limit": duck_memory_limit(t),
                                  "temp_directory": str(scratch / "duckdb")})
     return con, scratch
 
