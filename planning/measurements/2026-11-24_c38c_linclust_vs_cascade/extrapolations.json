@@ -1,0 +1,42 @@
+[
+  {
+    "target_proteins": 350000000,
+    "scale_vs_measured": 7.128013273419734,
+    "linclust_cpu_min_linear": 5472.4809,
+    "linclust_cpu_min_nlogn": 6069.0369,
+    "linclust_cpu_hours_linear": 91.208,
+    "linclust_cpu_hours_nlogn": 101.1506,
+    "linclust_peak_rss_gib_linear_ru_maxrss": 250.71,
+    "linclust_peak_rss_gib_linear_cgroup": 177.33,
+    "linclust_bytes_per_protein_ru_maxrss": 769.1399,
+    "cascade_cpu_min_n17": 169809.3,
+    "cascade_cpu_hours_n17": 2830.16,
+    "cascade_peak_rss_gib_n18_linear": 1266.2,
+    "speedup_vs_cascade_linear": 31.03,
+    "speedup_vs_cascade_nlogn": 27.98,
+    "memory_reduction_factor_vs_n18": 5.05,
+    "min_parts_240_cpu_min_linear": 23,
+    "min_parts_240_cpu_min_nlogn": 26,
+    "label": "derived (extrapolation)"
+  },
+  {
+    "target_proteins": 1000000000,
+    "scale_vs_measured": 20.36575220977067,
+    "linclust_cpu_min_linear": 15635.6596,
+    "linclust_cpu_min_nlogn": 18285.2749,
+    "linclust_cpu_hours_linear": 260.5943,
+    "linclust_cpu_hours_nlogn": 304.7546,
+    "linclust_peak_rss_gib_linear_ru_maxrss": 716.32,
+    "linclust_peak_rss_gib_linear_cgroup": 506.65,
+    "linclust_bytes_per_protein_ru_maxrss": 769.1399,
+    "cascade_cpu_min_n17": 626881.4,
+    "cascade_cpu_hours_n17": 10448.02,
+    "cascade_peak_rss_gib_n18_linear": 3617.7,
+    "speedup_vs_cascade_linear": 40.09,
+    "speedup_vs_cascade_nlogn": 34.28,
+    "memory_reduction_factor_vs_n18": 5.05,
+    "min_parts_240_cpu_min_linear": 66,
+    "min_parts_240_cpu_min_nlogn": 77,
+    "label": "derived (extrapolation)"
+  }
+]
