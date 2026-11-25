@@ -559,10 +559,10 @@ def _genome_bases(store: SeqStore, lengths: KeyLookup, genome: GenomeInput) -> i
     owns it, if any (DEC-26)."""
     n = 0
     for cu in genome.contig_uids:
-        rows = [r for r in lengths.get(cu) if r["is_default_variant"]]
-        if not rows:
+        row = lengths.find_first(cu, lambda r: r["is_default_variant"])
+        if row is None:
             raise KeyError(missing_contig(store.root, cu, store.stages))
-        n += rows[0]["contig_len"]
+        n += row["contig_len"]
     return n
 
 
