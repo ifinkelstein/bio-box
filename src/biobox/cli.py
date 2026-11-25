@@ -2002,6 +2002,8 @@ def _run_step(a) -> int:
 
 RELEASE_STEPS = ("define", "cluster", "tokens", "postings", "dim", "manifest", "catalog", "verify", "retire")
 CLUSTER_ACTIONS = ("plan", "step", "finish", "redo", "reuse")  # card B-41; reuse: card B-49
+CLUSTERING_MODES = ("cascade", "hybrid-a", "hybrid-b1", "linclust")  # card B-71 (DEC-77)
+DEFAULT_CLUSTERING_MODE = "cascade"
 STAGE_STEPS = ("inputs", "ingest", "genecall", "igr", "tapes", "domains", "ncrna", "crispr", "labels")
 DOMAIN_ACTIONS = ("plan", "shard", "merge")  # `stage domains plan|shard|merge` (card B-24)
 INGEST_ACTIONS = ("pass1", "plan", "batch", "merge")  # `stage ingest pass1|plan|batch|merge` (card B-30)
@@ -2042,12 +2044,13 @@ def _release_step(a, root: Path, stages: list[str], out: Path) -> dict:
                 raise ValueError("release cluster plan needs --tmp (the scratch directory of the work)")
             return cluster.plan(root, a.release, a.gene_call_version, stages, tmp, parts=a.parts,
                                 part_cpu_min=a.part_cpu_min, one_process_cpu_min_max=a.one_process_cpu_min_max,
-                                out=out)
+                                out=out, mode=a.cluster_method)
         if a.action == "reuse":  # an earlier release's clustering of the same proteins (card B-49)
             return cluster.reuse(root, a.release, a.gene_call_version, stages, tmp, source=a.source, parts=a.parts,
                                  part_cpu_min=a.part_cpu_min, one_process_cpu_min_max=a.one_process_cpu_min_max,
-                                 out=out)
-        return cluster.run(root, a.release, a.gene_call_version, stages, threads=a.threads, tmp=tmp, out=out)
+                                 out=out, mode=a.cluster_method)
+        return cluster.run(root, a.release, a.gene_call_version, stages, threads=a.threads, tmp=tmp, out=out,
+                           mode=a.cluster_method)
     if a.step == "tokens":
         from biobox.l3 import tokens
 
@@ -2544,7 +2547,8 @@ def _build_stage(a) -> int:
                     gene_call_version=a.gene_call_version, scan_jobs=a.scan_jobs, scan_cpus=a.scan_cpus,
                     cluster_parts=a.cluster_parts, ncrna_cm=Path(a.ncrna_cm) if a.ncrna_cm else None,
                     ncrna_set=a.ncrna_set, crispr=a.crispr, reuse=not a.no_reuse, depth=a.depth,
-                    min_contig_len=a.min_contig_len, genecall_mode=a.genecall_mode)
+                    min_contig_len=a.min_contig_len, genecall_mode=a.genecall_mode,
+                    cluster_method=a.cluster_method)
     return stage.build_stage(profile.load(a.profile), b)
 
 
@@ -2886,6 +2890,10 @@ def _main(argv: list[str] | None = None) -> int:
                     help="cluster plan: the cap under which a call that no number of parts fits runs as one process "
                          "(DEC-29, card B-45; build-stage gives the profile's cluster_cpu_min_max); without it such a "
                          "call is refused")
+    rl.add_argument("--cluster-method", choices=CLUSTERING_MODES, default=DEFAULT_CLUSTERING_MODE,
+                    help="cluster, cluster plan|reuse: clustering workflow (default: cascade; hybrid-a: linclust NR90 "
+                         "+ 3-step NR50; hybrid-b1: linclust NR90 + 2-step -s 1,2 NR50; linclust: both levels, "
+                         "card B-71, DEC-77)")
     rl.add_argument("--stages", help="S0,S1: the release's stages in order; defines the release once")
     rl.add_argument("--tmp", help="scratch directory (system temp by default; never under the data root)")
     rl.add_argument("--threads", type=int, default=1, help="cluster: MMseqs2 threads")
@@ -3023,6 +3031,9 @@ def _main(argv: list[str] | None = None) -> int:
     bs.add_argument("--cluster-parts", type=int, help="cluster in parts (card B-41), every per-query call cut into "
                                                       "this many (default: in parts only when clustering in one "
                                                       "process is estimated over 80%% of the budget, cut by it)")
+    bs.add_argument("--cluster-method", choices=CLUSTERING_MODES, default=DEFAULT_CLUSTERING_MODE,
+                    help="clustering workflow (default: cascade; hybrid-a: linclust NR90 + 3-step NR50; "
+                         "hybrid-b1: linclust NR90 + 2-step -s 1,2 NR50; linclust: both levels, card B-71, DEC-77)")
     bs.add_argument("--no-reuse", action="store_true", help="cluster the release even when an earlier release of the "
                                                              "root has a finished clustering of the same proteins (by "
                                                              "default the cluster step takes it, card B-49)")

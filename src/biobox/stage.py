@@ -362,6 +362,7 @@ CLUSTER_EXPONENT = math.log(CLUSTER_CPU_MIN_HI / CLUSTER_CPU_MIN_LO) / math.log(
 # B-45, DEC-29: `biobox.l2.cluster._one_process_doc`). Since card B-42 it is clustering's only reason: the one-process
 # clustering step no longer gets DEC-25's `exempt: DEC-25`.
 DEC29_EXEMPT = "exempt: DEC-29"
+DEC77_EXEMPT = "exempt: DEC-77"
 # Scan shards are planned to fill 80% of the CPU-minute budget, not all of it (card C-11): the rate above
 # is Pfam's on wilkcomp02, so a shard sized to the whole budget passes it whenever a library is slower
 # than Pfam or the host is loaded, and a process over the budget breaks AGENTS §7.2. The margin covers a
@@ -470,6 +471,7 @@ class Build:
     depth: str | None = None  # stored, called or annotated (card C-38a, DEC-54); None: annotated with --library, else called
     min_contig_len: int | None = None  # card C-38d (DEC-54): least contig length at ingest; None: keep all records
     genecall_mode: str = genecall.DEFAULT_GENECALL_MODE  # card B-67 (DEC-71): default (policy p2) or gv-meta
+    cluster_method: str = l2cluster.DEFAULT_CLUSTERING_MODE  # card B-71 (DEC-77): cascade, hybrid-a, hybrid-b1, linclust
 
 
 @dataclass(frozen=True)
@@ -571,10 +573,11 @@ def depth_of(b: Build) -> str:
 
 
 def _check_depth_options(b: Build) -> str:
-    """Validate `--depth`, `--min-contig-len`, `--genecall-mode`, and option combinations before any step runs
-    (cards C-38a, C-38d, B-67)."""
+    """Validate `--depth`, `--min-contig-len`, `--genecall-mode`, `--cluster-method`, and option combinations before
+    any step runs (cards C-38a, C-38d, B-67, B-71)."""
     store._check_min_contig_len(b.min_contig_len)
     genecall._check_genecall_mode(b.genecall_mode)
+    l2cluster._check_mode(b.cluster_method)
     depth = depth_of(b)
     if depth == "stored":
         if b.libraries or b.ncrna_cm is not None or b.crispr:
@@ -583,10 +586,11 @@ def _check_depth_options(b: Build) -> str:
             )
         if b.genecall_mode != genecall.DEFAULT_GENECALL_MODE:
             raise ValueError("--depth stored stops after ingest: drop --genecall-mode")
-        if b.release is not None or b.stages is not None or b.cluster_parts is not None:
+        if (b.release is not None or b.stages is not None or b.cluster_parts is not None
+                or b.cluster_method != l2cluster.DEFAULT_CLUSTERING_MODE):
             raise ValueError(
                 "--depth stored stops after ingest (no tapes): a release cannot be built over a stored stage "
-                "(DEC-54); drop --release, --stages and --cluster-parts"
+                "(DEC-54); drop --release, --stages, --cluster-parts and --cluster-method"
             )
     elif depth == "called":
         if b.libraries or b.ncrna_cm is not None:
@@ -596,8 +600,9 @@ def _check_depth_options(b: Build) -> str:
             )
     elif not b.libraries:
         raise ValueError("--depth annotated needs at least one --library")
-    if b.release is None and (b.stages is not None or b.cluster_parts is not None):
-        raise ValueError("--stages and --cluster-parts belong to a release: give --release")
+    if b.release is None and (b.stages is not None or b.cluster_parts is not None
+                              or b.cluster_method != l2cluster.DEFAULT_CLUSTERING_MODE):
+        raise ValueError("--stages, --cluster-parts and --cluster-method belong to a release: give --release")
     return depth
 
 
@@ -657,9 +662,10 @@ def steps(prof: Profile, b: Build) -> list[Step]:
     ]
     if r is None:
         return stage_plan
+    cm = () if b.cluster_method == l2cluster.DEFAULT_CLUSTERING_MODE else ("--cluster-method", b.cluster_method)
     return [
         *stage_plan,
-        own(r, "cluster", lambda t: rl("cluster", *stages, "--tmp", t, "--threads", n), check="cluster"),
+        own(r, "cluster", lambda t: rl("cluster", *stages, "--tmp", t, "--threads", n, *cm), check="cluster"),
         own(r, "tokens", lambda t: rl("tokens", *stages, "--tmp", t, *prods)),
         own(r, "postings", lambda t: rl("postings", *stages, "--tmp", t, *prods)),
         own(r, "dim", lambda t: rl("dim", *stages, "--tmp", t)),
@@ -1001,15 +1007,22 @@ def cluster_refusal(prof: Profile, release: str, proteins: int,
             f"{SHARD_MARGIN:.0%} of the budget, or with --cluster-parts N")
 
 
-def one_process_refusal(prof: Profile, release: str, call: str, cpu_min: float) -> str | None:
-    """Why `call` of release `release`'s clustering in parts, which its cut runs as one process because no number of
-    parts fits it (DEC-29, card B-45), estimated at `cpu_min` CPU-minutes (its work and its own k-mer table), may not
-    be launched, or None: only under the profile's `cluster_cpu_min_max`, and not above it."""
-    how = (f"{call} of release {release}'s clustering runs as one process (DEC-29: no number of parts fits it, since "
-           f"each part would rebuild the target's k-mer table, card B-44), estimated at {cpu_min:,.1f} CPU-minutes")
+def one_process_refusal(prof: Profile, release: str, call: str, cpu_min: float, *,
+                        decision: str = l2cluster.DEC29) -> str | None:
+    """Why `call` of release `release`'s clustering in parts, which runs as one process under `decision`
+    (DEC-29 for unsplit prefilters, card B-45; DEC-77 for shared-index createindex `.cut`, card B-71), estimated at
+    `cpu_min` CPU-minutes, may not be launched, or None: only under the profile's `cluster_cpu_min_max`, and not
+    above it."""
+    if decision == l2cluster.DEC77:
+        how = (f"{call} of release {release}'s clustering runs shared-index createindex as one process "
+               f"({l2cluster.DEC77}), estimated at {cpu_min:,.1f} CPU-minutes")
+    else:
+        how = (f"{call} of release {release}'s clustering runs as one process (DEC-29: no number of parts fits it, "
+               f"since each part would rebuild the target's k-mer table, card B-44), estimated at {cpu_min:,.1f} "
+               f"CPU-minutes")
     cap = prof.cluster_cpu_min_max
     if cap is None:
-        return (f"{how}; DEC-29 allows that only under the profile's cluster_cpu_min_max, and this profile has no "
+        return (f"{how}; {decision} allows that only under the profile's cluster_cpu_min_max, and this profile has no "
                 f"cluster_cpu_min_max (the 300 CPU-minute rule of AGENTS §7.2 holds)")
     if cpu_min > cap:
         return (f"{how}, over the profile's cluster_cpu_min_max of {cap}. Raise cluster_cpu_min_max only with the PI's "
@@ -2442,7 +2455,7 @@ def _reuse_source(prof: Profile, b: Build, root: Path, step: Step) -> str | None
         return None
     try:
         src = l2cluster.reuse_source(root, b.release, b.gene_call_version, _release_stages(b, root), cluster_cut(prof, b),
-                                     tmp=scratch_of(prof, b))
+                                     tmp=scratch_of(prof, b), mode=b.cluster_method)
     except FileNotFoundError:  # a stage without protein_seq files: the clustering refuses it as before
         return None
     if src is not None:
@@ -2456,9 +2469,10 @@ def reuse_step(prof: Profile, b: Build, step: Step, source: str) -> Step:
     """The cluster step as `release cluster reuse --from <source>` (card B-49): its name stays `cluster`, so its run
     record is the clustering's and names the source in its argv; its scratch directory is the cluster step's."""
     stages = () if b.stages is None else ("--stages", ",".join(b.stages))
+    cm = () if b.cluster_method == l2cluster.DEFAULT_CLUSTERING_MODE else ("--cluster-method", b.cluster_method)
     return dataclasses.replace(step, argv=(
         "release", "cluster", "reuse", "--root", str(Path(b.root).resolve()), "--gene-call-version", b.gene_call_version,
-        "--release", b.release, *stages, "--from", source, *_cut_args(prof, b), "--tmp", step.scratch))
+        "--release", b.release, *stages, "--from", source, *_cut_args(prof, b), *cm, "--tmp", step.scratch))
 
 
 def cluster_steps(prof: Profile, b: Build) -> Callable[..., Step]:
@@ -2470,6 +2484,7 @@ def cluster_steps(prof: Profile, b: Build) -> Callable[..., Step]:
     root, scratch, n = str(Path(b.root).resolve()), str(scratch_of(prof, b)), threads_of(prof, b)
     stages = () if b.stages is None else ("--stages", ",".join(b.stages))
     cut = _cut_args(prof, b)
+    cm = () if b.cluster_method == l2cluster.DEFAULT_CLUSTERING_MODE else ("--cluster-method", b.cluster_method)
 
     def cl(action: str, *extra: str) -> tuple[str, ...]:
         return ("release", "cluster", action, "--root", root, "--gene-call-version", b.gene_call_version,
@@ -2477,7 +2492,7 @@ def cluster_steps(prof: Profile, b: Build) -> Callable[..., Step]:
 
     def make(action: str, name: str | None = None, threads: int | None = None) -> Step:
         if action == "plan":
-            return Step(b.release, l2cluster.PLAN_STEP, cl("plan", *stages, *cut))
+            return Step(b.release, l2cluster.PLAN_STEP, cl("plan", *stages, *cut, *cm))
         if action == "finish":
             return Step(b.release, l2cluster.FINAL_STEP, cl("finish", "--threads", str(n)))
         if action == "redo":
@@ -2511,11 +2526,22 @@ def _cluster_in_parts(prof: Profile, b: Build, root: Path, one: Callable[..., in
         hook(f"after:{first.name}")
     if run is None:
         run = _process_runner(_profile_file(prof, scratch))
-    for c in l2cluster.calls():
+    plan_rec = l2cluster.read_record(root, b.release, l2cluster.PLAN_STEP)
+    mode = l2cluster.plan_method(plan_rec) if plan_rec is not None else b.cluster_method
+    for c in l2cluster.calls(mode):
         parts, kw = 1, {}
         if c.split:
             cut = make("step", f"{c.name}.cut")
-            code = one(cut)
+            cut_kw: dict[str, str] = {}
+            if c.shares_index and not _record(root, cut).exists():
+                ci_est = l2cluster.cut_createindex_estimate(root, b.release, c, scratch)
+                if ci_est is not None:
+                    why = one_process_refusal(prof, b.release, cut.name, ci_est, decision=l2cluster.DEC77)
+                    if why is not None:
+                        _say(f"refused before {b.release}.{cut.name}: {why}")
+                        return runstep.EXIT_REFUSED
+                    cut_kw = {"budget_reason": DEC77_EXEMPT}
+            code = one(cut, **cut_kw)
             if code is not None:
                 return code
             if hook is not None:
@@ -2527,7 +2553,8 @@ def _cluster_in_parts(prof: Profile, b: Build, root: Path, one: Callable[..., in
                 code = _run_shards(prof, root, cut, subs, jobs, cpus, run, hook, allow)
                 if code is not None:
                     return code
-            if "one_process" in rec:  # card B-45: no number of parts fits it; one process under the cap (DEC-29)
+            if "one_process" in rec and rec["one_process"].get("decision") == l2cluster.DEC29:
+                # card B-45: no number of parts fits it; one process under the cap (DEC-29)
                 why = one_process_refusal(prof, b.release, c.name, rec["one_process"]["cpu_min"])
                 if why is not None and not _record(root, make("step", c.name)).exists():
                     _say(f"refused before {b.release}.{c.name}: {why}")

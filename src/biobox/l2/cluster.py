@@ -145,6 +145,19 @@ LEVELS = {
     "nr50": {"min_seq_id": 0.5, "coverage": 0.8},
 }
 COMMON = ["--cov-mode", "1", "--cluster-mode", "2"]
+CLUSTERING_MODES = ("cascade", "hybrid-a", "hybrid-b1", "linclust")
+DEFAULT_CLUSTERING_MODE = "cascade"
+
+
+def _check_mode(mode: str) -> str:
+    if mode not in CLUSTERING_MODES:
+        raise ValueError(f"clustering mode {mode!r}: must be one of {', '.join(CLUSTERING_MODES)}")
+    return mode
+
+
+def plan_method(plan_: dict) -> str:
+    """Clustering mode of a plan record (`PLAN_FORMAT == 1` defaults to `'cascade'`, card B-71)."""
+    return _check_mode(plan_.get("method", DEFAULT_CLUSTERING_MODE))
 
 DUCK_MEMORY_LIMIT = "2GB"  # the sorting connection's cap, as genecall's and postings'; larger sorts spill
 SCRATCH_ROWS = 16_384  # rows per batch read, written or handed on by the Python side
@@ -424,7 +437,7 @@ def write_member_cluster(member_files: list[Path], dest: Path, *, tmp: Path | No
 
 def run(root: Path, release: str, gene_call_version: str, stages: list[str], threads: int = 1,
         tmp: Path | None = None, max_file_bytes: int = layout.MAX_FILE_BYTES, out: Path | None = None,
-        memory_limit: str | None = None) -> dict:
+        memory_limit: str | None = None, mode: str = DEFAULT_CLUSTERING_MODE) -> dict:
     """Cluster the distinct proteins of `stages`, the release's stages (card B-25), and write the
     release's cluster tables; the release's `release_def` is written, or checked to list the same
     stages (`catalog.define_release`).
@@ -433,7 +446,9 @@ def run(root: Path, release: str, gene_call_version: str, stages: list[str], thr
     the root has none) its `release_def` are written under `out` (default `root`; card C-08). Refuses,
     before any work, when those tables or that ledger already hold a file in `root` or `out`; with
     `out` given, `tmp` may lie under neither. `memory_limit` is DuckDB's cap (default
-    `DUCK_MEMORY_LIMIT`, read when called)."""
+    `DUCK_MEMORY_LIMIT`, read when called). `mode` selects the clustering workflow (`CLUSTERING_MODES`,
+    card B-71; default `'cascade'`)."""
+    _check_mode(mode)
     root = Path(root)
     if out is not None:
         ledger.check_scratch(tmp, root, out)
@@ -454,13 +469,30 @@ def run(root: Path, release: str, gene_call_version: str, stages: list[str], thr
         catalog.define_release(root, release, stages, out=out)
         mm = MMseqs(w, threads)
         mm("createdb", "in.faa", "db", "--dbtype", "1", "--shuffle", "0", "--write-lookup", "1", threaded=False)
-        mm("cluster", "db", "clu90", "tmp90", "--min-seq-id", str(LEVELS["nr90"]["min_seq_id"]),
-           "-c", str(LEVELS["nr90"]["coverage"]), *COMMON)
-        mm("createsubdb", "clu90", "db", "rep90", threaded=False)
-        mm("cluster", "rep90", "clu50r", "tmp50", "--min-seq-id", str(LEVELS["nr50"]["min_seq_id"]),
-           "-c", str(LEVELS["nr50"]["coverage"]), *COMMON)
+        if mode == "cascade":
+            mm("cluster", "db", "clu90", "tmp90", "--min-seq-id", str(LEVELS["nr90"]["min_seq_id"]),
+               "-c", str(LEVELS["nr90"]["coverage"]), *COMMON)
+            mm("createsubdb", "clu90", "db", "rep90", threaded=False)
+            mm("cluster", "rep90", "clu50r", "tmp50", "--min-seq-id", str(LEVELS["nr50"]["min_seq_id"]),
+               "-c", str(LEVELS["nr50"]["coverage"]), *COMMON)
+        else:
+            _run_workflow_calls(mm, w, "nr90", mode)
+            mm("createsubdb", "clu90", "db", "rep90", threaded=False)
+            _run_workflow_calls(mm, w, "nr50", mode)
         mm("mergeclusters", "db", "clu50", "clu90", "clu50r")
         return _write_tables(mm, w, w, out, release, n_prot, limit, max_file_bytes, member_align=True)
+
+
+def _run_workflow_calls(mm: MMseqs, w: Path, level: str, mode: str) -> None:
+    """Run `workflow(level, mode)` unsplit in one process (used by `run` for non-cascade modes, card B-71)."""
+    for argv in workflow(level, mode):
+        c = Call(argv[0], argv)
+        (w / c.output).parent.mkdir(parents=True, exist_ok=True)
+        mm(*argv, threaded=c.module not in UNTHREADED)
+        if c.order_file:
+            with open(w / f"{c.output}.index") as src, open(w / c.order_file, "w") as dst:
+                for line in src:
+                    dst.write(line.split(None, 1)[0] + "\n" if line.strip() else "\n")
 
 
 def _write_tables(mm: MMseqs, w: Path, f: Path, out: Path, release: str, n_prot: int, limit: str,
@@ -573,7 +605,7 @@ def _write_tables(mm: MMseqs, w: Path, f: Path, out: Path, release: str, n_prot:
 # build-stage) at the call's estimate (`call_cpu_min`, from the call's own input, card C-22). Lost scratch: `lost` names every recorded step whose
 # outputs are missing or are not its record's, and `redo` makes each again, which must reproduce its record.
 
-PLAN_FORMAT = 1
+PLAN_FORMAT = 2
 WORK_DIR = "biobox-cluster"  # under the scratch directory: one work directory per root, release and plan
 PLAN_STEP = "cluster.plan"
 FINAL_STEP = "cluster"
@@ -687,6 +719,11 @@ PREFILTER_INDEX_CPU_S_PER_TARGET = 12.44 / 59_000
 # and 1,000,000 targets: 1.5e-4 to 1.8e-4 per target, so the rate above, 2.1e-4, is on the safe side.)
 CREATEINDEX_CPU_S_PER_TARGET = 39.58 / 250_000
 PREFILTER_INDEX_LOAD_CPU_S_PER_TARGET = 0.28 / 59_338
+# Card B-68 / B-71: super-linear shared-index `mmseqs createindex` model fitted across r26.11.1, r26.11.2, and
+# r26.11.3 (CPU-min per 10^9 residues at 10M targets, shared with `train_est.py`).
+CREATEINDEX_T0 = 10_000_000
+CREATEINDEX_GROWTH = 0.48
+CREATEINDEX_RATE_BY_SENS: dict[str, float] = {"2": 11.80, "3": 15.75}
 #
 # Budget (card C-22; *derived* from the model above, 300 CPU-minutes per process, parts cut at 80% of it, 240; the
 # per-call input sizes at 10.0 M, 50 M and 95 M are *extrapolated* from the two samples as u(n) = u(N0) (n / N0)^b, b the
@@ -794,17 +831,23 @@ def _prefilter(q: str, out: str, s: str, comp_bias: str, diag: str, min_ungapped
             "--pcb", _PCB, "--compressed", "0")
 
 
-def workflow(level: str) -> list[tuple[str, ...]]:
-    """The module calls of `run`'s `cluster` workflow call at `level`, as MMseqs2 18.8cc5c makes them (its `-v 3`
-    log on the fixture, B-37 design §1), without `--threads` and `-v`; paths are relative to the work directory,
-    the workflow's temporary directory being `tmp90/w` or `tmp50/w` and its linclust directory `.../linclust/l`.
-    The cascade without reassignment: linclust (redundancy), then one prefilter-align-clust step at NR90 (`-s 1`)
-    and three at NR50 (`-s 1`, `2`, `3`)."""
+def workflow(level: str, mode: str = DEFAULT_CLUSTERING_MODE) -> list[tuple[str, ...]]:
+    """The module calls of `run`'s `cluster` / `linclust` workflow call at `level` under `mode` (`CLUSTERING_MODES`,
+    card B-71), as MMseqs2 18.8cc5c makes them (its `-v 3` log on the fixture, B-37 design §1), without `--threads`
+    and `-v`; paths are relative to the work directory, the workflow's temporary directory being `tmp90/w` or
+    `tmp50/w` and its linclust directory `.../linclust/l`."""
+    _check_mode(mode)
     if level == "nr90":
-        db, out, min_id, w, lin_bias, steps = "db", "clu90", "0.9", "tmp90/w", "0", [("1", "0", "0", "0")]
+        db, out, min_id, w, lin_bias = "db", "clu90", "0.9", "tmp90/w", "0"
+        steps = [("1", "0", "0", "0")] if mode == "cascade" else []
     elif level == "nr50":
         db, out, min_id, w, lin_bias = "rep90", "clu50r", "0.5", "tmp50/w", "1"
-        steps = [("1", "0", "0", "0"), ("2", "1", "1", "15"), ("3", "1", "1", "15")]
+        if mode in ("cascade", "hybrid-a"):
+            steps = [("1", "0", "0", "0"), ("2", "1", "1", "15"), ("3", "1", "1", "15")]
+        elif mode == "hybrid-b1":
+            steps = [("1", "0", "0", "0"), ("2", "1", "1", "15")]
+        else:
+            steps = []
     else:
         raise ValueError(f"level {level!r}: one of {sorted(LEVELS)}")
     lin = f"{w}/linclust/l"
@@ -820,9 +863,12 @@ def workflow(level: str) -> list[tuple[str, ...]]:
         _rescore(red, f"{lin}/pref_filter2", f"{lin}/pref_rescore2", "1", "1", min_id),
         _align(red, f"{lin}/pref_rescore2", f"{lin}/aln", min_id, lin_bias),
         _clust(red, f"{lin}/aln", f"{lin}/clust"),
-        ("mergeclusters", db, f"{w}/clu_redundancy", f"{lin}/pre_clust", f"{lin}/clust", "--compressed", "0"),
-        _subdb(f"{w}/clu_redundancy", db, f"{w}/input_step_redundancy"),
+        ("mergeclusters", db, out if not steps else f"{w}/clu_redundancy", f"{lin}/pre_clust", f"{lin}/clust",
+         "--compressed", "0"),
     ]
+    if not steps:
+        return calls_
+    calls_.append(_subdb(f"{w}/clu_redundancy", db, f"{w}/input_step_redundancy"))
     inp = f"{w}/input_step_redundancy"
     for k, (s, bias, diag, ungapped) in enumerate(steps):
         if k:
@@ -893,12 +939,13 @@ def prefilter_settings(c: Call) -> tuple[str, str, str, str]:
     return tuple(_opt(c.argv, f) for f in ("-s", "--comp-bias-corr", "--diag-score", "--min-ungapped-score"))
 
 
-def calls() -> list[Call]:
+def calls(mode: str = DEFAULT_CLUSTERING_MODE) -> list[Call]:
     """Every module call after the plan, in order (module docstring): the NR90 workflow call's, the NR90
     representatives, the NR50 workflow call's, the merge of the two levels, and each level's member alignment."""
+    _check_mode(mode)
     out = []
     for level in ("nr90", "nr50"):
-        out += [Call(f"cluster.{level}.{i:02d}.{a[0]}", a) for i, a in enumerate(workflow(level))]
+        out += [Call(f"cluster.{level}.{i:02d}.{a[0]}", a) for i, a in enumerate(workflow(level, mode))]
         if level == "nr90":
             out.append(Call("cluster.rep90", ("createsubdb", "clu90", "db", "rep90")))
     out.append(Call("cluster.merge", ("mergeclusters", "db", "clu50", "clu90", "clu50r")))
@@ -915,9 +962,9 @@ def part_name(call: str, k: int) -> str:
 _PART = re.compile(r"(?P<call>.+)\.part-(?P<k>\d{5})")
 
 
-def _parse(name: str) -> tuple[Call, str, int | None]:
+def _parse(name: str, mode: str = DEFAULT_CLUSTERING_MODE) -> tuple[Call, str, int | None]:
     """(the call, "call" | "cut" | "part", the part) of a step name; ValueError for a name of no step."""
-    by = {c.name: c for c in calls()}
+    by = {c.name: c for c in calls(mode)}
     if name.endswith(".cut") and name[:-4] in by and by[name[:-4]].split:
         return by[name[:-4]], "cut", None
     m = _PART.fullmatch(name)
@@ -925,7 +972,7 @@ def _parse(name: str) -> tuple[Call, str, int | None]:
         return by[m["call"]], "part", int(m["k"])
     if name in by:
         return by[name], "call", None
-    raise ValueError(f"{name}: not a step of clustering in parts (cluster.calls(), a .cut or .part-<p> of a "
+    raise ValueError(f"{name}: not a step of clustering in parts (cluster.calls({mode!r}), a .cut or .part-<p> of a "
                      f"per-query call, or {PLAN_STEP})")
 
 
@@ -1211,7 +1258,14 @@ def _table_dirs(release: str) -> list[str]:
             f"l2/member_cluster/release={release}", ledger.release_path("", release, "cluster").parent.as_posix()]
 
 
-_INPUT_KEYS = ("format", "release", "stages", "gene_call_version", "mmseqs2", "files", "cut")
+_INPUT_KEYS_V1 = ("format", "release", "stages", "gene_call_version", "mmseqs2", "files", "cut")
+_INPUT_KEYS = (*_INPUT_KEYS_V1, "method")
+
+
+def _plan_input_dict(plan_: dict) -> dict:
+    """The input fields of `plan_` used to hash its work directory (`PLAN_FORMAT == 1` has no `'method'`)."""
+    keys = _INPUT_KEYS_V1 if plan_.get("format") == 1 else _INPUT_KEYS
+    return {k: plan_[k] for k in keys}
 
 
 def _work_dir(tmp: Path, root: Path, inputs: dict) -> Path:
@@ -1226,7 +1280,7 @@ def work_dir(tmp: Path, root: Path, release: str, out: Path | None = None) -> Pa
     if plan_ is None:
         raise FileNotFoundError(f"release {release}: no plan of clustering in parts ({_rel(release, PLAN_STEP)}); "
                                 "write it with bio-box release cluster plan")
-    return _work_dir(tmp, root, {k: plan_[k] for k in _INPUT_KEYS})
+    return _work_dir(tmp, root, _plan_input_dict(plan_))
 
 
 def _mm(w: Path, log: Path, argv: Sequence[str], threads: int | None) -> None:
@@ -1286,32 +1340,36 @@ def _plan_cut(parts: int | None, part_cpu_min: float | None, one_process_cpu_min
     return doc
 
 
-def plan_inputs(root: Path, release: str, gene_call_version: str, stages: list[str], cut_: dict) -> dict:
-    """The plan record's inputs (`_INPUT_KEYS`) for `release` over `stages` with the cut `cut_` (`cut_of`): the
-    `protein_seq` files of the stages by path and size, the MMseqs2 version, the format. Reads no file's content
-    (card B-49 compares them before any work); FileNotFoundError for a stage without `protein_seq` files."""
+def plan_inputs(root: Path, release: str, gene_call_version: str, stages: list[str], cut_: dict, *,
+                mode: str = DEFAULT_CLUSTERING_MODE) -> dict:
+    """The plan record's inputs (`_INPUT_KEYS`) for `release` over `stages` with the cut `cut_` (`cut_of`) and
+    clustering mode `mode` (`CLUSTERING_MODES`, card B-71): the `protein_seq` files of the stages by path and size,
+    the MMseqs2 version, the format. Reads no file's content (card B-49 compares them before any work);
+    FileNotFoundError for a stage without `protein_seq` files."""
+    _check_mode(mode)
     root = Path(root)
     files = _protein_files(root, gene_call_version, stages)
     return {"format": PLAN_FORMAT, "release": release, "stages": list(stages), "gene_call_version": gene_call_version,
             "mmseqs2": provenance.tool_versions("mmseqs2")["mmseqs2"],
             "files": [[{"path": p.relative_to(root).as_posix(), "bytes": p.stat().st_size} for p in g] for g in files],
-            "cut": cut_}
+            "cut": cut_, "method": mode}
 
 
 def plan(root: Path, release: str, gene_call_version: str, stages: list[str], tmp: Path, *,
          parts: int | None = None, part_cpu_min: float | None = None, one_process_cpu_min_max: float | None = None,
-         rebuild_cpu_min: float | None = None, out: Path | None = None) -> dict:
+         rebuild_cpu_min: float | None = None, out: Path | None = None, mode: str = DEFAULT_CLUSTERING_MODE) -> dict:
     """Step `cluster.plan`: the release's proteins (the `protein_seq` files of `stages`, card B-25) into the MMseqs2
     database of a fresh work directory, and the plan record under `out` (default `root`): the files, the MMseqs2
     version, the cut (`parts`, a forced count, or `part_cpu_min`, the CPU-minutes a part may be estimated at), the
-    protein count, the release's estimate in one process and the outputs' digests. Refuses when the release's
-    cluster tables or the plan exist in `root` or `out`.
+    clustering method (`mode`, card B-71), the protein count, the release's estimate in one process and the outputs'
+    digests. Refuses when the release's cluster tables or the plan exist in `root` or `out`.
 
     Card B-45 (DEC-29), both recorded in the plan's `cut` when given, so every cut is a function of the plan:
     `one_process_cpu_min_max`, the cap under which a call that cannot be split (`_cut_doc`) runs as one process
     (build-stage gives the profile's `cluster_cpu_min_max`; without it such a call is refused); `rebuild_cpu_min`
     (tests and trials) forces the estimate of a prefilter part's own k-mer table to that many CPU-minutes. The result
     shows which calls may run as one process and why (`one_process_outlook`)."""
+    _check_mode(mode)
     root = Path(root)
     out_root = root if out is None else Path(out)
     if tmp is None:
@@ -1323,7 +1381,7 @@ def plan(root: Path, release: str, gene_call_version: str, stages: list[str], tm
     ledger.refuse_written(root, out_root, _table_dirs(release), f"clustering of release {release}")
     if _find(root, out, _rel(release, PLAN_STEP)) is not None:
         raise FileExistsError(f"{_rel(release, PLAN_STEP)}: the plan of release {release} is written once")
-    inputs = plan_inputs(root, release, gene_call_version, stages, cut_)
+    inputs = plan_inputs(root, release, gene_call_version, stages, cut_, mode=mode)
     w = _work_dir(tmp, root, inputs)
     if w.exists():
         shutil.rmtree(w)  # an earlier attempt of this plan that left no record
@@ -1335,8 +1393,8 @@ def plan(root: Path, release: str, gene_call_version: str, stages: list[str], tm
 
     doc = {**inputs, "proteins": n, "release_cpu_min": round(cluster_cpu_min(n), 6), "outputs": outputs}
     _write_record(root, out_root, release, PLAN_STEP, doc)
-    return {"proteins": n, "release_cpu_min": doc["release_cpu_min"], "cut": doc["cut"],
-            "one_process": one_process_outlook(n, doc["cut"])}
+    return {"proteins": n, "release_cpu_min": doc["release_cpu_min"], "cut": doc["cut"], "method": mode,
+            "one_process": one_process_outlook(n, doc["cut"], mode=mode)}
 
 
 @dataclass(frozen=True)
@@ -1356,6 +1414,7 @@ def _ctx(root: Path, release: str, tmp: Path, out: Path | None, threads: int, sh
     if raw is None:
         raise FileNotFoundError(f"release {release}: no plan of clustering in parts; run {PLAN_STEP} first")
     p = json.loads(raw)
+    plan_method(p)  # validate method on load (format 1 defaults to cascade)
     have = provenance.tool_versions("mmseqs2")["mmseqs2"]
     if have != p["mmseqs2"]:
         raise ValueError(f"release {release}: MMseqs2 is {have}, the plan was made with {p['mmseqs2']}; a build "
@@ -1363,15 +1422,15 @@ def _ctx(root: Path, release: str, tmp: Path, out: Path | None, threads: int, sh
     if isinstance(threads, bool) or not isinstance(threads, int) or threads < 1:
         raise ValueError(f"threads {threads!r}: give the thread count explicitly (at least 1)")
     ledger.check_scratch(tmp, root, out)
-    w = _work_dir(tmp, root, {k: p[k] for k in _INPUT_KEYS})
+    w = _work_dir(tmp, root, _plan_input_dict(p))
     return _Ctx(Path(root), None if out is None else Path(out), release, p, hashlib.sha256(raw).hexdigest(), w, threads,
                 shared_index)
 
 
-def _producers() -> dict[str, str]:
+def _producers(mode: str = DEFAULT_CLUSTERING_MODE) -> dict[str, str]:
     """Which step writes each path of the work directory."""
     out = {p: PLAN_STEP for p in ("db", "db_h", "prot.parquet")}
-    for c in calls():
+    for c in calls(mode):
         out[c.output] = c.name
         if c.order_file:
             out[c.order_file] = c.name
@@ -1380,7 +1439,7 @@ def _producers() -> dict[str, str]:
 
 def _input_digests(ctx: _Ctx, paths: Iterable[str]) -> dict[str, str]:
     """The digests of `paths` as their producers' records hold them (no input is read again)."""
-    prods, got = _producers(), {}
+    prods, got = _producers(plan_method(ctx.plan)), {}
     for p in paths:
         rec = read_record(ctx.root, ctx.release, prods[p], ctx.out)
         if rec is None or p not in rec.get("outputs", {}):
@@ -1463,10 +1522,22 @@ def _cut_doc(ctx: _Ctx, c: Call) -> dict:
            "parts": got}
     if seq and c.shares_index and ctx.shared_index and len(got) > 1:
         doc["index_cpu_min"] = round(index_cpu_min(targets), 6)
-        if budget is not None and doc["index_cpu_min"] > budget:
-            raise ValueError(f"{c.name}: the shared index of its {targets:,} targets is estimated at "
-                             f"{doc['index_cpu_min']:,.1f} CPU-minutes in one process, over the part budget of "
-                             f"{budget:g} (and every part building the table itself would cost more); refused")
+        sens = _opt(c.argv, "-s")
+        ci_est = createindex_cpu_min(total_units, targets, sens)
+        doc["createindex_cpu_min"] = round(ci_est, 6)
+        if budget is not None and ci_est > budget:
+            why = (f"{c.name}.cut: the shared index of its {targets:,} targets ({total_units:,} residues, -s {sens}) "
+                   f"is estimated at {ci_est:,.3f} CPU-minutes in one process, over the part budget of {budget:g} "
+                   "(and every part building the table itself would cost more)")
+            cap = plan_cut.get("one_process_cpu_min_max")
+            if cap is None:
+                raise ValueError(f"{why}. {DEC77} runs such a createindex step under the profile's "
+                                 "cluster_cpu_min_max (build-stage gives it to the plan as "
+                                 "--one-process-cpu-min-max), and this plan has none; refused")
+            if ci_est > cap:
+                raise ValueError(f"{why}, over the one-process cap of {cap:g} ({DEC77}, the profile's "
+                                 "cluster_cpu_min_max); refused")
+            doc["one_process"] = {"decision": DEC77, "cpu_min": round(ci_est, 6), "cpu_min_max": cap, "why": why}
     return doc
 
 
@@ -1498,11 +1569,50 @@ def part_overhead_cpu_min(c: Call, targets: int, shared: bool = True) -> float:
 
 
 def index_cpu_min(targets: int) -> float:
-    """The estimate of one `createindex` process over `targets` targets."""
+    """The linear B-43 estimate of one `createindex` process over `targets` targets."""
     return CREATEINDEX_CPU_S_PER_TARGET * targets / 60
 
 
-# --- one process for a call that cannot be split (card B-45, DEC-29) ---------------------------------------------
+def createindex_cpu_min(residues: int, targets: int, sensitivity: str = "2") -> float:
+    """Estimated CPU-minutes for one shared-index `mmseqs createindex` `.cut` step (card B-68 / B-71)."""
+    if residues <= 0 or targets <= 0:
+        return 0.0
+    s = str(sensitivity)
+    rate = CREATEINDEX_RATE_BY_SENS.get(s)
+    if rate is None:
+        try:
+            s_val = float(s)
+            rate = CREATEINDEX_RATE_BY_SENS["2"] * (s_val / 2.0) if s_val > 0 else CREATEINDEX_RATE_BY_SENS["2"]
+        except ValueError:
+            rate = CREATEINDEX_RATE_BY_SENS["2"]
+    return rate * 1e-9 * residues * (targets / CREATEINDEX_T0) ** CREATEINDEX_GROWTH
+
+
+def cut_createindex_estimate(root: Path, release: str, c: Call, tmp: Path, out: Path | None = None) -> float | None:
+    """For `stage.py` before launching `<call>.cut` on a shared-index prefilter: if the plan uses `part_cpu_min` and
+    `createindex_cpu_min` over `c`'s target in scratch exceeds `part_cpu_min`, return that estimate (so `stage.py` can
+    check `cluster_cpu_min_max` and pass `budget_reason="exempt: DEC-77"`); else None."""
+    if not c.shares_index:
+        return None
+    plan_ = read_record(root, release, PLAN_STEP, out)
+    if plan_ is None:
+        return None
+    budget = plan_["cut"].get("part_cpu_min")
+    if budget is None:
+        return None
+    w = _work_dir(tmp, root, _plan_input_dict(plan_))
+    target = c.positional[1]
+    if not Path(f"{w / target}.index").is_file():
+        return None
+    targets, total_units = 0, 0
+    for _, _, n in index_rows(w / target):
+        targets += 1
+        total_units += max(0, n - 2)
+    est = createindex_cpu_min(total_units, targets, _opt(c.argv, "-s"))
+    return est if est > budget else None
+
+
+# --- one process for a call that cannot be split (card B-45, DEC-29; card B-71, DEC-77) --------------------------
 #
 # A prefilter whose parts cannot share an index (`--diag-score 0`: the NR90 step and NR50 step 0, card B-44) has every
 # part rebuild the k-mer table of the whole target. Once that table alone reaches the part budget no number of parts
@@ -1511,8 +1621,11 @@ def index_cpu_min(targets: int) -> float:
 # `cluster_cpu_min_max`, which build-stage passes to the plan), and is refused when its estimate (work plus table) is
 # over that cap; without the cap it is refused as before card B-45. build-stage checks the estimate against the
 # profile again before the call's launch and runs it with the run-step reason `exempt: DEC-29`.
+# DEC-77 extends the same `cluster_cpu_min_max` cap to shared-index `createindex` (`.cut` steps estimated above
+# `part_cpu_min`), with reason `exempt: DEC-77`.
 
 DEC29 = "DEC-29"
+DEC77 = "DEC-77"
 
 
 def _rebuild_cpu_min(plan_cut: dict, c: Call, targets: int) -> float:
@@ -1545,7 +1658,7 @@ def _one_process_doc(c: Call, plan_cut: dict, rows: Callable[[], Iterable[tuple[
             "one_process": {"decision": DEC29, "cpu_min": round(one, 6), "cpu_min_max": cap, "why": why}}
 
 
-def one_process_outlook(proteins: int, plan_cut: dict) -> dict:
+def one_process_outlook(proteins: int, plan_cut: dict, *, mode: str = DEFAULT_CLUSTERING_MODE) -> dict:
     """What `release cluster plan` shows of DEC-29 for a plan's `cut` over `proteins` proteins: the calls whose parts
     rebuild their table (the prefilters that cannot share an index), for each the targets from which a part's table
     alone fills the part budget (`from_targets`; 0 when the table is forced over it, None when it never is) and
@@ -1561,7 +1674,7 @@ def one_process_outlook(proteins: int, plan_cut: dict) -> dict:
             start = math.ceil(budget * 60 / PREFILTER_INDEX_CPU_S_PER_TARGET)
         else:
             start = 0 if forced >= budget else None
-        for c in calls():
+        for c in calls(mode):
             if c.module == "prefilter" and not c.shares_index:
                 calls_[c.name] = {"from_targets": start, "possible": start is not None and proteins >= start}
     why = (f"each part of these prefilters rebuilds the k-mer table of its whole target (MMseqs2 cannot share an index "
@@ -1576,11 +1689,14 @@ def one_process_calls(root: Path, release: str, out: Path | None = None) -> list
     """(call, its one-process estimate) of every published cut that runs its call as one process (DEC-29) and whose
     call is not yet done (no record of its own), in call order: what build-stage checks against the profile's cap
     before it launches anything."""
+    plan_ = read_record(root, release, PLAN_STEP, out)
+    mode = plan_method(plan_) if plan_ is not None else DEFAULT_CLUSTERING_MODE
     got = []
-    for c in calls():
+    for c in calls(mode):
         if c.module == "prefilter":
             rec = read_record(root, release, f"{c.name}.cut", out)
-            if rec is not None and "one_process" in rec and read_record(root, release, c.name, out) is None:
+            if (rec is not None and "one_process" in rec and rec["one_process"].get("decision") == DEC29
+                    and read_record(root, release, c.name, out) is None):
                 got.append((c.name, rec["one_process"]["cpu_min"]))
     return got
 
@@ -1688,12 +1804,12 @@ def _run_part(ctx: _Ctx, c: Call, k: int, cut_doc: dict, log: Path, name: str,
 
 def _execute(ctx: _Ctx, name: str, self_matches: bool = True) -> dict:
     """Do step `name` in the work directory; return its record."""
-    c, kind, k = _parse(name)
+    c, kind, k = _parse(name, plan_method(ctx.plan))
     (ctx.w / "logs").mkdir(parents=True, exist_ok=True)
     log = ctx.w / "logs" / f"{name}.log"
     log.write_text("")
-    doc = {"format": PLAN_FORMAT, "release": ctx.release, "step": name, "plan_sha256": ctx.plan_sha256,
-           "module": c.module}
+    doc = {"format": ctx.plan.get("format", PLAN_FORMAT), "release": ctx.release, "step": name,
+           "plan_sha256": ctx.plan_sha256, "module": c.module}
     if kind == "cut":
         src = c.positional[PER_QUERY[c.module]]
         doc = {**doc, "inputs": _input_digests(ctx, dict.fromkeys([src, *c.positional[1:2]] if c.module == "prefilter"
@@ -1757,8 +1873,10 @@ def sequence(root: Path, release: str, out: Path | None = None) -> list[str]:
     """The step names in order, as far as they are known now: the plan, then each call (a per-query call's cut,
     then, once the cut is recorded, its parts and its join when it has more than one part); the list stops after a
     cut without a record. `cluster` (`finish`) follows the last call."""
+    plan_ = read_record(root, release, PLAN_STEP, out)
+    mode = plan_method(plan_) if plan_ is not None else DEFAULT_CLUSTERING_MODE
     names = [PLAN_STEP]
-    for c in calls():
+    for c in calls(mode):
         if c.split:
             names.append(f"{c.name}.cut")
             rec = read_record(root, release, f"{c.name}.cut", out)
@@ -1841,17 +1959,18 @@ def finish(root: Path, release: str, tmp: Path, threads: int, *, out: Path | Non
     root = Path(root)
     out_root = root if out is None else Path(out)
     ctx = _ctx(root, release, tmp, out, threads)
+    mode = plan_method(ctx.plan)
     stages = catalog.verify_release_def(root, release, ctx.plan["stages"])
     ledger.refuse_written(root, out_root, _table_dirs(release), f"clustering of release {release}")
     names = sequence(root, release, out)
     todo = [n for n in names if read_record(root, release, n, out) is None]
-    if todo or names[-1] != calls()[-1].name:
+    if todo or names[-1] != calls(mode)[-1].name:
         raise FileNotFoundError(f"release {release}: step {todo[0] if todo else names[-1]} and those after it have no "
                                 "record; the clustering is not done")
     want = _input_digests(ctx, FINISH_INPUTS)
     for p, d in want.items():
         if _digest(ctx.w / p) != d:
-            raise ValueError(f"{ctx.w / p}: missing or not its record's ({_producers()[p]}); make it again with bio-box "
+            raise ValueError(f"{ctx.w / p}: missing or not its record's ({_producers(mode)[p]}); make it again with bio-box "
                              "release cluster redo (build-stage does this itself)")
     catalog.define_release(root, release, stages, out=out_root)
     f = ctx.w / "finish"
@@ -1870,19 +1989,22 @@ def run_split(root: Path, release: str, gene_call_version: str, stages: list[str
               parts: int | None = None, part_cpu_min: float | None = None,
               one_process_cpu_min_max: float | None = None, rebuild_cpu_min: float | None = None, threads: int = 1,
               out: Path | None = None, until: str | None = None, max_file_bytes: int = layout.MAX_FILE_BYTES,
-              memory_limit: str | None = None, _self_matches: bool = True, _shared_index: bool = True) -> dict | None:
+              memory_limit: str | None = None, mode: str = DEFAULT_CLUSTERING_MODE,
+              _self_matches: bool = True, _shared_index: bool = True) -> dict | None:
     """Clustering in parts in this process: the plan, every step without a record in order (each join's parts
     removed once it is recorded), `finish`, then the work directory removed. A step with a record is passed over,
     so a call resumes; `until` stops before that step (`FINAL_STEP`: before `finish`). The files are `run`'s.
-    `one_process_cpu_min_max`, `rebuild_cpu_min`: as `plan` (card B-45). `_self_matches`, `_shared_index`: as `step`
-    (tests only)."""
+    `one_process_cpu_min_max`, `rebuild_cpu_min`: as `plan` (card B-45). `mode`: `CLUSTERING_MODES` (card B-71).
+    `_self_matches`, `_shared_index`: as `step` (tests only)."""
+    _check_mode(mode)
     root, tmp = Path(root), Path(tmp)
     tmp.mkdir(parents=True, exist_ok=True)
     if read_record(root, release, PLAN_STEP, out) is None:
         if until == PLAN_STEP:
             return None
         plan(root, release, gene_call_version, stages, tmp, parts=parts, part_cpu_min=part_cpu_min,
-             one_process_cpu_min_max=one_process_cpu_min_max, rebuild_cpu_min=rebuild_cpu_min, out=out)
+             one_process_cpu_min_max=one_process_cpu_min_max, rebuild_cpu_min=rebuild_cpu_min, out=out, mode=mode)
+    active_mode = plan_method(read_record(root, release, PLAN_STEP, out))
     while True:
         todo = [n for n in sequence(root, release, out) if read_record(root, release, n, out) is None]
         if not todo:
@@ -1890,7 +2012,7 @@ def run_split(root: Path, release: str, gene_call_version: str, stages: list[str
         if todo[0] == until:
             return None
         step(root, release, todo[0], tmp, threads, out=out, _self_matches=_self_matches, _shared_index=_shared_index)
-        c, kind, _ = _parse(todo[0])
+        c, kind, _ = _parse(todo[0], active_mode)
         if kind == "call" and c.split and len(read_record(root, release, f"{c.name}.cut", out)["parts"]) > 1:
             clean_parts(root, release, c.name, tmp, out)
     if until == FINAL_STEP:
@@ -1965,11 +2087,23 @@ def _source_problem(root: Path, release: str, source: str, want: dict) -> str | 
         return ("it has no plan record (a clustering in one process records none, so its inputs cannot be compared; "
                 "or it was never clustered)")
     plan1 = json.loads(raw)
-    differ = [k for k in sorted(want) if k != "release" and plan1.get(k) != want[k]]
+    mode1 = plan_method(plan1)
+    differ = []
+    for k in sorted(want):
+        if k == "release":
+            continue
+        if k == "format":
+            if plan1.get("format") not in (1, PLAN_FORMAT):
+                differ.append("format")
+        elif k == "method":
+            if mode1 != want["method"]:
+                differ.append("method")
+        elif plan1.get(k) != want[k]:
+            differ.append(k)
     if differ:
         return f"its plan differs from this release's in {differ}"
     names = sequence(root, source)
-    if names[-1] != calls()[-1].name:
+    if names[-1] != calls(mode1)[-1].name:
         return f"its clustering is not finished: {names[-1]} has no record"
     sha1 = hashlib.sha256(raw).hexdigest()
     cuts: dict[str, dict] = {}
@@ -1982,7 +2116,7 @@ def _source_problem(root: Path, release: str, source: str, want: dict) -> str | 
             return f"its record of {name} is not a record of its plan"
         if name == PLAN_STEP:
             continue
-        c, kind, k = _parse(name)
+        c, kind, k = _parse(name, mode1)
         if kind == "cut":
             cuts[c.name] = doc
             total_units = sum(p["units"] for p in doc["parts"])
@@ -2075,14 +2209,15 @@ def _choose(root: Path, release: str, inputs: dict, tmp: Path, source: str | Non
 
 
 def reuse_source(root: Path, release: str, gene_call_version: str, stages: list[str], cut_: dict, *,
-                 tmp: Path) -> str | None:
+                 tmp: Path, mode: str = DEFAULT_CLUSTERING_MODE) -> str | None:
     """The release whose clustering `release` would take now (build-stage asks before its cluster step), or None: none
     when `release` has a cluster plan record, table or ledger of its own (its clustering goes on as before), when no
     earlier one qualifies, or when its uids are not the candidates' (`reuse` refuses that; build-stage clusters)."""
+    _check_mode(mode)
     root = Path(root)
     if _own_files(root, None, release) is not None or not [s for s in _plan_releases(root) if s != release]:
         return None
-    inputs = plan_inputs(root, release, gene_call_version, catalog.check_stages(stages), cut_)
+    inputs = plan_inputs(root, release, gene_call_version, catalog.check_stages(stages), cut_, mode=mode)
     if not reuse_sources(root, release, inputs):
         return None
     try:
@@ -2114,13 +2249,16 @@ def _copy_to(src: Path, dst: Path, sha256: str, size: int) -> Path:
 
 def reuse(root: Path, release: str, gene_call_version: str, stages: list[str], tmp: Path, *, source: str | None = None,
           parts: int | None = None, part_cpu_min: float | None = None, one_process_cpu_min_max: float | None = None,
-          rebuild_cpu_min: float | None = None, out: Path | None = None) -> dict:
+          rebuild_cpu_min: float | None = None, out: Path | None = None,
+          mode: str = DEFAULT_CLUSTERING_MODE) -> dict:
     """`release cluster reuse`: the clustering of `source` (default: the first that qualifies, `reuse_sources`) as
     `release`'s, under `out` (default `root`), with no clustering call (module docstring, "Reuse"): copies of its
     table files, its plan records rewritten for `release`, `release_def`, the clustering ledger and the record
-    `cluster.reuse`. The cut options are `plan`'s: they are part of the plan compared. Refuses before writing anything
-    when `release` has a cluster plan record, table or ledger, when no source qualifies, or when a source file's bytes
-    are not its run record's. `tmp`: scratch for the uids' file (about 35 bytes a protein, *estimate*)."""
+    `cluster.reuse`. The cut options and clustering mode are `plan`'s: they are part of the plan compared. Refuses
+    before writing anything when `release` has a cluster plan record, table or ledger, when no source qualifies, or
+    when a source file's bytes are not its run record's. `tmp`: scratch for the uids' file (about 35 bytes a protein,
+    *estimate*)."""
+    _check_mode(mode)
     root = Path(root)
     out_root = root if out is None else Path(out)
     if tmp is None:
@@ -2133,10 +2271,11 @@ def reuse(root: Path, release: str, gene_call_version: str, stages: list[str], t
     if held is not None:
         raise FileExistsError(f"{held}: release {release} has clustering files of its own; a clustering begun is "
                               "finished as it began (build-stage, bio-box release cluster step|finish), not reused over")
-    inputs = plan_inputs(root, release, gene_call_version, stages, cut_)
+    inputs = plan_inputs(root, release, gene_call_version, stages, cut_, mode=mode)
     src, want, cands = _choose(root, release, inputs, Path(tmp), source)
     raw1 = _record_raw(root, src, PLAN_STEP)
-    plan2 = {**json.loads(raw1), "release": release}
+    plan1 = json.loads(raw1)
+    plan2 = {**plan1, "release": release, "format": PLAN_FORMAT, "method": plan_method(plan1)}
     if set(plan2) != set(want):
         raise ValueError(f"release {src}'s plan record has fields this code does not write: "
                          f"{sorted(set(plan2) ^ set(want))}")
@@ -2168,7 +2307,8 @@ def reuse(root: Path, release: str, gene_call_version: str, stages: list[str], t
     _write_record(root, out_root, release, PLAN_STEP, plan2)
     for name in names[1:]:
         _write_record(root, out_root, release, name,
-                      {**json.loads(_record_raw(root, src, name)), "release": release, "plan_sha256": sha2})
+                      {**json.loads(_record_raw(root, src, name)), "format": PLAN_FORMAT, "release": release,
+                       "plan_sha256": sha2})
     ok = [r for r in _ledger_rows(led_path) if r["reason_code"] == "ok"]
     h = inputs_sha256(plan2)
     more = [{**r, "reason_code": f"{REUSE_REASON}:{src}:{h}"} for r in ok]
