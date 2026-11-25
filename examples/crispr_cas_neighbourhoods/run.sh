@@ -75,7 +75,7 @@ bb find-cas7f find --root "$ROOT" --release "$RELEASE" --accession "$POS_CAS7F"
 
 # 3. The searches, at the models' gathering cutoffs, with 10 genes on each side in the run's neighbourhoods.
 S="--root $ROOT --release $RELEASE --profile $PROFILE --runs $OUT/runs --work $OUT/work --neighbors 10"
-S="$S --cpus $THREADS --mem-gb 14 --threads $THREADS"
+S="$S --cpus $THREADS --mem-gb $(search_mem_gb) --threads $THREADS"
 bb search-tniq search hmm $S --hmm "$OUT/hmm/TniQ.hmm" --bits "$GA_TNIQ" --positive "$POS_TNIQ" --out "$OUT/tniq"
 bb search-cas7f search hmm $S --hmm "$OUT/hmm/Cas_Csy3.hmm" --bits "$GA_CAS7F" --positive "$POS_CAS7F" \
   --out "$OUT/cas7f"
