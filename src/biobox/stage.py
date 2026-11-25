@@ -2566,6 +2566,15 @@ def _cluster_in_parts(prof: Profile, b: Build, root: Path, one: Callable[..., in
             return code
         if parts > 1:
             l2cluster.clean_parts(root, b.release, c.name, scratch)
+        l2cluster.clean_consumed(root, b.release, c.name, scratch)
+        if hook is not None:
+            hook(f"after:{s.name}")
+    for fs in l2cluster.FINISH_LEVEL_STEPS:
+        s = make("step", fs)
+        code = one(s)
+        if code is not None:
+            return code
+        l2cluster.clean_consumed(root, b.release, fs, scratch)
         if hook is not None:
             hook(f"after:{s.name}")
     code = one(make("finish"))  # its hook is the cluster step's, after this returns

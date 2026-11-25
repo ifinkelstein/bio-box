@@ -495,68 +495,121 @@ def _run_workflow_calls(mm: MMseqs, w: Path, level: str, mode: str) -> None:
                     dst.write(line.split(None, 1)[0] + "\n" if line.strip() else "\n")
 
 
-def _write_tables(mm: MMseqs, w: Path, f: Path, out: Path, release: str, n_prot: int, limit: str,
-                  max_file_bytes: int, member_align: bool) -> dict:
-    """From the clusterings `clu90` and `clu50` in the MMseqs2 working directory `w` (and `w/prot.parquet`): each
-    level's members' TSV, the members aligned to their representatives (`aln_<level>`, made here when
-    `member_align`, else made before, in parts, card B-41) and that alignment's TSV; then the release's cluster
-    tables, its `member_cluster` and its ledger under `out`. The TSVs and the Python side's flat files go to `f`
-    (`w` itself, or a directory under it). Closes `mm`'s log. Returns `run`'s report."""
-    rel = "" if f == w else f.relative_to(w).as_posix() + "/"
-    for level, clu in (("nr90", "clu90"), ("nr50", "clu50")):
-        mm("createtsv", "db", "db", clu, f"{rel}{clu}.tsv")
-        _tsv_to_parquet(f / f"{clu}.tsv", f / f"clu_{level}.parquet", {"rep": pa.string(), "member": pa.string()})
+_LEVEL_CLU = {"nr90": "clu90", "nr50": "clu50"}
+
+
+def _write_sorted_parquet(con, sql: str, spec, path: Path) -> None:
+    """Stream `sql` through `io.duck_batches` into a flat Parquet file with `spec.schema`."""
+    with pq.ParquetWriter(path, spec.schema, compression="zstd", compression_level=1) as w:
+        for b in io.duck_batches(con, sql, spec):
+            w.write_batch(b)
+
+
+def _prepare_level(mm: MMseqs, w: Path, f: Path, level: str, limit: str, member_align: bool) -> tuple[int, int]:
+    """Prepare one clustering level (`nr90` or `nr50`) under `f / level`: run `createtsv`, optional
+    member `align`, `convertalis`, `_pick_alignments`, `_cluster_members`, and pre-sort all three
+    output tables (`cluster_member`, `cluster_member_aln`, `member_cluster`) into `f / level / *.parquet`.
+    All temporary TSVs, intermediate Parquets, and DuckDB spill files live under `f / tmp_<level>`
+    and are removed before returning (card B-72, DEC-77). Returns `(n_clusters, n_aligned)`."""
+    clu = _LEVEL_CLU[level]
+    level_dir = f / level
+    stage_dir = f / f"tmp_{level}"
+    shutil.rmtree(stage_dir, ignore_errors=True)
+    shutil.rmtree(level_dir, ignore_errors=True)
+    stage_dir.mkdir(parents=True, exist_ok=True)
+    level_dir.mkdir(parents=True, exist_ok=True)
+    rel_stage = stage_dir.relative_to(w).as_posix() + "/"
+    try:
+        mm("createtsv", "db", "db", clu, f"{rel_stage}{clu}.tsv")
+        _tsv_to_parquet(stage_dir / f"{clu}.tsv", stage_dir / f"clu_{level}.parquet",
+                        {"rep": pa.string(), "member": pa.string()})
+        (stage_dir / f"{clu}.tsv").unlink(missing_ok=True)
         if member_align:
             mm("align", "db", "db", clu, f"aln_{level}", "-a", "-e", "inf", "--min-seq-id", "0", "-c", "0",
                "--alignment-mode", "3")
-        mm("convertalis", "db", "db", f"aln_{level}", f"{rel}aln_{level}.tsv", "--format-output", _ALN_FORMAT)
-        _tsv_to_parquet(f / f"aln_{level}.tsv", f / f"aln_{level}.parquet", _ALN_COLUMNS, line_numbers=True)
-    mm.log.close()
+        mm("convertalis", "db", "db", f"aln_{level}", f"{rel_stage}aln_{level}.tsv", "--format-output", _ALN_FORMAT)
+        _tsv_to_parquet(stage_dir / f"aln_{level}.tsv", stage_dir / f"aln_{level}.parquet",
+                        _ALN_COLUMNS, line_numbers=True)
+        (stage_dir / f"aln_{level}.tsv").unlink(missing_ok=True)
 
-    con = duckdb.connect(config={"threads": 1, "memory_limit": limit, "temp_directory": str(f / "duckdb"),
-                                 "preserve_insertion_order": True})
-    try:
-        aligned = {lvl: _pick_alignments(con, f, lvl, prot=w / "prot.parquet") for lvl in LEVELS}
-        counts = {lvl: _cluster_members(con, f, lvl, params_hash(lvl)) for lvl in LEVELS}
-        mem_spec, aln_spec = table("cluster_member"), table("cluster_member_aln")
-        order = sorted(LEVELS)  # `level` leads both sort keys
+        con = duckdb.connect(config={"threads": 1, "memory_limit": limit,
+                                     "temp_directory": str(stage_dir / "duckdb"),
+                                     "preserve_insertion_order": True})
+        try:
+            aligned = _pick_alignments(con, stage_dir, level, prot=w / "prot.parquet")
+            for p in (f"aln_{level}.parquet", f"by_member_{level}.parquet", f"by_target_{level}.parquet"):
+                (stage_dir / p).unlink(missing_ok=True)
+            clusters = _cluster_members(con, stage_dir, level, params_hash(level))
+            for p in (f"clu_{level}.parquet", f"by_rep_{level}.parquet"):
+                (stage_dir / p).unlink(missing_ok=True)
 
-        def members() -> Iterator[pa.RecordBatch]:
-            for lvl in order:
-                yield from io.duck_batches(con, (
-                    f"SELECT unhex(member) AS member_uid, '{lvl}' AS level, cluster_uid, unhex(rep) AS rep_uid, "
-                    f"'{params_hash(lvl)}' AS cluster_params_hash FROM read_parquet({_sql_path(f / f'mem_{lvl}.parquet')}) "
-                    "ORDER BY cluster_uid, member_uid"), mem_spec)
+            mem_spec = table("cluster_member")
+            mc_spec = table("member_cluster")
+            aln_spec = table("cluster_member_aln")
+            mem_src = _sql_path(stage_dir / f"mem_{level}.parquet")
+            pick_src = _sql_path(stage_dir / f"pick_{level}.parquet")
 
-        def alignments() -> Iterator[pa.RecordBatch]:
+            _write_sorted_parquet(
+                con,
+                f"SELECT unhex(member) AS member_uid, '{level}' AS level, cluster_uid, unhex(rep) AS rep_uid, "
+                f"'{params_hash(level)}' AS cluster_params_hash FROM read_parquet({mem_src}) "
+                "ORDER BY cluster_uid, member_uid",
+                mem_spec,
+                level_dir / "cluster_member.parquet",
+            )
+            _write_sorted_parquet(
+                con,
+                f"SELECT unhex(member) AS member_uid, '{level}' AS level, cluster_uid, unhex(rep) AS rep_uid "
+                f"FROM read_parquet({mem_src}) ORDER BY member_uid",
+                mc_spec,
+                level_dir / "member_cluster.parquet",
+            )
+            (stage_dir / f"mem_{level}.parquet").unlink(missing_ok=True)
+
             # convertalis: query = representative, target = member; coordinates 1-based inclusive.
             # When Smith-Waterman finds no positive-scoring local alignment, MMseqs2 emits 0M with
             # raw -1 starts (convertalis qstart=0, qend=1, tstart=0, tend=0, alnlen=0, cigar='0M' and
             # uninitialized fident); normalize to canonical empty 0-based half-open values (card B-70).
             empty = "alnlen <= 0 OR cigar = '0M' OR qstart <= 0 OR tstart <= 0"
-            for lvl in order:
-                yield from io.duck_batches(con, (
-                    f"SELECT unhex(target) AS member_uid, '{lvl}' AS level, unhex(query) AS rep_uid, "
-                    f"CASE WHEN {empty} THEN 0 ELSE tstart - 1 END AS qstart, "
-                    f"CASE WHEN {empty} THEN 0 ELSE tend END AS qend, "
-                    f"CASE WHEN {empty} THEN 0 ELSE qstart - 1 END AS tstart, "
-                    f"CASE WHEN {empty} THEN 0 ELSE qend END AS tend, "
-                    f"CASE WHEN {empty} THEN CAST(0.0 AS DOUBLE) ELSE fident END AS pident, "
-                    f"CASE WHEN {empty} THEN 0 ELSE alnlen END AS alnlen, "
-                    f"encode(CASE WHEN {empty} THEN '' ELSE cigar END) AS cigar "
-                    f"FROM read_parquet({_sql_path(f / f'pick_{lvl}.parquet')}) "
-                    "ORDER BY rep_uid, member_uid"), aln_spec)
-
-        io.write_parts(members(), mem_spec, out / f"l2/cluster_member/release={release}", EST_MEMBER_ROW,
-                       max_file_bytes)
-        io.write_parts(alignments(), aln_spec, out / f"l2/cluster_member_aln/release={release}", EST_ALN_ROW,
-                       max_file_bytes)
+            _write_sorted_parquet(
+                con,
+                f"SELECT unhex(target) AS member_uid, '{level}' AS level, unhex(query) AS rep_uid, "
+                f"CASE WHEN {empty} THEN 0 ELSE tstart - 1 END AS qstart, "
+                f"CASE WHEN {empty} THEN 0 ELSE tend END AS qend, "
+                f"CASE WHEN {empty} THEN 0 ELSE qstart - 1 END AS tstart, "
+                f"CASE WHEN {empty} THEN 0 ELSE qend END AS tend, "
+                f"CASE WHEN {empty} THEN CAST(0.0 AS DOUBLE) ELSE fident END AS pident, "
+                f"CASE WHEN {empty} THEN 0 ELSE alnlen END AS alnlen, "
+                f"encode(CASE WHEN {empty} THEN '' ELSE cigar END) AS cigar "
+                f"FROM read_parquet({pick_src}) ORDER BY rep_uid, member_uid",
+                aln_spec,
+                level_dir / "cluster_member_aln.parquet",
+            )
+            (stage_dir / f"pick_{level}.parquet").unlink(missing_ok=True)
+        finally:
+            con.close()
+        return clusters, aligned
     finally:
-        con.close()
-    # the lookup by member (card B-27), from the cluster_member files just written
-    write_member_cluster(io.part_files(out / f"l2/cluster_member/release={release}"),
-                         out / f"l2/member_cluster/release={release}", tmp=f, max_file_bytes=max_file_bytes,
-                         memory_limit=limit)
+        shutil.rmtree(stage_dir, ignore_errors=True)
+
+
+def _publish_prepared(f: Path, out: Path, release: str, n_prot: int, counts: dict[str, int],
+                      aligned: dict[str, int], max_file_bytes: int) -> dict:
+    """Stream the pre-sorted per-level Parquet files under `f / <level>` into the release's published
+    `cluster_member`, `cluster_member_aln`, `member_cluster` tables and clustering ledger (zero DuckDB
+    sorting; byte-identical to unsplit `_write_tables`, card B-72)."""
+    order = sorted(LEVELS)  # `level` leads every sort key: ("nr50", "nr90")
+
+    def stream(filename: str) -> Iterator[pa.RecordBatch]:
+        for lvl in order:
+            yield from pq.ParquetFile(f / lvl / filename).iter_batches(batch_size=io.ROW_GROUP_ROWS)
+
+    io.write_parts(stream("cluster_member.parquet"), table("cluster_member"),
+                   out / f"l2/cluster_member/release={release}", EST_MEMBER_ROW, max_file_bytes)
+    io.write_parts(stream("cluster_member_aln.parquet"), table("cluster_member_aln"),
+                   out / f"l2/cluster_member_aln/release={release}", EST_ALN_ROW, max_file_bytes)
+    io.write_parts(stream("member_cluster.parquet"), table("member_cluster"),
+                   out / f"l2/member_cluster/release={release}", EST_MEMBER_CLUSTER_ROW, max_file_bytes)
 
     # the release's own ledger (ledger/release=<R>/step=cluster, card B-28): NR90 sees every protein, NR50
     # the NR90 representatives
@@ -566,6 +619,23 @@ def _write_tables(mm: MMseqs, w: Path, f: Path, out: Path, release: str, n_prot:
                  sorted((ledger.row(lvl.encode(), "level", n_in[lvl], counts[lvl], n_in[lvl] - counts[lvl], tools=tools)
                          for lvl in LEVELS), key=lambda r: (r["object_key"], r["reason_code"])))
     return {"proteins": n_prot, "clusters": counts, "aligned": aligned}
+
+
+def _write_tables(mm: MMseqs, w: Path, f: Path, out: Path, release: str, n_prot: int, limit: str,
+                  max_file_bytes: int, member_align: bool) -> dict:
+    """From the clusterings `clu90` and `clu50` in the MMseqs2 working directory `w` (and `w/prot.parquet`): each
+    level's members' TSV, the members aligned to their representatives (`aln_<level>`, made here when
+    `member_align`, else made before, in parts, card B-41) and that alignment's TSV; then the release's cluster
+    tables, its `member_cluster` and its ledger under `out`. Processed sequentially (`nr90` then `nr50`, cleaning
+    per-level scratch before `nr50`, card B-72). Closes `mm`'s log. Returns `run`'s report."""
+    counts: dict[str, int] = {}
+    aligned: dict[str, int] = {}
+    try:
+        for level in ("nr90", "nr50"):
+            counts[level], aligned[level] = _prepare_level(mm, w, f, level, limit, member_align)
+    finally:
+        mm.log.close()
+    return _publish_prepared(f, out, release, n_prot, counts, aligned, max_file_bytes)
 
 
 # --- clustering in parts (card B-41; design planning/design/B-37_split_clustering.md) -------------------------
@@ -608,6 +678,9 @@ def _write_tables(mm: MMseqs, w: Path, f: Path, out: Path, release: str, n_prot:
 PLAN_FORMAT = 2
 WORK_DIR = "biobox-cluster"  # under the scratch directory: one work directory per root, release and plan
 PLAN_STEP = "cluster.plan"
+FINISH_LEVEL_STEPS = ("cluster.finish.nr90", "cluster.finish.nr50")
+_FINISH_LEVEL_MAP = {"cluster.finish.nr90": "nr90", "cluster.finish.nr50": "nr50"}
+_PRUNED_FILE = ".pruned.json"
 FINAL_STEP = "cluster"
 PLAN_DIR = ARTIFACTS["cluster_plan"].location
 # per-query modules: the positional argument that is split (prefilter's query database; the result database of
@@ -1802,8 +1875,50 @@ def _run_part(ctx: _Ctx, c: Call, k: int, cut_doc: dict, log: Path, name: str,
     return argv, _outputs(ctx.w, [pout])
 
 
+def _finish_level_inputs(level: str) -> tuple[str, ...]:
+    return ("db", "db_h", "prot.parquet", _LEVEL_CLU[level], f"aln_{level}")
+
+
+def _finish_level_outputs(level: str) -> tuple[str, ...]:
+    return (f"finish/{level}/cluster_member.parquet",
+            f"finish/{level}/cluster_member_aln.parquet",
+            f"finish/{level}/member_cluster.parquet")
+
+
+def _execute_finish_level(ctx: _Ctx, name: str, limit: str = DUCK_MEMORY_LIMIT) -> dict:
+    """Run one level-split finish step (`cluster.finish.nr90` or `cluster.finish.nr50`, card B-72)."""
+    level = _FINISH_LEVEL_MAP[name]
+    mode = plan_method(ctx.plan)
+    inputs = _input_digests(ctx, _finish_level_inputs(level))
+    for p, d in inputs.items():
+        if _digest(ctx.w / p) != d:
+            raise ValueError(f"{ctx.w / p}: missing or not its record's ({_producers(mode)[p]}); make it again with "
+                             "bio-box release cluster redo (build-stage does this itself)")
+    f = ctx.w / "finish"
+    f.mkdir(parents=True, exist_ok=True)
+    mm = MMseqs(ctx.w, ctx.threads)
+    try:
+        n_clusters, n_aligned = _prepare_level(mm, ctx.w, f, level, limit, member_align=False)
+    finally:
+        mm.log.close()
+    return {
+        "format": ctx.plan.get("format", PLAN_FORMAT),
+        "release": ctx.release,
+        "step": name,
+        "plan_sha256": ctx.plan_sha256,
+        "module": "finish",
+        "level": level,
+        "clusters": n_clusters,
+        "aligned": n_aligned,
+        "inputs": inputs,
+        "outputs": _outputs(ctx.w, _finish_level_outputs(level)),
+    }
+
+
 def _execute(ctx: _Ctx, name: str, self_matches: bool = True) -> dict:
     """Do step `name` in the work directory; return its record."""
+    if name in _FINISH_LEVEL_MAP:
+        return _execute_finish_level(ctx, name)
     c, kind, k = _parse(name, plan_method(ctx.plan))
     (ctx.w / "logs").mkdir(parents=True, exist_ok=True)
     log = ctx.w / "logs" / f"{name}.log"
@@ -1895,11 +2010,166 @@ def clean_parts(root: Path, release: str, name: str, tmp: Path, out: Path | None
     shutil.rmtree(work_dir(tmp, root, release, out) / f"parts/{name}", ignore_errors=True)
 
 
+def _prune_spec(step_name: str, mode: str) -> tuple[list[str], list[str], list[tuple[str, str]]] | None:
+    """For a completed milestone `step_name` under `mode`, return `(milestones, pruned_steps, targets)` where:
+    - `milestones`: steps whose outputs must remain intact on disk for `pruned_steps` to stay skipped in `lost()`;
+    - `pruned_steps`: upstream call names whose outputs are unlinked (or already covered);
+    - `targets`: `(kind, rel_path)` pairs (`"dir"` or `"db"`) safe to unlink in the work directory.
+    Returns None for steps that do not prune anything (card B-72, DEC-77)."""
+    call_names = [c.name for c in calls(mode)]
+    clu90_prod = "cluster.nr90.14.mergeclusters" if mode == "cascade" else "cluster.nr90.09.mergeclusters"
+    clu50r_prod = {
+        "cascade": "cluster.nr50.22.mergeclusters",
+        "hybrid-a": "cluster.nr50.22.mergeclusters",
+        "hybrid-b1": "cluster.nr50.18.mergeclusters",
+        "linclust": "cluster.nr50.09.mergeclusters",
+    }[mode]
+
+    if step_name == "cluster.nr90.09.mergeclusters" and mode == "cascade":
+        return (
+            ["cluster.nr90.09.mergeclusters"],
+            [n for n in call_names if n.startswith("cluster.nr90.0") and n != "cluster.nr90.09.mergeclusters"],
+            [("dir", "tmp90/w/linclust")],
+        )
+    if step_name == "cluster.nr90.13.clust" and mode == "cascade":
+        return (
+            ["cluster.nr90.13.clust"],
+            ["cluster.nr90.10.createsubdb", "cluster.nr90.11.prefilter", "cluster.nr90.12.align"],
+            [("db", "tmp90/w/pref_step0"), ("db", "tmp90/w/aln_step0"), ("db", "tmp90/w/input_step_redundancy")],
+        )
+    if step_name == "cluster.rep90":
+        return (
+            [clu90_prod],
+            [n for n in call_names if n.startswith("cluster.nr90.") and n != clu90_prod and n != "cluster.nr90.members"],
+            [("dir", "tmp90/w")],
+        )
+    if step_name == "cluster.nr50.09.mergeclusters":
+        return (
+            ["cluster.nr50.09.mergeclusters"],
+            [n for n in call_names if n.startswith("cluster.nr50.0") and n != "cluster.nr50.09.mergeclusters"],
+            [("dir", "tmp50/w/linclust")],
+        )
+    if step_name == "cluster.nr50.13.clust" and mode != "linclust":
+        return (
+            ["cluster.nr50.13.clust"],
+            ["cluster.nr50.11.prefilter", "cluster.nr50.12.align"],
+            [("db", "tmp50/w/pref_step0"), ("db", "tmp50/w/aln_step0")],
+        )
+    if step_name == "cluster.nr50.14.createsubdb" and mode != "linclust":
+        return (
+            ["cluster.nr50.13.clust", "cluster.nr50.14.createsubdb"],
+            ["cluster.nr50.10.createsubdb"],
+            [("db", "tmp50/w/input_step_redundancy")],
+        )
+    if step_name == "cluster.nr50.17.clust" and mode != "linclust":
+        if mode == "hybrid-b1":
+            return (
+                ["cluster.nr50.17.clust"],
+                ["cluster.nr50.14.createsubdb", "cluster.nr50.15.prefilter", "cluster.nr50.16.align"],
+                [("db", "tmp50/w/pref_step1"), ("db", "tmp50/w/aln_step1"), ("db", "tmp50/w/input_step1")],
+            )
+        return (
+            ["cluster.nr50.17.clust"],
+            ["cluster.nr50.15.prefilter", "cluster.nr50.16.align"],
+            [("db", "tmp50/w/pref_step1"), ("db", "tmp50/w/aln_step1")],
+        )
+    if step_name == "cluster.nr50.18.createsubdb" and mode in ("cascade", "hybrid-a"):
+        return (
+            ["cluster.nr50.17.clust", "cluster.nr50.18.createsubdb"],
+            ["cluster.nr50.14.createsubdb"],
+            [("db", "tmp50/w/input_step1")],
+        )
+    if step_name == "cluster.nr50.21.clust" and mode in ("cascade", "hybrid-a"):
+        return (
+            ["cluster.nr50.21.clust"],
+            ["cluster.nr50.18.createsubdb", "cluster.nr50.19.prefilter", "cluster.nr50.20.align"],
+            [("db", "tmp50/w/pref_step2"), ("db", "tmp50/w/aln_step2"), ("db", "tmp50/w/input_step2")],
+        )
+    if step_name == clu50r_prod and mode != "linclust":
+        return (
+            [clu50r_prod],
+            [n for n in call_names if n.startswith("cluster.nr50.") and n != clu50r_prod and n != "cluster.nr50.members"],
+            [("dir", "tmp50/w")],
+        )
+    if step_name == "cluster.merge":
+        return (
+            ["cluster.merge"],
+            ["cluster.rep90", *(n for n in call_names if n.startswith("cluster.nr50.") and n != "cluster.nr50.members")],
+            [("db", "clu50r"), ("db", "rep90")],
+        )
+    if step_name == "cluster.finish.nr90":
+        return (["cluster.finish.nr90"], ["cluster.nr90.members"], [("db", "aln_nr90")])
+    if step_name == "cluster.finish.nr50":
+        return (["cluster.finish.nr50"], ["cluster.nr50.members"], [("db", "aln_nr50")])
+    return None
+
+
+def _read_pruned(w: Path) -> list[dict]:
+    p = w / _PRUNED_FILE
+    if not p.is_file():
+        return []
+    return json.loads(p.read_bytes()).get("entries", [])
+
+
+def _write_pruned(w: Path, entries: list[dict]) -> None:
+    p = w / _PRUNED_FILE
+    tmp = p.with_name(f".{p.name}.tmp-{os.getpid()}")
+    tmp.write_bytes(_json_bytes({"entries": entries}))
+    os.replace(tmp, p)
+
+
+def clean_consumed(root: Path, release: str, step_name: str, tmp: Path, out: Path | None = None) -> list[str]:
+    """Unlink dead MMseqs2 intermediates in the work directory once their downstream milestone `step_name`
+    is recorded and verified intact on disk (card B-72, DEC-77). Records pruned milestones atomically in
+    `<work_dir>/.pruned.json` so `lost()` skips pruned intermediates while their verified downstream
+    milestone remains intact, and rebuilds them if the milestone itself is lost or corrupted. Idempotent
+    on resume; returns the list of unlinked relative paths."""
+    plan_ = read_record(root, release, PLAN_STEP, out)
+    if plan_ is None:
+        raise FileNotFoundError(f"release {release}: no plan of clustering in parts ({_rel(release, PLAN_STEP)})")
+    mode = plan_method(plan_)
+    spec = _prune_spec(step_name, mode)
+    if spec is None:
+        return []
+    milestones, pruned_steps, targets = spec
+    w = _work_dir(tmp, root, _plan_input_dict(plan_))
+    entries = _read_pruned(w)
+    if any(e.get("step") == step_name for e in entries):
+        return []
+
+    # Verify the trigger step and all required downstream milestones are recorded AND intact on disk
+    for req in dict.fromkeys([step_name, *milestones]):
+        rec = read_record(root, release, req, out)
+        if rec is None:
+            raise FileNotFoundError(f"{req}: milestone is not published; refusing to prune intermediates")
+        for rel_p, digest in rec.get("outputs", {}).items():
+            if _digest(w / rel_p) != digest:
+                raise ValueError(f"{w / rel_p}: milestone {req} output is missing or does not match its record; "
+                                 "refusing to prune intermediates")
+
+    removed: list[str] = []
+    for kind, rel in targets:
+        target = w / rel
+        if kind == "dir":
+            if target.exists():
+                shutil.rmtree(target, ignore_errors=True)
+                removed.append(rel)
+        else:
+            if target.parent.is_dir():
+                _clear(w, rel)
+                removed.append(rel)
+    entries.append({"step": step_name, "milestones": milestones, "steps": pruned_steps})
+    _write_pruned(w, entries)
+    return removed
+
+
 def lost(root: Path, release: str, tmp: Path, out: Path | None = None) -> list[str]:
     """Every step with a record whose outputs are not in the work directory as its record holds them (missing, or
     another digest), in step order: what `redo` must make again before the build goes on (a reboot clears /tmp).
     A cut has no outputs, but a cut that built a shared index is listed when that index is missing; the index and a
-    part are not needed again once their call's join is published and in place."""
+    part are not needed again once their call's join is published and in place. Intermediates pruned by
+    `clean_consumed` (recorded in `<work_dir>/.pruned.json`) are skipped while all of their downstream milestones
+    remain verified intact on disk (card B-72)."""
     if read_record(root, release, PLAN_STEP, out) is None:
         return []
     w, good, bad = work_dir(tmp, root, release, out), {}, []
@@ -1910,13 +2180,31 @@ def lost(root: Path, release: str, tmp: Path, out: Path | None = None) -> list[s
             good[name] = None if rec is None else all(_digest(w / p) == d for p, d in rec.get("outputs", {}).items())
         return good[name]
 
-    for name in sequence(root, release, out):
+    skip_calls: set[str] = set()
+    entries = _read_pruned(w)
+    changed = True
+    while changed:
+        changed = False
+        for ent in entries:
+            if all(ok(m) or m in skip_calls for m in ent.get("milestones", ())):
+                before = len(skip_calls)
+                skip_calls.update(ent.get("steps", ()))
+                changed = changed or len(skip_calls) != before
+
+    names = list(sequence(root, release, out))
+    for fs in FINISH_LEVEL_STEPS:
+        if read_record(root, release, fs, out) is not None:
+            names.append(fs)
+
+    for name in names:
         rec = read_record(root, release, name, out)
         if rec is None:
             break
+        if name in skip_calls:
+            continue
         m = _PART.fullmatch(name)
         call = m["call"] if m else name[:-4] if name.endswith(".cut") else None
-        if call is not None and ok(call):
+        if call is not None and (ok(call) or call in skip_calls):
             continue
         if name.endswith(".cut"):  # its shared index: made again when missing (its bytes are not its record's)
             if "index" in rec and not Path(w / f"{rec['index']['path']}.dbtype").is_file():
@@ -1952,10 +2240,11 @@ def redo(root: Path, release: str, name: str, tmp: Path, threads: int, *, out: P
 
 def finish(root: Path, release: str, tmp: Path, threads: int, *, out: Path | None = None,
            max_file_bytes: int = layout.MAX_FILE_BYTES, memory_limit: str | None = None) -> dict:
-    """Step `cluster` of clustering in parts: from the work directory's clusterings and member alignments, the
-    TSVs, the Python side and the tables, `member_cluster`, the ledger and (when the root has none) the release's
-    `release_def`, as `run` writes them, under `out` (default `root`). Needs every step's record and its inputs in
-    the work directory with their recorded digests."""
+    """Step `cluster` of clustering in parts: from the work directory's clusterings and member alignments (or
+    from the pre-sorted per-level Parquet files prepared by `cluster.finish.nr90` / `cluster.finish.nr50`, card
+    B-72), publish `cluster_member`, `cluster_member_aln`, `member_cluster`, the ledger and (when the root has
+    none) the release's `release_def`, as `run` writes them, under `out` (default `root`). Backwards-compatible
+    when called directly without prior `cluster.finish.<level>` steps."""
     root = Path(root)
     out_root = root if out is None else Path(out)
     ctx = _ctx(root, release, tmp, out, threads)
@@ -1967,22 +2256,50 @@ def finish(root: Path, release: str, tmp: Path, threads: int, *, out: Path | Non
     if todo or names[-1] != calls(mode)[-1].name:
         raise FileNotFoundError(f"release {release}: step {todo[0] if todo else names[-1]} and those after it have no "
                                 "record; the clustering is not done")
-    want = _input_digests(ctx, FINISH_INPUTS)
-    for p, d in want.items():
-        if _digest(ctx.w / p) != d:
-            raise ValueError(f"{ctx.w / p}: missing or not its record's ({_producers(mode)[p]}); make it again with bio-box "
-                             "release cluster redo (build-stage does this itself)")
-    catalog.define_release(root, release, stages, out=out_root)
     f = ctx.w / "finish"
-    if f.exists():
-        shutil.rmtree(f)  # an earlier attempt's
-    f.mkdir()
     limit = DUCK_MEMORY_LIMIT if memory_limit is None else memory_limit
+    counts: dict[str, int] = {}
+    aligned: dict[str, int] = {}
+    pre_recs = {lvl: read_record(root, release, f"cluster.finish.{lvl}", out) for lvl in ("nr90", "nr50")}
+    if not any(pre_recs.values()):
+        if f.exists():
+            shutil.rmtree(f)  # an earlier unsplit attempt's
+        f.mkdir()
+    else:
+        f.mkdir(parents=True, exist_ok=True)
+    mm: MMseqs | None = None
     try:
-        return _write_tables(MMseqs(ctx.w, threads), ctx.w, f, out_root, release, ctx.plan["proteins"], limit,
-                             max_file_bytes, member_align=False)
-    finally:
+        for lvl in ("nr90", "nr50"):
+            rec = pre_recs[lvl]
+            if rec is not None:
+                for p, d in rec.get("outputs", {}).items():
+                    if _digest(ctx.w / p) != d:
+                        raise ValueError(f"{ctx.w / p}: missing or not its record's (cluster.finish.{lvl}); make it "
+                                         "again with bio-box release cluster redo (build-stage does this itself)")
+                counts[lvl] = rec["clusters"]
+                aligned[lvl] = rec["aligned"]
+            else:
+                want = _input_digests(ctx, _finish_level_inputs(lvl))
+                for p, d in want.items():
+                    if _digest(ctx.w / p) != d:
+                        raise ValueError(f"{ctx.w / p}: missing or not its record's ({_producers(mode)[p]}); make it "
+                                         "again with bio-box release cluster redo (build-stage does this itself)")
+                if mm is None:
+                    mm = MMseqs(ctx.w, threads)
+                counts[lvl], aligned[lvl] = _prepare_level(mm, ctx.w, f, lvl, limit, member_align=False)
+        if mm is not None:
+            mm.log.close()
+            mm = None
+        catalog.define_release(root, release, stages, out=out_root)
+        res = _publish_prepared(f, out_root, release, ctx.plan["proteins"], counts, aligned, max_file_bytes)
         shutil.rmtree(f, ignore_errors=True)
+        return res
+    except BaseException:
+        if mm is not None:
+            mm.log.close()
+        if not any(pre_recs.values()):
+            shutil.rmtree(f, ignore_errors=True)
+        raise
 
 
 def run_split(root: Path, release: str, gene_call_version: str, stages: list[str], *, tmp: Path,
@@ -1990,9 +2307,11 @@ def run_split(root: Path, release: str, gene_call_version: str, stages: list[str
               one_process_cpu_min_max: float | None = None, rebuild_cpu_min: float | None = None, threads: int = 1,
               out: Path | None = None, until: str | None = None, max_file_bytes: int = layout.MAX_FILE_BYTES,
               memory_limit: str | None = None, mode: str = DEFAULT_CLUSTERING_MODE,
+              prune: bool = False, split_finish: bool = False,
               _self_matches: bool = True, _shared_index: bool = True) -> dict | None:
     """Clustering in parts in this process: the plan, every step without a record in order (each join's parts
-    removed once it is recorded), `finish`, then the work directory removed. A step with a record is passed over,
+    removed once it is recorded), optional `clean_consumed` pruning (`prune`), optional level-split finish steps
+    (`split_finish`), `finish`, then the work directory removed. A step with a record is passed over,
     so a call resumes; `until` stops before that step (`FINAL_STEP`: before `finish`). The files are `run`'s.
     `one_process_cpu_min_max`, `rebuild_cpu_min`: as `plan` (card B-45). `mode`: `CLUSTERING_MODES` (card B-71).
     `_self_matches`, `_shared_index`: as `step` (tests only)."""
@@ -2013,8 +2332,19 @@ def run_split(root: Path, release: str, gene_call_version: str, stages: list[str
             return None
         step(root, release, todo[0], tmp, threads, out=out, _self_matches=_self_matches, _shared_index=_shared_index)
         c, kind, _ = _parse(todo[0], active_mode)
-        if kind == "call" and c.split and len(read_record(root, release, f"{c.name}.cut", out)["parts"]) > 1:
-            clean_parts(root, release, c.name, tmp, out)
+        if kind == "call":
+            if c.split and len(read_record(root, release, f"{c.name}.cut", out)["parts"]) > 1:
+                clean_parts(root, release, c.name, tmp, out)
+            if prune:
+                clean_consumed(root, release, c.name, tmp, out)
+    if split_finish:
+        for fs in FINISH_LEVEL_STEPS:
+            if read_record(root, release, fs, out) is None:
+                if until == fs:
+                    return None
+                step(root, release, fs, tmp, threads, out=out)
+                if prune:
+                    clean_consumed(root, release, fs, tmp, out)
     if until == FINAL_STEP:
         return None
     res = finish(root, release, tmp, threads, out=out, max_file_bytes=max_file_bytes, memory_limit=memory_limit)
@@ -2133,6 +2463,14 @@ def _source_problem(root: Path, release: str, source: str, want: dict) -> str | 
                 return f"its record of {name} ran other MMseqs2 arguments than this code's"
         elif "argv" in doc and doc["argv"] != list(c.argv):  # a call run whole (a join records its parts instead)
             return f"its record of {name} ran other MMseqs2 arguments than this code's"
+    for fs in FINISH_LEVEL_STEPS:
+        r = _record_raw(root, source, fs)
+        if r is None:
+            continue
+        doc = json.loads(r)
+        if (r != _json_bytes(doc) or doc.get("release") != source or doc.get("plan_sha256") != sha1
+                or doc.get("module") != "finish"):
+            return f"its record of {fs} is not a record of its plan"
     got = _published(root, source)
     if isinstance(got, str):
         return got
@@ -2303,7 +2641,7 @@ def reuse(root: Path, release: str, gene_call_version: str, stages: list[str], t
     for t, dst in moves:
         os.replace(t, dst)
     catalog.define_release(root, release, stages, out=out_root)
-    names = sequence(root, src)
+    names = sequence(root, src) + [fs for fs in FINISH_LEVEL_STEPS if _record_raw(root, src, fs) is not None]
     _write_record(root, out_root, release, PLAN_STEP, plan2)
     for name in names[1:]:
         _write_record(root, out_root, release, name,
