@@ -1371,8 +1371,8 @@ def test_b41_a_release_clustered_in_parts_equals_the_build_that_clusters_in_one_
     check_parts_equal_direct(direct, root)
     done = release_steps_done(root)
     calls = l2cluster.calls()
-    want = {l2cluster.PLAN_STEP, l2cluster.FINAL_STEP, *(c.name for c in calls),
-            *(f"{c.name}.cut" for c in calls if c.split)}
+    want = {l2cluster.PLAN_STEP, l2cluster.FINAL_STEP, *l2cluster.FINISH_LEVEL_STEPS,
+            *(c.name for c in calls), *(f"{c.name}.cut" for c in calls if c.split)}
     parts = [n for n in done if ".part-" in n]
     assert set(done) == want | set(parts) | set(NAMES[8:])
     # every per-query call with two keys or more ran as two part steps; each part is a run-step of its own
@@ -1381,10 +1381,11 @@ def test_b41_a_release_clustered_in_parts_equals_the_build_that_clusters_in_one_
     # each step but the tables left its record in the cluster_plan artifact; none is in the manifest (checked above)
     recs = {p.name.removesuffix(".json") for p in (root / PLAN_RECORDS / f"release={REL}").glob("*.json")}
     assert recs == set(done) - {l2cluster.FINAL_STEP} - set(NAMES[8:])
-    # in order: the plan, each call (its parts before its join), the tables under the cluster step's name
+    # in order: the plan, each call (its parts before its join), the level-split finish steps, then `cluster`
     order = [p.removeprefix("after:") for p in seen]
     i, j = order.index(l2cluster.PLAN_STEP), order.index(l2cluster.FINAL_STEP)
-    assert order[j - 1] == calls[-1].name and set(order[i:j]) == recs
+    assert order[j - len(l2cluster.FINISH_LEVEL_STEPS):j] == list(l2cluster.FINISH_LEVEL_STEPS)
+    assert order[j - len(l2cluster.FINISH_LEVEL_STEPS) - 1] == calls[-1].name and set(order[i:j]) == recs
     for c in calls:
         k = order.index(c.name)
         assert all(order.index(p) < k for p in by_call.get(c.name, []))
@@ -1433,12 +1434,12 @@ def test_b41_clustering_runs_in_parts_when_its_estimate_passes_80_percent_of_the
 
 @pytest.mark.covers("B-37", "D-03")
 def test_b41_a_scratch_database_lost_after_its_record_is_made_again_and_the_build_ends_byte_identical(direct, tmp_path):
-    """A build killed after the NR50 cascade's last prefilter; then the joined NR90 cascade prefilter is deleted from
-    scratch (its parts were removed when the join was published). The next call makes the parts and the join again
-    (each to its record), then goes on from the step after the kill, and ends byte-identical."""
+    """A build killed after the NR50 cascade's last prefilter; then that joined prefilter (a still-live unpruned
+    output whose parts and shared index were removed when its join was published) is deleted from scratch. The next
+    call makes the cut/index, parts and join again (each to its record), then goes on from the step after the kill,
+    and ends byte-identical."""
     root = tmp_path / "root"
     b = parts_of(direct, root)
-    pref90 = next(c for c in l2cluster.calls() if c.name.startswith("cluster.nr90.") and c.module == "prefilter")
     last50 = [c for c in l2cluster.calls() if c.name.startswith("cluster.nr50.") and c.module == "prefilter"][-1]
 
     def kill(point: str) -> None:
@@ -1448,11 +1449,11 @@ def test_b41_a_scratch_database_lost_after_its_record_is_made_again_and_the_buil
     with pytest.raises(Killed):
         bs.build_stage(direct["prof"], b, run=runner, _hook=kill)
     w = l2cluster.work_dir(bs.scratch_of(direct["prof"], b), root.resolve(), REL)
-    gone = list((w / pref90.output).parent.glob(Path(pref90.output).name + "*"))
+    gone = list((w / last50.output).parent.glob(Path(last50.output).name + "*"))
     assert gone
     for p in gone:
         p.unlink()
-    parts = sorted(n for n in release_steps_done(root) if n.startswith(f"{pref90.name}.part-"))
+    parts = sorted(n for n in release_steps_done(root) if n.startswith(f"{last50.name}.part-"))
     assert len(parts) == 2
     started: list[str] = []
 
@@ -1464,7 +1465,7 @@ def test_b41_a_scratch_database_lost_after_its_record_is_made_again_and_the_buil
     seen: list[str] = []
     assert bs.build_stage(direct["prof"], b, run=recording, _hook=seen.append) == 0
     redone = [p.removeprefix("after:").removesuffix(".redo") for p in seen if p.endswith(".redo")]
-    assert redone == [*parts, pref90.name]
+    assert redone == [f"{last50.name}.cut", *parts, last50.name]
     after = l2cluster.calls()[[c.name for c in l2cluster.calls()].index(last50.name) + 1]
     assert started[0] == (f"{after.name}.cut" if after.split else after.name)  # nothing published ran again
     check_parts_equal_direct(direct, root)
