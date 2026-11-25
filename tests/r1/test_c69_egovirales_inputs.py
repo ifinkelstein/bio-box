@@ -24,7 +24,7 @@ pytestmark = pytest.mark.covers("C-69")  # ring R1 by directory (tests/conftest.
 
 REPO = Path(__file__).resolve().parents[2]
 BSP = REPO / "scripts" / "stress" / "build_stage_pod"
-STAGES = BSP / "stages"
+STAGES_TEMPLATES = BSP / "stages" / "templates"
 
 
 def _load(name: str):
@@ -304,7 +304,7 @@ def test_stage_egv1_refuses_non_redistributable_md5_mismatch_and_existing_out(tm
 
 def test_egv1_conf_parses_with_stage_est_read_conf():
     est = _load("stage_est")
-    c = est.read_conf(STAGES / "EGV1.conf", "EGV1", tree=REPO)
+    c = est.read_conf(STAGES_TEMPLATES / "EGV1.conf", "EGV1", tree=REPO)
     assert c.stage == "EGV1"
     assert c.inputs == Path("/tmp/if2453/s2/inputs/EGV1")
     assert c.depth == "annotated"
