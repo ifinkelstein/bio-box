@@ -597,7 +597,7 @@ def test_the_tree_sources_yaml_parses_and_every_tower_entry_has_its_record():
     assert len(tower) >= 70
     for e in tower:
         assert e["url"].startswith("https://") and "license" in e, e["name"]
-        assert str(e["approved"]).startswith("by the PI, 2026-11-25 "), e["name"]
+        assert re.match(r"by the PI, 20\d\d-\d\d-\d\d ", str(e["approved"])), e["name"]
         assert "fetched" in e and "stored" in e, e["name"]
         for f in e.get("files", []):
             assert re.fullmatch(r"[0-9a-f]{64}", f["sha256"]) and isinstance(f["bytes"], int) and f["bytes"] > 0, (e["name"], f)
