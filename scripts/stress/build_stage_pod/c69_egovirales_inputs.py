@@ -169,6 +169,7 @@ def _iter_zip_fasta_members(
     zf: zipfile.ZipFile,
     prefix: str,
     skipped_members: list[tuple[str, int, str]],
+    members_prefix: str = "",
 ) -> Iterator[tuple[str, str, bytes]]:
     infos = sorted((i for i in zf.infolist() if not i.is_dir()), key=lambda i: i.filename)
     for info in infos:
@@ -177,6 +178,9 @@ def _iter_zip_fasta_members(
         base = name.rsplit("/", 1)[-1]
         if not base or base.startswith(".") or "__MACOSX" in name.split("/"):
             skipped_members.append((full_name, info.file_size, "ignored_system_entry"))
+            continue
+        if members_prefix and not name.startswith(members_prefix):
+            skipped_members.append((full_name, info.file_size, "outside_members_prefix"))
             continue
         low = name.lower()
         if low.endswith(".zip"):
@@ -197,8 +201,14 @@ def _iter_zip_fasta_members(
 def _iter_genome_fastas(
     src: Path,
     skipped_members: list[tuple[str, int, str]],
+    members_prefix: str = "",
 ) -> Iterator[tuple[str, str, bytes]]:
-    """Yield `(genome_name, member_label, fasta_bytes)` deterministically from a zip, tar, directory, or FASTA."""
+    """Yield `(genome_name, member_label, fasta_bytes)` deterministically from a zip, tar, directory, or FASTA.
+
+    With `members_prefix`, only members of a zip whose path starts with it are read (Item 08 holds the 224 genomes in
+    `01_Egovirales_224_MAGs/` and byte-identical copies of subsets of them in folders 02 to 04); the others are listed
+    in `skipped_members` as `outside_members_prefix`.
+    """
     src = Path(src)
     if src.is_dir():
         files = sorted((p for p in src.rglob("*") if p.is_file()), key=lambda p: p.relative_to(src).as_posix())
@@ -219,7 +229,7 @@ def _iter_genome_fastas(
     low = src.name.lower()
     if low.endswith(".zip"):
         with zipfile.ZipFile(src) as zf:
-            yield from _iter_zip_fasta_members(zf, "", skipped_members)
+            yield from _iter_zip_fasta_members(zf, "", skipped_members, members_prefix)
     elif low.endswith((".tar.gz", ".tgz", ".tar")):
         with tarfile.open(src, "r:*") as tf:
             yield from _iter_tar_fasta_members(tf, "", skipped_members)
@@ -243,6 +253,15 @@ def compute_prefix_overlap(
     return v2.owners_of(list(contig_uids), root, list(root_stages), owner_inputs)
 
 
+def chain_owner_inputs(chain_home: Path) -> dict[str, Path]:
+    """The staged inputs that hold contigs before `EGV1`, in build order: the 19 stages of `r26.11.4`
+    (`a26_r26_11_4_chain.R26_11_4_CHAIN`), then `GV1` (plan 2026-11-26 §5: `AFTER=GV1`)."""
+    import a26_r26_11_4_chain as a26
+
+    home = Path(chain_home)
+    return {s: home / s for s in [*(st for st, _ in a26.R26_11_4_CHAIN), "GV1"]}
+
+
 # --------------------------------------------------------------------------------------------------------------
 # Stage EGV1
 
@@ -259,6 +278,7 @@ def stage_egv1(
     expected_md5: str | None = None,
     redistributable: bool = True,
     stage_name: str = "EGV1",
+    members_prefix: str = "",
 ) -> dict:
     """Stage `EGV1` (*Egovirales* 224 genomes) byte-identically as linear untrimmed `virus` genomes (`DEC-65`)."""
     if not redistributable:
@@ -293,15 +313,23 @@ def stage_egv1(
             retrieved=retrieved,
             source_md5=got_md5,
             expected_md5=expected_md5,
+            members_prefix=members_prefix,
         )
     except BaseException:
         shutil.rmtree(work, ignore_errors=True)
         raise
 
     work.rename(out)
+    if obj_dir != out:
+        # `objects.json` names the file where card A-29 will put it; this one names it where it is now, for
+        # `s2_check_inputs.py` before the move. Outside `inputs_SUMS`: its path depends on `out`.
+        staged = json.loads((out / "objects.json").read_text(encoding="utf-8"))
+        for o in staged:
+            o["path"] = str(out / Path(o["path"]).name)
+        (out / "objects_staging.json").write_text(json.dumps(staged, indent=1) + "\n", encoding="utf-8")
     sum_files = sorted(
         p.name for p in out.iterdir()
-        if p.is_file() and p.name not in ("inputs_SUMS", "stage_report.json")
+        if p.is_file() and p.name not in ("inputs_SUMS", "stage_report.json", "objects_staging.json")
     )
     sha_map = {n: ids.sha256_file(out / n).hex() for n in sum_files}
     bytes_map = {n: (out / n).stat().st_size for n in sum_files}
@@ -326,6 +354,7 @@ def _stage_egv1_work(
     retrieved: str,
     source_md5: str | None,
     expected_md5: str | None,
+    members_prefix: str = "",
 ) -> dict:
     skipped_members: list[tuple[str, int, str]] = []
     skipped_records: list[tuple[str, str, str, int]] = []
@@ -335,7 +364,7 @@ def _stage_egv1_work(
     seen_genome_names: set[str] = set()
 
     with open(work / EGV1_FASTA, "wb") as fa_w:
-        for gname, member, raw in _iter_genome_fastas(src, skipped_members):
+        for gname, member, raw in _iter_genome_fastas(src, skipped_members, members_prefix):
             if gname in seen_genome_names:
                 raise Refused(f"{stage_name}: duplicate genome name {gname!r} ({member})")
             seen_genome_names.add(gname)
@@ -477,6 +506,7 @@ def _stage_egv1_work(
         "redistributable": True,
         "source_md5": source_md5,
         "expected_md5": expected_md5,
+        "members_prefix": members_prefix,
         "fasta_members": len(genomes_in),
         "skipped_members": len(skipped_members),
         "skipped_records": len(skipped_records),
@@ -647,6 +677,18 @@ def main(argv: list[str] | None = None) -> int:
         default=[],
         help="Staged earlier inputs as STAGE=DIR (repeatable, in build order)",
     )
+    sp.add_argument(
+        "--chain-home",
+        type=Path,
+        default=None,
+        help="Directory holding the staged inputs of the 19 r26.11.4 stages and GV1; added to --owner-inputs in "
+        "chain order",
+    )
+    sp.add_argument(
+        "--members-prefix",
+        default="",
+        help="Read only the zip members whose path starts with this (Item 08: the 01_Egovirales_224_MAGs/ folder)",
+    )
     sp.add_argument("--final-dir", type=Path, default=None, help="Final object path prefix in objects.json")
     sp.add_argument("--expected-md5", default=ITEM08_MD5)
     sp.add_argument("--skip-md5", action="store_true")
@@ -669,7 +711,8 @@ def main(argv: list[str] | None = None) -> int:
                 raise Refused("stage requires either --src or --dl")
             src = args.dl / ITEM08_FILENAME
         root_stages = [s.strip() for s in args.root_stages.split(",") if s.strip()]
-        owner_inputs = _parse_kv(args.owner_inputs)
+        owner_inputs = chain_owner_inputs(args.chain_home) if args.chain_home is not None else {}
+        owner_inputs.update(_parse_kv(args.owner_inputs))
         exp_md5 = None if (args.skip_md5 or not src.is_file()) else args.expected_md5
         rep = stage_egv1(
             src,
@@ -680,6 +723,7 @@ def main(argv: list[str] | None = None) -> int:
             retrieved=args.retrieved,
             final_dir=args.final_dir,
             expected_md5=exp_md5,
+            members_prefix=args.members_prefix,
         )
         if args.out_report is not None:
             args.out_report.write_text(json.dumps(rep, indent=1, sort_keys=True) + "\n", encoding="utf-8")

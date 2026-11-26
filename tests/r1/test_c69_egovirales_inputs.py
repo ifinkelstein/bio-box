@@ -314,3 +314,114 @@ def test_egv1_conf_parses_with_stage_est_read_conf():
     assert c.min_contig_len is None
     assert c.after == ("GV1",)
     assert "planning/measurements/2026-11-24_egv1_prep.md" in c.notes
+
+
+# --- additions of the staging session (2026-11-26): the zip's real layout, the r26.11.4 chain, the record -----------
+
+INPUTS_NOTE = REPO / "planning" / "measurements" / "2026-11-26_egv1_inputs.md"
+ZIP_ROOT = "ITEM_08_Egovirales_Genomes/"
+FOLDER_01 = ZIP_ROOT + "01_Egovirales_224_MAGs/"
+
+
+def test_stage_egv1_members_prefix_takes_the_224_folder_and_skips_its_byte_identical_copies(tmp_path):
+    m = _load("c69_egovirales_inputs")
+    fa_a = b">a_scaffold_1\n" + b"GATTACAGATTACAGG" * 60 + b"\n"
+    fa_b = b">b_scaffold_1\n" + b"TTGACCAATGGCCAAT" * 70 + b"\n"
+    members = [
+        (ZIP_ROOT + "READ_ME.txt", b"This item holds folders\n"),
+        (ZIP_ROOT + ".DS_Store", b"\x00\x00"),
+        ("__MACOSX/" + ZIP_ROOT + "01_Egovirales_224_MAGs/._a-contigs.fa", b"\x00junk"),
+        (FOLDER_01 + "a-contigs.fa", fa_a),
+        (FOLDER_01 + "b-contigs.fa", fa_b),
+        (ZIP_ROOT + "02_Egovirales_116_nrMAgs-indidual_genomes/a-contigs.fa", fa_a),  # same name, same bytes
+        (ZIP_ROOT + "03_Egovirales_6_nrMAGs-human-indidual_genomes/all_six.fa", fa_a + fa_b),
+        (ZIP_ROOT + "04_ZEEV/DNApol_B", b">p\nMKV\n"),
+    ]
+    zpath = _make_zip(tmp_path / "item08.zip", members)
+    kw = dict(root=None, root_stages=(), owner_inputs={}, retrieved="2026-11-26T00:00:00Z",
+              final_dir=Path("/tmp/if2453/s2/inputs/EGV1"))
+
+    with pytest.raises(m.Refused, match="duplicate genome name"):
+        m.stage_egv1(zpath, tmp_path / "all", **kw)
+
+    rep = m.stage_egv1(zpath, tmp_path / "only01", members_prefix=FOLDER_01, **kw)
+    assert rep["genomes"] == 2
+    assert rep["fasta_members"] == 2
+    assert rep["contigs"] == 2
+    assert rep["bases"] == 16 * 60 + 16 * 70
+    with open(tmp_path / "only01" / "skipped_members.tsv", newline="") as fh:
+        reasons = {r["member"]: r["reason"] for r in csv.DictReader(fh, delimiter="\t")}
+    assert reasons[ZIP_ROOT + "02_Egovirales_116_nrMAgs-indidual_genomes/a-contigs.fa"] == "outside_members_prefix"
+    assert reasons[ZIP_ROOT + "03_Egovirales_6_nrMAGs-human-indidual_genomes/all_six.fa"] == "outside_members_prefix"
+    assert all(r in ("outside_members_prefix", "ignored_system_entry", "not_fasta") for r in reasons.values())
+
+    # the folder's own order and the zip's member order do not matter
+    zrev = _make_zip(tmp_path / "item08_rev.zip", list(reversed(members)), date_time=(2026, 11, 1, 1, 1, 2))
+    m.stage_egv1(zrev, tmp_path / "rev", members_prefix=FOLDER_01, **kw)
+    for fname in ("egovirales_gaia_2026.fna", "genomes.json", "records.tsv", "skipped_members.tsv", "inputs_SUMS"):
+        assert (tmp_path / "only01" / fname).read_bytes() == (tmp_path / "rev" / fname).read_bytes(), fname
+
+
+def test_chain_owner_inputs_follow_the_r26_11_4_order_and_end_with_gv1(tmp_path):
+    m = _load("c69_egovirales_inputs")
+    a26 = _load("a26_r26_11_4_chain")
+    owners = m.chain_owner_inputs(tmp_path)
+    assert list(owners) == [s for s, _ in a26.R26_11_4_CHAIN] + ["GV1"]
+    assert len(owners) == 20
+    assert owners["V2"] == tmp_path / "V2"
+    assert owners["GV1"] == tmp_path / "GV1"
+
+
+def test_stage_egv1_owner_inputs_in_chain_order_first_holder_owns(tmp_path):
+    from biobox import ids
+
+    m = _load("c69_egovirales_inputs")
+    seq_both = b"AACCGGTTAACCGGTT" * 100
+    seq_new = b"CGTACGTAGCTAGCTA" * 100
+    zpath = _make_zip(tmp_path / "z.zip", [("g.fna", b">c1\n" + seq_both + b"\n>c2\n" + seq_new + b"\n")])
+    for name in ("MV1", "GV1"):  # both hold seq_both; MV1 is earlier in the chain, so it owns it
+        d = tmp_path / "held" / name
+        d.mkdir(parents=True)
+        (d / "records.tsv").write_text(f"ordinal\tgenome\tcontig_uid\tlength\n0\tx\t{ids.contig_uid(seq_both).hex()}\t1600\n")
+    rep = m.stage_egv1(zpath, tmp_path / "o", root=None, root_stages=(),
+                       owner_inputs={"MV1": tmp_path / "held" / "MV1", "GV1": tmp_path / "held" / "GV1"},
+                       retrieved="2026-11-26T00:00:00Z")
+    assert rep["owned_by_stage"] == {"MV1": 1}
+    assert rep["new_contigs"] == 1
+
+
+def _conf_lines(name: str) -> list[str]:
+    return (STAGES_TEMPLATES / name).read_text().splitlines()
+
+
+def test_egv1_template_has_real_sums_found_in_the_inputs_note_and_the_chain_expectations():
+    est = _load("stage_est")
+    c = est.read_conf(STAGES_TEMPLATES / "EGV1.conf", "EGV1", tree=REPO)
+    assert "planning/measurements/2026-11-26_egv1_inputs.md" in c.notes
+    note = INPUTS_NOTE.read_text()
+    sums = [ln.split()[0] for ln in _conf_lines("EGV1.conf") if ln.startswith("SUM=")]
+    assert len(sums) == 3
+    for s in (x.removeprefix("SUM=") for x in sums):
+        assert len(s) == 64 and set(s) != {"0"}, "placeholder checksum left in the template"
+        assert s in note, f"{s} is not recorded in the note"
+    assert c.after == ("GV1",)
+    assert c.depth == "annotated" and c.crispr is True and c.min_contig_len is None
+
+
+def test_stage_egv1_writes_objects_staging_json_naming_the_file_where_it_is_outside_the_sums(tmp_path):
+    m = _load("c69_egovirales_inputs")
+    zpath = _make_zip(tmp_path / "z.zip", [("g.fna", b">c1\n" + b"ACGGTCAA" * 100 + b"\n")])
+    final = Path("/tmp/if2453/s2/inputs/EGV1")
+    out = tmp_path / "EGV1"
+    m.stage_egv1(zpath, out, root=None, root_stages=(), owner_inputs={}, retrieved="2026-11-26T00:00:00Z",
+                 final_dir=final)
+    staged = json.loads((out / "objects_staging.json").read_text())
+    final_objs = json.loads((out / "objects.json").read_text())
+    assert staged[0]["path"] == str(out / "egovirales_gaia_2026.fna")
+    assert final_objs[0]["path"] == str(final / "egovirales_gaia_2026.fna")
+    assert {k: v for k, v in staged[0].items() if k != "path"} == {k: v for k, v in final_objs[0].items() if k != "path"}
+    assert "objects_staging.json" not in (out / "inputs_SUMS").read_text()
+    # staged in place (no separate final directory): no second objects file
+    out2 = tmp_path / "EGV1b"
+    m.stage_egv1(zpath, out2, root=None, root_stages=(), owner_inputs={}, retrieved="2026-11-26T00:00:00Z")
+    assert not (out2 / "objects_staging.json").exists()
