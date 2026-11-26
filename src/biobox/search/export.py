@@ -338,28 +338,66 @@ _BATCH_ROWS = 8192
 _SAFE = re.compile(r"[^A-Za-z0-9._-]")
 
 
-def _cgroup_memory_bytes() -> int | None:
-    """Active cgroup v2 `memory.max` in bytes, or None when absent or unlimited (`max`)."""
+_CGROUP_V1_UNLIMITED = 2**60  # v1 writes "no limit" as a page-rounded ~2**63, not the word `max`
+
+
+def _cgroup_v1_memory_bytes(proc_root: Path, cgroup_root: Path) -> int | None:
+    """Smallest numeric cgroup v1 `memory.limit_in_bytes` from this process's memory cgroup up to the root."""
+    try:
+        text = (proc_root / "self" / "cgroup").read_text()
+    except OSError:
+        return None
+    rel = None
+    for line in text.splitlines():
+        parts = line.split(":", 2)
+        if len(parts) == 3 and "memory" in parts[1].split(","):
+            rel = parts[2].strip()
+            break
+    if rel is None:
+        return None
+    segs = [p for p in rel.split("/") if p]
+    best: int | None = None
+    for base in (cgroup_root / "memory", cgroup_root):
+        for depth in range(len(segs), -1, -1):
+            try:
+                raw = (base.joinpath(*segs[:depth]) / "memory.limit_in_bytes").read_text().strip()
+            except OSError:
+                continue
+            if raw.isdigit() and int(raw) < _CGROUP_V1_UNLIMITED and (best is None or int(raw) < best):
+                best = int(raw)
+        if best is not None:
+            break
+    return best
+
+
+def _cgroup_memory_bytes(proc_root: str | Path = "/proc", cgroup_root: str | Path = "/sys/fs/cgroup") -> int | None:
+    """Active cgroup memory limit in bytes (v2 `memory.max`, else v1 `memory.limit_in_bytes`), or None when
+    absent or unlimited (`max`, or a v1 value near 2**63). The roots are parameters for tests."""
     from biobox import doctor
 
-    cg = doctor.cgroup_memory()
+    proc_root, cgroup_root = Path(proc_root), Path(cgroup_root)
+    cg = doctor.cgroup_memory(proc_root, cgroup_root)
     if cg.get("available") and cg.get("memory_max_bytes") is not None:
         return int(cg["memory_max_bytes"])
     try:
-        raw = Path("/sys/fs/cgroup/memory.max").read_text().strip()
-        return int(raw) if raw.isdigit() else None
+        raw = (cgroup_root / "memory.max").read_text().strip()
+        if raw.isdigit():
+            return int(raw)
     except OSError:
-        return None
+        pass
+    return _cgroup_v1_memory_bytes(proc_root, cgroup_root)
 
 
 def duck_memory_limit(threads: int, *, base_gb: int = 2, cap_gb: int = 16,
-                      cgroup_bytes: int | None | object = _AUTO_CGROUP) -> str:
+                      cgroup_bytes: int | None | object = _AUTO_CGROUP,
+                      proc_root: str | Path = "/proc", cgroup_root: str | Path = "/sys/fs/cgroup") -> str:
     """DuckDB `memory_limit` scaled to `threads` (~0.5 GB/thread, floor `base_gb`, cap `cap_gb`), clamped to 50%
-    of an active cgroup v2 `memory.max` so multi-threaded exports do not OOM on per-thread hash/spill buffers
-    while tight test cgroups stay bounded (card W-42)."""
+    of an active cgroup `memory.max` (v2) or `memory.limit_in_bytes` (v1) so multi-threaded exports do not OOM on
+    per-thread hash/spill buffers while tight test cgroups stay bounded (card W-42, R-06). `cgroup_bytes` gives the
+    limit directly; `proc_root` and `cgroup_root` say where to read it (tests pass temporary directories)."""
     t = max(1, int(threads))
     want_gb = max(base_gb, min(cap_gb, (t + 1) // 2))
-    limit = _cgroup_memory_bytes() if cgroup_bytes is _AUTO_CGROUP else cgroup_bytes
+    limit = _cgroup_memory_bytes(proc_root, cgroup_root) if cgroup_bytes is _AUTO_CGROUP else cgroup_bytes
     if limit is not None:
         want_gb = min(want_gb, max(1, int(limit) // 2_000_000_000))
     return f"{want_gb}GB"

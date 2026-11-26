@@ -257,6 +257,21 @@ def _split_lib_spec(spec: str) -> tuple[str, str, list[str] | None]:
     return ns, rest, None
 
 
+_VERSION_TAIL = re.compile(r"-(\d+(?:\.\d+)*)$")
+
+
+def _version_key(path: Path) -> tuple:
+    """Sort key of a library file: its trailing `-<dotted version>` as integers (38.10 is newer than 38.2). A name
+    without a parseable version sorts before every versioned one, so it never wins over one; ties go by name."""
+    stem = path.name
+    for ext in (".gz", ".tgz", ".tar", ".hmm"):
+        stem = stem.removesuffix(ext)
+    m = _VERSION_TAIL.search(stem)
+    if m is None:
+        return (0, (), path.name)
+    return (1, tuple(int(x) for x in m.group(1).split(".")), path.name)
+
+
 def _resolve_library_path(lib: str, pack_dir: Path | None, root: Path | None, refdb_dirs: Iterable[Path]) -> Path:
     """Resolve a library name (e.g. 'pfam', 'pfam-38.2', 'ncbifam') to an HMM archive path."""
     candidates: list[Path] = []
@@ -268,7 +283,7 @@ def _resolve_library_path(lib: str, pack_dir: Path | None, root: Path | None, re
                 if stem == lib or stem.startswith(f"{lib}-"):
                     candidates.append(p)
     if candidates:
-        return candidates[-1]
+        return max(candidates, key=_version_key)
     search_bases = list(refdb_dirs)
     if root is not None:
         search_bases.append(Path(root) / "l0" / "refdb")
@@ -278,7 +293,7 @@ def _resolve_library_path(lib: str, pack_dir: Path | None, root: Path | None, re
             for ext in ("*.hmm", "*.hmm.gz", "*.tgz", "*.tar.gz"):
                 found = sorted(d.rglob(ext))
                 if found:
-                    return found[-1]
+                    return max(found, key=_version_key)
     raise PanelError(f"library {lib!r} not found in pack models or refdb directories")
 
 
