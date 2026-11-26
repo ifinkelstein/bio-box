@@ -11,6 +11,7 @@ or written.
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 import time
@@ -219,6 +220,56 @@ def test_no_argument_prints_usage_and_exits_2(wave):
     p = wave.run()
     assert p.returncode == 2
     assert "usage" in p.stderr
+
+
+def _env_stubs(wave: Wave) -> None:
+    """The stubs, each also writing the wave's name and the share switch it was given (card A-30)."""
+    for name, text in (("stage_queue.sh", QUEUE), ("stage_driver.sh", DRIVER)):
+        dst = wave.w.bin / name
+        dst.unlink()
+        dst.write_text(text.replace('>> "$FAKE_CALLS"', '>> "$FAKE_CALLS"\necho "env $1 wave=${STAGE_WAVE:-} '
+                                    'share=${STAGE_SHARE-unset}" >> "$FAKE_CALLS"', 1))
+
+
+def _env_lines(wave: Wave) -> list[str]:
+    return [ln for ln in wave.calls() if ln.startswith("env ")]
+
+
+@pytest.mark.covers("A-30")
+def test_a30_every_stage_of_one_wave_gets_the_same_new_wave_name_and_the_log_names_it(wave):
+    _env_stubs(wave)
+    p = wave.run(str(wave.log), "A1", "B1", STAGE_WAVE="inherited")
+    assert p.returncode == 0, p.stdout + p.stderr
+    names = {ln.split()[2] for ln in _env_lines(wave)}
+    assert len(names) == 1 and len(_env_lines(wave)) == 2, wave.calls()
+    name = names.pop().removeprefix("wave=")
+    assert re.fullmatch(r"w[0-9a-f]{16}", name), name
+    assert name != "inherited", "a wave never takes a name from the environment"
+    assert f"wave {name}" in wave.log_lines()[0] and "sharing on" in wave.log_lines()[0], wave.log_lines()[0]
+    wave.calls_file.write_text("")
+    p = wave.run(str(wave.log), "C1")
+    assert p.returncode == 0
+    again = _env_lines(wave)[0].split()[2].removeprefix("wave=")
+    assert re.fullmatch(r"w[0-9a-f]{16}", again) and again != name, "each wave has a name of its own"
+
+
+@pytest.mark.covers("A-30")
+def test_a30_the_modes_of_a_resumed_stage_run_in_the_wave_too(wave):
+    _env_stubs(wave)
+    p = wave.run("--resume-at", "V1", "--from-mode", "after", str(wave.log), "V1", "PL2")
+    assert p.returncode == 0, p.stdout + p.stderr
+    names = {ln.split()[2] for ln in _env_lines(wave)}
+    assert len(names) == 1 and len(_env_lines(wave)) == 4, wave.calls()  # after, check, backup; then PL2's queue
+    assert re.fullmatch(r"wave=w[0-9a-f]{16}", names.pop())
+
+
+@pytest.mark.covers("A-30")
+def test_a30_the_share_switch_reaches_every_stage_and_the_log_says_so(wave):
+    _env_stubs(wave)
+    p = wave.run(str(wave.log), "A1", "B1", STAGE_SHARE="0")
+    assert p.returncode == 0, p.stdout + p.stderr
+    assert all(ln.endswith(" share=0") for ln in _env_lines(wave)), wave.calls()
+    assert "sharing off (STAGE_SHARE=0)" in wave.log_lines()[0], wave.log_lines()[0]
 
 
 def test_the_wave_writes_nothing_outside_its_log_and_the_stages_own_directories(wave):

@@ -18,10 +18,12 @@
 #   rehearse  The fixture (tests/fixtures/micro_s0), in scratch under the stage's directory: stage E and a release
 #             over it built in a scratch root, then a stage of the conf's depth, length, library and CRISPR choice
 #             driven through this driver's own modes estimate, before, run, after, check and backup (into a scratch
-#             backup directory), then a relaunch that must publish nothing.
+#             backup directory), then a relaunch that must publish nothing. In a wave (below), the marker of another
+#             stage's full rehearsal of the same wave is taken instead when every fact it rests on is equal.
 #   before    No active build unit in the root; `release verify` of every release the root has a manifest for
 #             (manifests/release=<R>.json, read from the root); the listing of the root without the stage's own
-#             files, and the sha256 of every other stage's files.
+#             files, and the sha256 of every other stage's files. In a wave (below), the snapshot is taken first, and
+#             the verification is taken from the newest full one of the wave when the root is provably unchanged.
 #   run       The inputs' sums again; `build-stage` through pod_run.sh in the image by digest. The unit's CPUQuota is
 #             the profile's cap of the hour (runstep.launch_cap) less the driver's helpers' 2, set at launch and again
 #             with `systemctl set-property` whenever the hour's cap changes. STOP before the launch and while it runs;
@@ -48,6 +50,28 @@
 # unit's quota), MEM (the profile's mem_scope, at most 750G in the data root), CPU_MAX (280, never above),
 # START_MIN_GB (205), TMP_MIN_GB (200) and SCRATCH_MAX_GB (100), which the data root never loosens.
 # Unit names: <stage in lower case>-<n> for the builds, <stage>-rh-* for the rehearsal, <stage>-queue for the queue.
+#
+# A wave (card A-30, DEC-81 (3)): STAGE_WAVE, a name stage_wave.sh makes anew for each wave and passes to every stage it
+# runs (never set it by hand). Without it, nothing below happens and every mode runs as it did before. With it, and
+# unless STAGE_SHARE is anything but 1 (STAGE_SHARE=0 turns every share off), two checks may be taken from an earlier
+# stage of the same wave, each only when every fact compared is equal, each logged with what was taken from where on
+# which equality, and each run in full on any difference, missing marker or unreadable value:
+#   rehearse  another stage's rehearse/DONE whose second line is "rehearsal=full" and whose facts (line 4 on) are
+#             byte-equal to this stage's: the wave, the tree (realpath), the code's sha256 (code_sha), the image and
+#             its digest, the profile's sha256, the conf's kind (DEPTH, MIN_CONTIG_LEN, GENECALL_MODE, LIBNAME, LIBVER,
+#             LIBCUT, CRISPR) and the rehearsal's limits (RH_T, RH_Q, CPU_MAX, TMP_MIN_GB, START_MIN_GB, SCRATCH_MAX_GB,
+#             MEM). The taking stage's DONE holds its own conf's sha256, "rehearsal=shared from stage <S> (<path>)" and
+#             the same facts; a shared marker is never taken again.
+#   before    the newest <stage>/{after,before}/verified.share under STAGES_HOME of this wave (written only after a full
+#             verification): its mode's DONE made for the conf it names; the same root, tree, code sha256, image and
+#             digest; its listing.all.tsv and earlier.sha256 unchanged since (their sha256 recorded); this mode's
+#             listing.all.tsv (name, size, mtime of every file of the root) byte-equal to it; every line of its
+#             earlier.sha256 (the sha256 of every other stage's file) in this mode's; no file of the root newer than
+#             the record; the same releases, each manifest with the sha256 recorded. Each verify-<R>.log then says the
+#             verification was taken, and from where, and carries the manifest hash that `after` compares.
+#   after     always verifies every release in full, and records it for the next stage.
+# Nothing else is shared: the inputs' sums, estimate, every guard of run, check, backup, and FAILED, REFUSED, STOPPED
+# and STOP are as without a wave. A rehearsal's own modes never share.
 set -u
 set -o pipefail
 
@@ -92,6 +116,8 @@ SCRATCH_MAX_GB=${SCRATCH_MAX_GB:-100}
 RH_T=${RH_T:-2}
 RH_Q=${RH_Q:-4}
 REHEARSAL=${STAGE_REHEARSAL:-0}
+WAVE=${STAGE_WAVE:-}
+SHARE=${STAGE_SHARE-1}
 STEM=$LC
 if [ "$REHEARSAL" = 1 ] && [ -n "${STAGE_UNIT_STEM:-}" ]; then STEM=$STAGE_UNIT_STEM; fi
 [[ "$STEM" =~ ^[a-z0-9][a-z0-9-]{0,30}$ ]] || usage
@@ -416,6 +442,183 @@ snapshot() {  # DIR before|after: the listing (before: without the stage's own f
 }
 
 # --------------------------------------------------------------------------------------------------------------
+# A wave's shared checks (card A-30, DEC-81 (3)); see the header. Every function here answers "no" on any doubt.
+
+share_on() {  # 0 when this mode may take a check from an earlier stage of its wave; never in a rehearsal's own modes
+  [ -n "$WAVE" ] || return 1
+  [ "$REHEARSAL" = 1 ] && return 1
+  if [ "$SHARE" != 1 ]; then
+    log "share: off (STAGE_SHARE=$SHARE): every check of this mode runs in full"
+    return 1
+  fi
+  if ! [[ "$WAVE" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]]; then
+    log "share: off (STAGE_WAVE '$WAVE' is not a wave's name): every check of this mode runs in full"
+    return 1
+  fi
+  return 0
+}
+
+sha_of() { sha256sum "$1" 2> /dev/null | cut -c1-64; }
+man_sha() { sha_of "$ROOT/manifests/release=$1.json"; }
+
+code_sha() {  # CODE_SHA: the sha256 of a list "<sha256>  <tree|bin>/<path>", one line per file, sorted in byte order, of
+  # every file under $TREE/src and $TREE/tests/fixtures/micro_s0 but __pycache__/ and *.pyc, every file beside this
+  # script ($BIN, not stages/), and $TREE/scripts/pod_run.sh: the code a rehearsal and a verification run. The list is
+  # kept in tmp/code.sha256. 1 when a part is missing or cannot be read.
+  local out=$C/tmp/code.sha256
+  CODE_SHA=""
+  [ -d "$TREE/src" ] && [ -d "$TREE/tests/fixtures/micro_s0" ] && [ -f "$TREE/scripts/pod_run.sh" ] || return 1
+  (cd "$TREE" && find src tests/fixtures/micro_s0 -type f ! -name '*.pyc' ! -path '*/__pycache__/*' -print0 \
+    | xargs -0 -r sha256sum | sed 's#  #  tree/#') > "$out.part" || return 1
+  (cd "$BIN" && find -L . -maxdepth 1 -type f -print0 | xargs -0 -r sha256sum | sed 's#  \./#  bin/#') >> "$out.part" \
+    || return 1
+  (cd "$TREE" && sha256sum scripts/pod_run.sh | sed 's#  #  tree/#') >> "$out.part" || return 1
+  LC_ALL=C sort "$out.part" > "$out" || return 1
+  rm -f "$out.part"
+  CODE_SHA=$(sha_of "$out")
+  [[ "$CODE_SHA" =~ ^[0-9a-f]{64}$ ]] || { CODE_SHA=""; return 1; }
+}
+
+rh_facts() {  # FILE: what a rehearsal of this conf rests on, one fact a line; 1 when one cannot be read
+  local prof
+  code_sha || return 1
+  prof=$(sha_of "$REALPROF")
+  [[ "$prof" =~ ^[0-9a-f]{64}$ ]] || return 1
+  printf '%s\n' "wave=$WAVE" "tree=$(realpath -m "$TREE")" "code=$CODE_SHA" "image=$IMAGE" "digest=$DIGEST" \
+    "profile=$prof" \
+    "kind=DEPTH=$DEPTH MIN_CONTIG_LEN=$MINLEN GENECALL_MODE=$GENECALL_MODE LIBNAME=$LIBNAME LIBVER=$LIBVER LIBCUT=$LIBCUT CRISPR=$CRISPR" \
+    "limits=RH_T=$RH_T RH_Q=$RH_Q CPU_MAX=$CPU_MAX TMP_MIN_GB=$TMP_MIN_GB START_MIN_GB=$START_MIN_GB SCRATCH_MAX_GB=$SCRATCH_MAX_GB MEM=$MEM" \
+    > "$1"
+}
+
+rh_share() {  # 0 when another stage's full rehearsal of this wave rests on the same facts: its marker is taken, with them
+  local want=$C/rehearse/facts f src="" s="" n=0
+  if ! rh_facts "$want"; then
+    rm -f "$want"
+    log "rehearse: not shared: a fact of this rehearsal (the code's or the profile's sha256) could not be read; rehearsing in full"
+    return 1
+  fi
+  for f in "$STAGES_HOME"/*/rehearse/DONE; do
+    [ -f "$f" ] || continue
+    [ "$(realpath -m "$f")" = "$(realpath -m "$C/rehearse/DONE")" ] && continue
+    n=$((n + 1))
+    [ "$(sed -n 2p "$f")" = "rehearsal=full" ] || continue
+    [[ "$(head -n 1 "$f")" =~ ^[0-9a-f]{64}$ ]] || continue
+    s=$(sed -n '3s/^stage=//p' "$f")
+    [[ "$s" =~ ^[A-Z][A-Za-z0-9]{0,15}$ ]] || continue
+    tail -n +4 "$f" | cmp -s - "$want" || continue
+    src=$f
+    break
+  done
+  if [ -z "$src" ]; then
+    log "rehearse: not shared: no full rehearsal of wave $WAVE by another stage rests on the same facts ($n markers read under $STAGES_HOME); rehearsing in full on: $(paste -sd ';' "$want")"
+    return 1
+  fi
+  { echo "$CONF_SHA"; echo "rehearsal=shared from stage $s ($src)"; echo "stage=$STAGE"; cat "$want"; } \
+    > "$C/rehearse/DONE.tmp" && mv -f "$C/rehearse/DONE.tmp" "$C/rehearse/DONE" || fail "could not write $C/rehearse/DONE"
+  log "rehearse: SHARED from stage $s ($src): its full rehearsal of wave $WAVE rests on the same facts, each equal: $(paste -sd ';' "$want"); nothing is rehearsed here"
+  return 0
+}
+
+nos() { log "before: not shared${REC:+ ($REC)}: $*; every release is verified in full"; }
+fld() { sed -n "s/^$1=//p" "$REC" | head -n 1; }
+
+verify_record() {  # D MODE: after a full verification in a wave, the facts a later stage's before compares; never fails
+  local d=$1 r s h l e tmp=$1/verified.share.tmp
+  rm -f "$d/verified.share" "$tmp"
+  if ! code_sha; then
+    log "$2: no record for wave $WAVE: the code's sha256 could not be taken"
+    return 0
+  fi
+  l=$(sha_of "$d/listing.all.tsv")
+  e=$(sha_of "$d/earlier.sha256")
+  if ! [[ "$l" =~ ^[0-9a-f]{64}$ ]] || ! [[ "$e" =~ ^[0-9a-f]{64}$ ]]; then
+    log "$2: no record for wave $WAVE: its listing or earlier.sha256 could not be hashed"
+    return 0
+  fi
+  printf '%s\n' "wave=$WAVE" "stage=$STAGE" "mode=$2" "conf=$CONF_SHA" "root=$ROOT" "tree=$(realpath -m "$TREE")" \
+    "code=$CODE_SHA" "image=$IMAGE" "digest=$DIGEST" "listing=$l" "earlier=$e" > "$tmp" || return 0
+  while IFS= read -r r; do
+    s=$(awk -v r="$r" '$2 == r {print $1}' "$d/manifests.sha256" 2> /dev/null)
+    h=$(hash_of "$d/verify-$r.log")
+    if ! [[ "$s" =~ ^[0-9a-f]{64}$ ]] || ! [[ "$h" =~ ^[0-9a-f]+$ ]]; then
+      rm -f "$tmp"
+      log "$2: no record for wave $WAVE: release $r has no manifest sha256 ('$s') or manifest hash ('$h')"
+      return 0
+    fi
+    echo "release=$r $s $h" >> "$tmp" || { rm -f "$tmp"; return 0; }
+  done < "$d/releases.list"
+  mv -f "$tmp" "$d/verified.share" || { rm -f "$tmp"; log "$2: no record for wave $WAVE: could not write it"; return 0; }
+  log "$2: recorded for wave $WAVE in $d/verified.share: $(wc -l < "$d/releases.list") releases verified in full, listing sha256 $l, earlier.sha256 sha256 $e, code sha256 $CODE_SHA"
+}
+
+verify_share() {  # D: 0 when the newest record of this wave proves every release of D/releases.list verified on the root as
+  # it is now (D's snapshot taken); each verify-<R>.log then says so. Else 1, its reason logged.
+  local d=$1 t f src st md r s h line k n
+  REC=""
+  while IFS=$'\t' read -r t f; do
+    [ "$(sed -n 's/^wave=//p' "$f" | head -n 1)" = "$WAVE" ] && { REC=$f; break; }
+  done < <(find "$STAGES_HOME" -mindepth 3 -maxdepth 3 -type f -name verified.share \( -path '*/after/*' -o -path '*/before/*' \) \
+    -printf '%T@\t%p\n' 2> /dev/null | LC_ALL=C sort -t "$(printf '\t')" -k1,1gr)
+  [ -n "$REC" ] || { nos "no record of a full verification in wave $WAVE under $STAGES_HOME"; return 1; }
+  src=$(dirname "$REC")
+  for k in wave stage mode conf root tree code image digest listing earlier; do
+    [ -n "$(fld "$k")" ] || { nos "the record is incomplete (no $k)"; return 1; }
+  done
+  st=$(fld stage)
+  md=$(fld mode)
+  [[ "$st" =~ ^[A-Z][A-Za-z0-9]{0,15}$ ]] && [[ "$md" =~ ^(after|before)$ ]] && [ "$(basename "$src")" = "$md" ] \
+    || { nos "the record is malformed (stage '$st', mode '$md')"; return 1; }
+  for k in conf code listing earlier; do
+    [[ "$(fld "$k")" =~ ^[0-9a-f]{64}$ ]] || { nos "the record is malformed ($k)"; return 1; }
+  done
+  [ -f "$src/DONE" ] && [ "$(head -c 64 "$src/DONE")" = "$(fld conf)" ] \
+    || { nos "stage $st's $md/DONE is missing or made for another conf than the record names"; return 1; }
+  [ "$(fld root)" = "$ROOT" ] || { nos "it was made for root $(fld root), not $ROOT"; return 1; }
+  [ "$(fld tree)" = "$(realpath -m "$TREE")" ] || { nos "it was made from tree $(fld tree), not $(realpath -m "$TREE")"; return 1; }
+  [ "$(fld image)" = "$IMAGE" ] && [ "$(fld digest)" = "$DIGEST" ] \
+    || { nos "the image or its digest differs (recorded $(fld image) $(fld digest), now $IMAGE $DIGEST)"; return 1; }
+  code_sha || { nos "the code's sha256 could not be taken"; return 1; }
+  [ "$(fld code)" = "$CODE_SHA" ] || { nos "the code's sha256 differs (recorded $(fld code), now $CODE_SHA)"; return 1; }
+  [ "$(sha_of "$src/listing.all.tsv")" = "$(fld listing)" ] \
+    || { nos "its listing.all.tsv no longer has the sha256 it recorded"; return 1; }
+  [ "$(sha_of "$d/listing.all.tsv")" = "$(fld listing)" ] \
+    || { nos "the root's listing (name, size and mtime of every file) differs from the one it recorded"; return 1; }
+  [ "$(sha_of "$src/earlier.sha256")" = "$(fld earlier)" ] \
+    || { nos "its earlier.sha256 no longer has the sha256 it recorded"; return 1; }
+  LC_ALL=C sort "$src/earlier.sha256" > "$d/share.recorded.sha256" && LC_ALL=C sort "$d/earlier.sha256" > "$d/share.now.sha256" \
+    && LC_ALL=C comm -23 "$d/share.recorded.sha256" "$d/share.now.sha256" > "$d/share.differ" \
+    || { nos "the sha256 of the other stages' files could not be compared"; return 1; }
+  [ ! -s "$d/share.differ" ] \
+    || { nos "the sha256 of $(wc -l < "$d/share.differ") files of other stages that stage $st recorded differ or are gone (first: $(head -n 1 "$d/share.differ" | cut -c1-200))"; return 1; }
+  f=$(find "$ROOT" ! -type d -newer "$REC" -print -quit) || { nos "the root's files could not be compared with the record's time"; return 1; }
+  [ -z "$f" ] || { nos "a file of the root is newer than the record: ${f#"$ROOT"/}"; return 1; }
+  sed -n 's/^release=\([^ ]*\) .*/\1/p' "$REC" | LC_ALL=C sort > "$d/share.releases" \
+    || { nos "the record's releases could not be read"; return 1; }
+  cmp -s "$d/share.releases" "$d/releases.list" \
+    || { nos "it records the releases $(paste -sd ' ' "$d/share.releases"), the root has $(paste -sd ' ' "$d/releases.list")"; return 1; }
+  while IFS= read -r r; do
+    line=$(awk -v r="release=$r" '$1 == r' "$REC")
+    [ "$(printf '%s\n' "$line" | wc -l)" = 1 ] || { nos "the record names release $r more than once"; return 1; }
+    s=$(echo "$line" | awk '{print $2}')
+    h=$(echo "$line" | awk '{print $3}')
+    [[ "$s" =~ ^[0-9a-f]{64}$ ]] && [[ "$h" =~ ^[0-9a-f]+$ ]] || { nos "the record's line of release $r is malformed"; return 1; }
+    [ "$(man_sha "$r")" = "$s" ] || { nos "the manifest of release $r has sha256 '$(man_sha "$r")', the record $s"; return 1; }
+  done < "$d/releases.list"
+  n=$(wc -l < "$d/releases.list")
+  while IFS= read -r r; do
+    line=$(awk -v r="release=$r" '$1 == r' "$REC")
+    s=$(echo "$line" | awk '{print $2}')
+    h=$(echo "$line" | awk '{print $3}')
+    echo "release $r: not verified here: shared from stage $st mode $md of wave $WAVE ($REC), which verified it with manifest sha256 $s, manifest hash $h" \
+      > "$d/verify-$r.log" || fail "could not write $d/verify-$r.log"
+    log "verify $r: SHARED from stage $st mode $md (wave $WAVE): manifest sha256 $s equal, manifest hash $h"
+  done < "$d/releases.list"
+  log "before: SHARED the verification of $n releases from stage $st mode $md of wave $WAVE ($REC); equal: root $ROOT, tree $(fld tree), code sha256 $CODE_SHA, image $IMAGE $DIGEST, the root's listing (sha256 $(fld listing): name, size and mtime of each of its $(wc -l < "$d/listing.all.tsv") files), the sha256 of the $(wc -l < "$src/earlier.sha256") files of other stages that stage $st recorded, each release's manifest sha256; no file of the root newer than the record"
+  return 0
+}
+
+# --------------------------------------------------------------------------------------------------------------
 
 estimate() {
   local d=$C/estimate rc
@@ -439,6 +642,7 @@ before() {
   local d=$C/before r ok=1 act
   withdraw before
   read_conf
+  rm -f "$d/verified.share"
   act=$(build_units) || fail "could not list the active units"
   [ -z "$act" ] || refuse "a build unit is active in the root: $act"
   snap_top
@@ -449,6 +653,25 @@ before() {
       | LC_ALL=C sort | LC_ALL=C comm -23 - "$d/releases.list" > "$d/defined_without_manifest.list"
     [ -s "$d/defined_without_manifest.list" ] \
       && log "before: defined in release_def without a manifest, not verified: $(paste -sd' ' - < "$d/defined_without_manifest.list")"
+  fi
+  if share_on; then  # in a wave: the snapshot first, then the verification, taken (verify_share) or in full and recorded
+    while IFS= read -r r; do
+      [[ "$r" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || fail "a release name in $ROOT/manifests is not one: '$r'"
+    done < "$d/releases.list"
+    snapshot "$d" before
+    if verify_share "$d"; then
+      mark_done before
+      return 0
+    fi
+    : > "$d/manifests.sha256" || fail "could not write $d/manifests.sha256"
+    while IFS= read -r r; do
+      echo "$(man_sha "$r") $r" >> "$d/manifests.sha256"
+      verify "$r" "$d" || ok=0
+    done < "$d/releases.list"
+    [ "$ok" = 1 ] || fail "a published release failed verify before launch (read $d/verify-*.log)"
+    verify_record "$d" before
+    mark_done before
+    return 0
   fi
   while IFS= read -r r; do
     [[ "$r" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || fail "a release name in $ROOT/manifests is not one: '$r'"
@@ -581,10 +804,11 @@ run() {
   mark_done run
 }
 
-after() {
-  local d=$C/after r ok=1 rc h0 h1 act
+after() {  # always verifies in full; in a wave it records that verification for the next stage's before (card A-30)
+  local d=$C/after r ok=1 rc h0 h1 act sh=0
   withdraw after
   read_conf
+  rm -f "$d/verified.share"
   need run
   need before
   [ -s "$C/before/releases.list" ] || refuse "no $C/before/releases.list"
@@ -594,7 +818,12 @@ after() {
   releases > "$d/releases.list" || fail "could not list $ROOT/manifests"
   cmp -s "$C/before/releases.list" "$d/releases.list" \
     || fail "the root's published releases differ from before: before $(paste -sd' ' - < "$C/before/releases.list"); now $(paste -sd' ' - < "$d/releases.list")"
+  if share_on; then
+    sh=1
+    : > "$d/manifests.sha256" || fail "could not write $d/manifests.sha256"
+  fi
   while IFS= read -r r; do
+    [ "$sh" = 1 ] && echo "$(man_sha "$r") $r" >> "$d/manifests.sha256"
     verify "$r" "$d" || ok=0
     h0=$(hash_of "$C/before/verify-$r.log")
     h1=$(hash_of "$d/verify-$r.log")
@@ -608,6 +837,7 @@ after() {
   rc=$?
   log "after: bio-box releases exit $rc"
   [ "$rc" = 0 ] || fail "bio-box releases exited $rc (read $d/releases.txt)"
+  [ "$sh" = 1 ] && verify_record "$d" after
   mark_done after
 }
 
@@ -685,8 +915,9 @@ backup() {
   mark_done backup
 }
 
-rehearse() {  # the fixture, in scratch: E and a release over it, then the stage through this driver's own modes
-  local rh=$C/rh rs="${STAGE}R" ml=() pbind=(--bind /tmp/if2453) m rc eargs args old rq cap n
+rehearse() {  # the fixture, in scratch: E and a release over it, then the stage through this driver's own modes; in a
+  # wave, another stage's full rehearsal of the wave under the same facts is taken instead (rh_share, card A-30 (2))
+  local rh=$C/rh rs="${STAGE}R" ml=() pbind=(--bind /tmp/if2453) m rc eargs args old rq cap n sh=0
   read_conf
   if [ -e "$C/rehearse/DONE" ] && [ "$(head -c 64 "$C/rehearse/DONE")" = "$CONF_SHA" ]; then
     log "rehearse: $C/rehearse/DONE present for this conf (remove it to rehearse again)"
@@ -698,6 +929,11 @@ rehearse() {  # the fixture, in scratch: E and a release over it, then the stage
   rm -f "$C/rehearse/FAILED" "$C/rehearse/REFUSED" "$C/rehearse/STOPPED"
   caps
   [[ "$rs" =~ ^[A-Z][A-Za-z0-9]{0,15}$ ]] || refuse "the rehearsal's stage name $rs is too long"
+  rm -f "$C/rehearse/facts" "$C/rehearse/facts.end" "$C/rehearse/DONE.tmp"
+  if share_on; then
+    sh=1
+    rh_share && return 0
+  fi
   quota_now || refuse "could not read the profile's cap of this hour (stage_est.py cap)"
   cap=$QUOTA_NOW
   rq=$(( RH_Q < cap ? RH_Q : cap ))
@@ -748,7 +984,7 @@ rehearse() {  # the fixture, in scratch: E and a release over it, then the stage
   for m in $CHAIN; do
     STAGE_ROOT="$rh/root" STAGE_DIR="$rh/drv" STAGE_CONF="$rh/$rs.conf" PROFILE="$rh/profile.yaml" \
       BACKUP_DIR="$rh/backups" TAR_FLOOR_BYTES=0 STAGE_REHEARSAL=1 STAGE_UNIT_STEM="$LC-rh" T="$RH_T" CPUS="$RH_T" \
-      SCAN_JOBS=1 Q="$rq" bash "$SELF" "$rs" "$m" >> "$LOG" 2>&1
+      SCAN_JOBS=1 Q="$rq" STAGE_WAVE= bash "$SELF" "$rs" "$m" >> "$LOG" 2>&1
     rc=$?
     [ "$rc" = 0 ] || fail "rehearse: mode $m of the rehearsal's stage exited $rc (read $rh/drv/driver.log)"
     [ -e "$rh/drv/$m/DONE" ] || fail "rehearse: mode $m exited 0 and left no $rh/drv/$m/DONE"
@@ -768,6 +1004,14 @@ rehearse() {  # the fixture, in scratch: E and a release over it, then the stage
     || fail "rehearse: listing"
   cmp -s "$rh/again-before.tsv" "$rh/again-after.tsv" || fail "rehearse: the relaunch changed the scratch root"
   log "rehearse: the relaunch published nothing and left the scratch root unchanged"
+  if [ "$sh" = 1 ] && [ -s "$C/rehearse/facts" ] && rh_facts "$C/rehearse/facts.end" \
+    && cmp -s "$C/rehearse/facts" "$C/rehearse/facts.end"; then
+    { echo "$CONF_SHA"; echo "rehearsal=full"; echo "stage=$STAGE"; cat "$C/rehearse/facts"; } > "$C/rehearse/DONE.tmp" \
+      && mv -f "$C/rehearse/DONE.tmp" "$C/rehearse/DONE" || fail "could not write $C/rehearse/DONE"
+    log "rehearse: a later stage of wave $WAVE may take this rehearsal under the same facts: $(paste -sd ';' "$C/rehearse/facts")"
+    return 0
+  fi
+  [ "$sh" = 1 ] && log "rehearse: the facts of this rehearsal were not read the same at its start and end: its marker serves this stage only"
   mark_done rehearse
 }
 

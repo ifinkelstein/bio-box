@@ -16,6 +16,11 @@
 #    the STOP file exists (exit 3, a STOP is never lifted here). A stage that ended without its backup marker (exit 6)
 #    is never counted as built. A failure never looks like progress: no later stage starts.
 # Each start and end is one dated line in LOG, also printed; nothing else here carries a timestamp.
+# 4. Card A-30 (DEC-81 (3)): the wave makes itself a new name, w<16 hex digits> from /dev/urandom (never one from the
+#    environment), and exports it as STAGE_WAVE to every queue and driver it runs, so that the stages of this wave, and
+#    only they, may share their rehearsal and the verification before a build (stage_driver.sh says on what). The name
+#    and whether sharing is on are in the start line. STAGE_SHARE=0 in the wave's environment turns every share off;
+#    without a name (urandom unreadable) nothing is shared.
 #
 # It launches nothing through systemd; the operator's line is in RUNBOOK.md, "A wave of stages". Variables, as in
 # stage_queue.sh and stage_driver.sh: STAGE_BIN (the directory of the two scripts; default: this script's), STAGES_HOME
@@ -82,7 +87,17 @@ stopped_at() {  # STAGE MODE: the data root's STOP ends the wave
   fi
 }
 
-say "start (pid $$): stages $*; resume ${RESUME:-none}${FROM:+ from mode $FROM}; scripts $BIN; stages in $STAGES_HOME; STOP at $DATAROOT/STOP"
+WAVE_ID=$(od -An -N8 -tx1 /dev/urandom 2> /dev/null | tr -d ' \n')
+if echo "$WAVE_ID" | grep -Eq '^[0-9a-f]{16}$'; then WAVE_ID=w$WAVE_ID; else WAVE_ID=""; fi
+STAGE_WAVE=$WAVE_ID
+export STAGE_WAVE
+case "${STAGE_SHARE-1}" in
+  1) SHARING="sharing on" ;;
+  *) SHARING="sharing off (STAGE_SHARE=${STAGE_SHARE-})" ;;
+esac
+[ -n "$WAVE_ID" ] || SHARING="sharing off (no wave name could be made from /dev/urandom)"
+
+say "start (pid $$): stages $*; resume ${RESUME:-none}${FROM:+ from mode $FROM}; scripts $BIN; stages in $STAGES_HOME; STOP at $DATAROOT/STOP; wave ${WAVE_ID:-none}; $SHARING"
 
 first=1
 for s in "$@"; do

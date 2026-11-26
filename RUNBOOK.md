@@ -829,6 +829,10 @@ refusal writes `<mode>/REFUSED`, a failure `<mode>/FAILED`, a STOP file `<mode>/
 | `check` | `stage_check.py` on the two snapshots, each run's report kept in `check/<n>/`; writes `root_added.tsv` (every added file with size and sha256) | any assertion of the check (it says which; with a library, a missing scan plan; with CRISPR, a producer whose record lists no ledger, or no feature file without a ledger that found no array; a record of 24 CPU-minutes or more that no estimate names); a list that differs from the one a backup was made from |
 | `backup` | one tar of exactly the added files to `$BACKUP_DIR/added_<stage>.tar`: a dot-temporary name, `dd conv=fsync`, read back, sha256 equal, `mv -n`, a line in `backup.tsv` | a tar that exists (never overwritten); a file under 64 MiB onto `/stor`; a copy that fails or reads back different (the temporary file is left for a person) |
 
+A stage run by itself (by hand, or by `stage_queue.sh` outside a wave) runs every row above in full. Inside a wave
+(`STAGE_WAVE` set by `stage_wave.sh`, next section), `rehearse` may take another stage's rehearsal and `before` another
+stage's verification, each only on equal recorded facts (card A-30, DEC-81 (3)); `after` always verifies in full.
+
 The real backup directory is the default of `BACKUP_DIR`, `/stor/work/Wilke/if2453/all-the-data/root_backups`; the
 rehearsal sets its own under its scratch directory. A guard's stop is never lifted by the driver: `run` refuses while
 `run/FAILED` is there; a person reads it, and if a decision row accepts the record, adds its `ACCEPTED` line to the
@@ -927,6 +931,44 @@ systemd-run --user --unit=r26-11-4-wave-4 --collect -p MemoryMax=4G -p MemorySwa
 
 A mode run this way still refuses without the markers before it and with a marker made for another conf; the wave does
 not lift that.
+
+### What the stages of one wave share (card A-30, DEC-81 (3))
+
+Each wave makes itself a new name (`w` and 16 hex digits from `/dev/urandom`, in its start line; a `STAGE_WAVE` in the
+environment is never taken) and passes it as `STAGE_WAVE` to every queue and driver it runs. Only stages run under the
+same name share, and only these two checks; every comparison is of recorded facts, a share is logged in the stage's
+`driver.log` with what was taken, from which stage and on which equality, and any difference, missing marker or value
+that cannot be read runs the full check instead (the log says `not shared` and why):
+
+- `rehearse`: the rehearsal of an earlier stage of the wave is taken when its `rehearse/DONE` says `rehearsal=full`
+  and the facts it lists are byte-equal to this stage's: the wave's name; the tree (`realpath`); the code's sha256 (the
+  sha256 of the sorted list of `sha256sum` lines of every file under `src/` and `tests/fixtures/micro_s0/` but
+  `__pycache__` and `*.pyc`, every file directly in `scripts/stress/build_stage_pod/` (not `stages/`), and `scripts/pod_run.sh`,
+  kept in `<stage>/tmp/code.sha256`); the image path and its digest; the profile's sha256; the conf's kind (`DEPTH`,
+  `MIN_CONTIG_LEN`, `GENECALL_MODE`, `LIBNAME`, `LIBVER`, `LIBCUT`, `CRISPR`); and the rehearsal's limits (`RH_T`,
+  `RH_Q`, `CPU_MAX`, `TMP_MIN_GB`, `START_MIN_GB`, `SCRATCH_MAX_GB`, `MEM`). The taking stage's `rehearse/DONE` holds
+  its own conf's sha256 (what `run` checks), `rehearsal=shared from stage <S> (<path>)` and the same facts; a shared
+  marker is never taken by a third stage. The code's sha256 is taken again at the end of a full rehearsal: if it
+  changed, the marker serves its own stage only.
+- `before`: in a wave the snapshot is taken first. The verification of the releases is then taken from the newest
+  `<stage>/after/verified.share` or `<stage>/before/verified.share` of this wave (written only after a full
+  verification, beside that mode's `listing.all.tsv`, `earlier.sha256` and `manifests.sha256`) when all of these hold:
+  that mode's `DONE` is there for the conf the record names; the same root, tree, code sha256, image and digest; its
+  `listing.all.tsv` and `earlier.sha256` still have the sha256 it recorded; this `before`'s `listing.all.tsv` (path,
+  size and mtime of every file of the root) is byte-equal to it; every line of its `earlier.sha256` (the sha256 of
+  every other stage's file) is in this `before`'s; no file of the root is newer than the record; the root has the
+  same releases, each manifest with the sha256 recorded. Each `before/verify-<R>.log` then says `not verified here`,
+  names the source and carries the manifest hash, which `after` compares as before.
+- `after` always verifies every release in full; in a wave it writes the record the next stage's `before` reads.
+
+Not shared, in a wave or not: the inputs' sums, `estimate`, every guard of `run` (280 CPU-minutes, the rate guard,
+`/tmp`, scratch), `check`, `backup`, and `FAILED`, `REFUSED`, `STOPPED` and `STOP`. What a shared `before` no longer
+proves: that a file outside the stages' partitions (a release's own `release=` files, an archived record) still has
+its content when its name, size and mtime are unchanged since the earlier stage's `after`; the stages' files are
+hashed again by every `before`.
+
+A resumed wave is a new wave: its first stage rehearses and verifies in full. To turn every share off, launch the wave
+with `STAGE_SHARE=0` (`systemd-run ... --setenv=STAGE_SHARE=0 ...`; the wave passes it to every stage); the start line then says `sharing off (STAGE_SHARE=0)` and each stage's log `share: off`. Any value but `1` turns it off.
 
 ## Cutting the next release
 
