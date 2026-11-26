@@ -1,0 +1,65 @@
+# Card R-14 (2026-11-26): the 25 jobs card R-12 held because no saved provider record states a licence for them.
+# DEC-80 (the PI, 2026-11-26 about 08:41 CST: "all personal use, no worries re license i approve") lifts that hold.
+# It does not make a licence: each line is copied unchanged from _batch6.tsv or _batch6b.tsv, licence field as
+# the worker wrote it. These sets are redistributable: false (DEC-80 (3), DEC-51). Five tab-separated fields for
+# scripts/orchestrator/fetch_to_tower.sh. See tower_jobs/README.md and planning/measurements/2026-11-26_tower_job_lists.md.
+# Order as card R-12 ordered its lists: release first, then smallest first (provider bytes, else the worker's size
+# statement, else last).
+
+# Release r26.11.6 (DEC-79 moves RMD1 there); every other set below has no release assigned by a decision row.
+# batch6b_coral/RMD1 - Tara Pacific Reef Microbiomics Database v1.0 bulk genome tarball (4,224 coral genomes, sunagawalab.ethz.ch, 11.572 GB)
+#   1 job(s); no record of size; about 11.572 GB by the worker's statement (estimate); held by R-12 because the genome tarball on sunagawalab.ethz.ch has no record; open-academic is the worker's label
+batch6b_coral/RMD1	RMDv1-genomes.tar.gz	https://sunagawalab.ethz.ch/share/microbiomics/reef/suppl_data/RMDv1-genomes.tar.gz	-	open-academic
+
+# batch6_euk_viruses/AMBIRNA - Fungal Ambiviricota global SRA discovery contigs + ribozymes + lineage metadata (GitHub raw, main)
+#   3 job(s); 6,427,276 bytes by the provider record (batch6_probe.json) for 3 of 3 job(s); held by R-12 because GitHub raw files on branch main; the saved record is a git tree with no licence (job list: CC BY 4.0, the worker's label)
+#   These URLs name the GitHub branch main, not a pinned commit: the files can change between listing and fetch.
+batch6_euk_viruses/AMBIRNA	contigs.fasta	https://raw.githubusercontent.com/lauberlab/ambivirus_discovery_paper/main/03_contigs/contigs.fasta	-	CC BY 4.0
+batch6_euk_viruses/AMBIRNA	contigs_nc90_gt500.fasta	https://raw.githubusercontent.com/lauberlab/ambivirus_discovery_paper/main/03_contigs/contigs_nc90_gt500.fasta	-	CC BY 4.0
+batch6_euk_viruses/AMBIRNA	Fungi_SRA_lineage_table.tsv	https://raw.githubusercontent.com/lauberlab/ambivirus_discovery_paper/main/05_phylogeny/Fungi_SRA_lineage_table.tsv	-	CC BY 4.0
+
+# batch6_longread_sags/DEATHVALLEY_SAG - Death Valley deep tectonic aquifer BLM1 MAGs + Bigelow SCGC SAGs (zenodo:21729218, open-zenodo-verify)
+#   1 job(s); 31,356,721 bytes by the provider record (batch6_probe.json) for 1 of 1 job(s); held by R-12 because the Zenodo record 21729218 states an empty licence (job list: open-zenodo-verify)
+batch6_longread_sags/DEATHVALLEY_SAG	BLM1-MAGs_SAGs_2011_2021.zip	https://zenodo.org/api/records/21729218/files/BLM1-MAGs_SAGs_2011_2021.zip/content	b2216c70b0d10b76e0297e6114c1f28e	open-zenodo-verify
+
+# batch6_extremes/PALEO_HELIUS - Ancient gut Heliusvirales 1,032 phage genomes (zenodo:8328078, open-zenodo-verify)
+#   1 job(s); 58,519,131 bytes by the provider record (batch6_probe.json) for 1 of 1 job(s); held by R-12 because the Zenodo record 8328078 states an empty licence (job list: open-zenodo-verify)
+batch6_extremes/PALEO_HELIUS	Heliusvirales_1032_genomes.fna	https://zenodo.org/api/records/8328078/files/Heliusvirales_1032_genomes.fna/content	80384e6e8a9c7d8f1b6aaa2c0395850d	open-zenodo-verify
+
+# batch6_euk_viruses/MOPUP_MICRO - MOP-UP Oct 2026 ICTV Microviricetes genomes + plasmids + metadata (GitHub raw, master)
+#   4 job(s); 68,223,371 bytes by the provider record (batch6_probe.json) for 4 of 4 job(s); held by R-12 because GitHub raw files on branch master; the saved record is a git tree with no licence (job list: open-github-verify)
+#   These URLs name the GitHub branch master, not a pinned commit: the files can change between listing and fetch.
+batch6_euk_viruses/MOPUP_MICRO	micro20261027_genomes.fasta	https://raw.githubusercontent.com/martinez-zacharya/MOP-UP/master/micro20261027_genomes.fasta	-	open-github-verify
+batch6_euk_viruses/MOPUP_MICRO	All_databases_input.fasta	https://raw.githubusercontent.com/martinez-zacharya/MOP-UP/master/All_databases_input.fasta	-	open-github-verify
+batch6_euk_viruses/MOPUP_MICRO	wastewater_plasmids_input.fasta	https://raw.githubusercontent.com/martinez-zacharya/MOP-UP/master/wastewater_plasmids_input.fasta	-	open-github-verify
+batch6_euk_viruses/MOPUP_MICRO	metadata20261027.csv	https://raw.githubusercontent.com/martinez-zacharya/MOP-UP/master/metadata20261027.csv	-	open-github-verify
+
+# batch6b_oral/HROM_ORAL - Human Reference Oral Microbiome 3,426 HQ species reps incl. 1,137 novel CPR (Cell Host Microbe 2025, CC BY 4.0, 2.285 GB)
+#   2 job(s); no record of size; about 2.285 GB by the worker's statement (estimate); held by R-12 because no provider record was kept (job list: cc-by-4.0, the worker's statement)
+batch6b_oral/HROM_ORAL	HROM-Species-metadata.tsv	https://www.decodebiome.org/HROM/data/genome_catalog/HROM-Species-metadata.tsv	-	cc-by-4.0
+batch6b_oral/HROM_ORAL	HROM_Genome.All.tar.gz	https://www.decodebiome.org/HROM/data/genome_catalog/HROM_representative_genomes/HROM_Genome.All.tar.gz	-	cc-by-4.0
+
+# batch6b_plant/CRBC_ISO - Crop Root Bacterial (6,699 genomes) & Viral (9,736 vOTUs) Collections (Dai et al. Cell 2025, zenodo:14091751, CC BY 4.0, 9.161 GB)
+#   4 job(s); no record of size; about 9.161 GB by the worker's statement (estimate); held by R-12 because no provider record was kept, although the md5s show the worker read Zenodo record 14091751 (job list: cc-by-4.0)
+batch6b_plant/CRBC_ISO	CRBC_metadata.xlsx	https://zenodo.org/api/records/14091751/files/CRBC_metadata.xlsx/content	1013646cb41df0a12367d342b457ede4	cc-by-4.0
+batch6b_plant/CRBC_ISO	CRVC_metadata.xlsx	https://zenodo.org/api/records/14091751/files/CRVC_metadata.xlsx/content	4a08164ed8718f00d4bc56fa2c2e21b1	cc-by-4.0
+batch6b_plant/CRBC_ISO	CRVC_genome.fna.gz	https://zenodo.org/api/records/14091751/files/CRVC_genome.fna.gz/content	99cf9fb4f99a7eb5e8398d5827cab36b	cc-by-4.0
+batch6b_plant/CRBC_ISO	CRBC_genome.tar.gz	https://zenodo.org/api/records/14091751/files/CRBC_genome.tar.gz/content	80ef02e04714893608d9a6df33000c41	cc-by-4.0
+
+# batch6_mges/PROMGE2 - proMGE v2.0 planetary MGE100 FASTA + profile/nested/cluster/taxonomy metadata (EMBL, CC BY-SA 4.0; skipped 7.67 GB optional mge100.gff3.gz)
+#   5 job(s); 34,439,287,617 bytes by the provider record (batch6_probe.json) for 3 of 5 job(s); held by R-12 because the saved record holds HTTP headers only (job list: CC BY-SA 4.0, the worker's label)
+batch6_mges/PROMGE2	genomes_taxonomy.tsv.gz	https://promge.embl.de/data/genomes_taxonomy.tsv.gz	caa07ce4b6658eaef0e8982293021ea4	CC BY-SA 4.0
+batch6_mges/PROMGE2	genomes_quality.tsv.gz	https://promge.embl.de/data/genomes_quality.tsv.gz	6686825565c34c8adecc31afa2c18e17	CC BY-SA 4.0
+batch6_mges/PROMGE2	mge_nested.tsv.gz	https://promge.embl.de/data/mge_nested.tsv.gz	3b6cb29a068cdf1a7aa7f352a869ed8e	CC BY-SA 4.0
+batch6_mges/PROMGE2	mge100_clusters.tsv.gz	https://promge.embl.de/data/mge100_clusters.tsv.gz	aeb31f494eda0f0a4921864f701c12cb	CC BY-SA 4.0
+batch6_mges/PROMGE2	mge100.fna.gz	https://promge.embl.de/data/mge100.fna.gz	0f1e8fd3f12082f0f5f085fd34989b9e	CC BY-SA 4.0
+
+# batch6_euks_org/C60_EUKCEN - EukCensus 2025 uncultivated global protist SAG assemblies + metadata (NERSC NeLLi, CC BY 4.0)
+#   2 job(s); no record of size; held by R-12 because the saved record is a directory listing (job list: CC BY 4.0, the worker's label)
+batch6_euks_org/C60_EUKCEN	eukcensus_2025_img_metadata.tsv	https://portal.nersc.gov/cfs/nelli/eukcensus/eukcensus_2025_img_metadata.tsv	-	CC BY 4.0
+batch6_euks_org/C60_EUKCEN	eukcensus_2025_sag_assemblies.tar.gz	https://portal.nersc.gov/cfs/nelli/eukcensus/eukcensus_2025_sag_assemblies.tar.gz	-	CC BY 4.0
+
+# batch6_euks_org/C60_SMAG - Delmont Tara Oceans 713 curated eukaryotic SMAGs v1 contigs + GFF + EggNOG + tables (Genoscope, CC BY 4.0)
+#   2 job(s); no record of size; held by R-12 because the saved record is a directory listing (job list: CC BY 4.0, the worker's label)
+batch6_euks_org/C60_SMAG	Supplemental_Tables.zip	https://www.genoscope.cns.fr/tara/localdata/data/SMAGs-v1/Supplemental_Tables.zip	-	CC BY 4.0
+batch6_euks_org/C60_SMAG	SMAGs_contigs_individual.fna.tar.gz	https://www.genoscope.cns.fr/tara/localdata/data/SMAGs-v1/SMAGs_contigs_individual.fna.tar.gz	-	CC BY 4.0

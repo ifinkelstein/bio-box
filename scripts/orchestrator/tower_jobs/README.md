@@ -42,6 +42,7 @@ manifests' `base_count` or the worker's `total_bp`. The 4.44 GB is an *estimate*
 | `17_later_b6b_ncbi_MARSUPIAL1.tsv` | 6b, NCBI manifest | 6,853 | 14,365,306,472 bases | not run |
 | `18_later_rescue.tsv` | 4 (`DSV70_mag.tar.gz`), 3 (`y1000p_genome_files.zip`) | 2 | 4,731,016,231 bytes + about 4.44 GB | not run; **not before card R-13 is merged** |
 | `19_later_batch6.tsv` | 6, `_batch6.tsv` | 690 | 119,469,480,803 bytes | not run |
+| `20_later_licence_released.tsv` | 6 and 6b: the 25 jobs R-12 held on licence, released by DEC-80 (card R-14) | 25 | 34,603,814,116 bytes for 12 of 25 jobs; no record of size for 13 (about 23.0 GB by the workers' statements, *estimate*, for 7 of them) | not run; its `RMD1` line is `r26.11.6`; licence fields unchanged; `redistributable: false` (DEC-80 (3)) |
 
 The `EUK_Y1000` line of `18_later_rescue.tsv` must not run before card R-13 is merged. Until then the script removes a
 file whose md5 matched when its archive test fails, and that is how batch 3 lost this file. Run the rescue list only after
