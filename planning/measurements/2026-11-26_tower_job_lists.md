@@ -292,3 +292,155 @@ sh scripts/orchestrator/fetch_to_tower.sh --check --sources sources.yaml scripts
 All lists together are 21 files and 12,169 jobs (*measured*). That is R-12's 19 lists (12,129), this list (25), and
 `2026-11-26_c72_part1.tsv` (15) of card C-72, merged on the integration branch. The script refuses any name and file
 named twice across the lists it is given, so no job repeats across the 21.
+
+## 2026-11-26, card R-15: batch 7 (`GPB_PHAGE`, `EEMC1` from CNGB) over `ftp://` (DEC-81 (5))
+
+DEC-81 (5) (the PI, 2026-11-26, answering after about 13:10 CST: "ftp is fine, use it if needed") releases batch 7,
+held since card R-12 for its route only: listed in `sources.yaml` first, https tried first. The two lists are
+[`21_later_batch7_GPB_PHAGE.tsv`](../../scripts/orchestrator/tower_jobs/21_later_batch7_GPB_PHAGE.tsv) and
+[`22_later_batch7_EEMC1.tsv`](../../scripts/orchestrator/tower_jobs/22_later_batch7_EEMC1.tsv). Nothing was fetched.
+
+**What was read.**
+- The copies of `_batch7_cngb_urls.tsv`, `_batch7_cyverse.tsv`, `_batch7_skipped.tsv`, `_fetch_batch7_cngb.sh` and
+  `_run_batch7_cngb_cyverse_detached.sh` that card R-11 took at 07:31 CST. The three lists equal `tower`'s
+  (*measured*, `sha256sum` on `tower` over `ssh -o BatchMode=yes root@tower`, read-only, about 13:25 CST, against
+  `shasum -a 256` of the copies):
+  - `_batch7_cngb_urls.tsv` `7006d0dd47efb5ff82cbe1e86c35c23cadc24688b0296e7428626588a29818ef`;
+  - `_batch7_skipped.tsv` `a532c76db06e0a9a0771bf35014d604a84ba6722fc19ab1e04a32f6d06d437df`;
+  - `_batch7_cyverse.tsv` `715694529c5dc1948e32ca5a587bd78d632fcc6c586e447fa1f760cabb84d27b`.
+- `ls` on `tower` of `sources_incoming/batch7_cngb` and `batch7_cyverse`: neither exists (*measured*, same session). No
+  batch-7 file has landed, so neither list writes into a directory that holds files.
+- The scripts that read and wrote are in the card's scratch directory, not in the tree: `r15/survey.py` (the survey
+  below) and `r15/build.py` (the lists). Both ran with `python3 -I` on the copy; neither opened a network connection.
+
+**What the rows are** (*measured*, `r15/survey.py`). `_batch7_cngb_urls.tsv` has a header and 75,189 rows in six
+columns (`stage relpath url expected_md5 bp license`); every row has six fields, no relpath or URL repeats, and every
+URL's last component equals the relpath's last component. All URLs are `ftp://ftp.cngb.org/pub/CNSA/...`.
+
+| Set | Rows | Kind | md5 in the list | `bp` column (*derived*, summed) | Licence field |
+|---|---|---|---|---|---|
+| `GPB_PHAGE` (CNP0004979, `data5`) | 102 | `assemblies/CPB<n>.fa.gz`, one phage assembly each | 102 | 6,518,982 bases | `CNGBdb-open` |
+| | 2 | `metadata_CNP0004979_assembly.tsv`, `..._sample_Virus_sample.tsv` (under `public_info/`) | none (`-`) | 0 | `CNGBdb-open` |
+| `EEMC1` (CNP0007106, `data7`) | 74,999 | `assemblies/<2 hex>/EEMC.bin.<n>.fasta.gz`, metagenome bins; the two hex digits are the first two of the file's md5 | 74,999 | 181,337,158,637 bases for the 75,082 FASTA rows | `CNGBdb-CC-BY-4.0` |
+| | 83 | `isolates/BGI*.fasta.gz`, isolate genomes | 83 | (in the line above) | `CNGBdb-CC-BY-4.0` |
+| | 3 | `metadata_CNP0007106_assembly.tsv`, `..._sample_Metagenome_or_environmental_sample.tsv`, `..._sample_Microbial_sample.tsv` | none | 0 | `CNGBdb-CC-BY-4.0` |
+
+"Bins" and "isolates" are the batch-7 worker's directory names; no file was opened. The `bp` column is bases, not
+bytes (card R-11). No list or record gives a byte size; the batch-7 worker said 52 GB (*estimate*).
+
+**Kept and left out.** Every one of the 75,189 rows is kept: each is a nucleotide FASTA assembly or a metadata table of
+the same project's assemblies and samples, which is card R-12's rule. `r15/build.py` refuses any other row, and found
+none. What is not in the lists, and why:
+- `_batch7_cyverse.tsv`: 0 job rows (comment lines only). Its four CyVerse targets are behind a Cloudflare Turnstile
+  (`_batch7_skipped.tsv`); nothing to list.
+- `_batch7_skipped.tsv`'s four CNGB/NGDC rows: `MEER` (CNP0004890) and `GBAT_RNA` (CNP0008812) hold raw reads only;
+  `ELEPHANT1` (CNP0004215) is controlled access; `GCSV` (PRJCA048260) is unreleased. None has a job row, and none is
+  listed in `sources.yaml` (a test checks that a CNP0004215 URL is refused).
+- The old script's 4 parallel connections and its 4 attempts with a 300 s cap per file are not carried over:
+  `fetch_to_tower.sh` fetches one file at a time with `--retry 3`.
+
+**https first** (card step (2); the only outside requests of this card; *measured* from the laptop, 2026-11-26 about
+13:20 CST):
+
+```
+curl -sS -I -A curl --max-time 30 "https://ftp.cngb.org/pub/CNSA/data5/CNP0004979/CNS0943843/CNA0072848/CPB0155.fa.gz"
+-> curl: (7) Failed to connect to ftp.cngb.org port 443 after 253 ms: Couldn't connect to server   (exit 7)
+curl -sS -I -A curl --max-time 30 "https://ftp.cngb.org/pub/CNSA/data7/CNP0007106/CNS1317800/CNA0429852/BGI80.fasta.gz"
+-> curl: (7) Failed to connect to ftp.cngb.org port 443 after 205 ms: Couldn't connect to server   (exit 7)
+curl -sS -v -I -A curl --max-time 30 "https://ftp.cngb.org/pub/CNSA/data5/CNP0004979/CNS0943843/CNA0072848/CPB0155.fa.gz"   (the one retry)
+-> * IPv4: 101.126.80.204
+-> * connect to 101.126.80.204 port 443 from 10.0.1.125 port 51485 failed: Connection refused
+-> curl: (7) Failed to connect to ftp.cngb.org port 443 after 205 ms: Couldn't connect to server   (exit 7)
+```
+
+No HTTP status line came back: the host refuses TCP connections on port 443, so the same paths are not served over
+https at that host. Another host form was not tried (the card allows a handful of requests; no record names an https
+host for these paths). So card step (3) applies.
+
+**The script.** `fetch_to_tower.sh` now takes an `ftp://` URL when, and only when, the `sources.yaml` form it matches is
+itself `ftp://`. The changes, each where the script named the protocol:
+- Form extraction: a `url`/`url_<what>` value starting `ftp://` is a form, beside `https://` and `http://`.
+- `to_ere`'s host test strips `ftp://` too, so a variable in an ftp form's host is refused as it is for https.
+- The URL rule: `ftp://` passes the scheme test of "refused URL"; the "not https" test lets `https://` and `ftp://`
+  through and still refuses `http://`. The character rule is unchanged. The scheme is literal in every form's regular
+  expression, so an https URL can match only an `https://` form and an ftp URL only an `ftp://` form.
+- curl: `--proto =ftp --proto-redir =ftp` for an ftp job; `=https` for every other job, exactly as before.
+- The header comment.
+Nothing else changed. For an ftp job curl logs in as `anonymous` with its own built-in password (`ftp@example.com` in
+the curl versions the writer knows; from the writer's knowledge, not read for this card); no option adds a user,
+password, account or address. FTP is cleartext: anyone on the path can see which public files are fetched, and the
+md5 of the list is what shows that the bytes are the provider's.
+
+Tests: `tests/r1/test_r15_fetch_ftp.py` (new), with the stub `curl` of the R-08 tests. Run on the pod before the change,
+28 of its tests failed; for example `test_an_ftp_url_of_an_ftp_form_lands_and_is_recorded`: `refused URL:
+ftp://ftp.cngb.org/pub/CNSA/data7/CNP0000001/CNS0000010/CNA0000020/BGI1.fasta.gz ... assert 2 == 0`.
+- The count of 28 is *derived* from pytest's progress line, because the summary line was cut from that output.
+- The tests that passed before the change are refusals the old script already made: an https URL of an ftp-only path,
+  the other schemes, and an ftp form with a variable host.
+- The R-08 and R-13 tests were not changed.
+- After the change, on the pod (*measured*):
+  `env BIOBOX_TREE=/tmp/biobox-wt/R-15 sh scripts/pod_pytest.sh R-15 tests/r1/test_r15_fetch_ftp.py tests/r1/test_r08_fetch_to_tower.py tests/r1/test_r13_fetch_keep_md5.py tests/r0`
+  gave `357 passed, 3 skipped in 19.23s`.
+
+**`sources.yaml`.** Two entries, `tower_eemc1` and `tower_gpb_phage`, at the head of the list (the reason is below,
+after the checks), in the form of the `tower_*` entries:
+- `url_ftp`: `ftp://ftp.cngb.org/pub/CNSA/<volume>/<project>/CNS{sample}/CNA{assembly}/{file}`;
+- `url_ftp_meta`: `ftp://ftp.cngb.org/pub/CNSA/<volume>/public_info/<project>/{file}`.
+  Each holds one data volume and one project, and each variable is one path segment.
+- `url`: the CNGBdb project page, `https://db.cngb.org/data_resources/project/<project>/`. The R-08 test requires every
+  `tower_*` entry's `url` to be https, and the file forms cannot be. The page is a literal form that matches that one
+  page; no job names it, and it was not requested. The `EEMC1` page is the one the PI named on 2026-11-25 at 21:13 CST;
+  the `GPB_PHAGE` page follows its pattern.
+- `license`: the list's labels, `CNGBdb-open` and `CNGBdb-CC-BY-4.0`. No provider record of either was kept, and none
+  was requested (DEC-80 (2)).
+- `redistributable: false` (DEC-80 (3)). The new entries can carry the field, unlike those of card R-14.
+- `approved`: DEC-81 (5) with the PI's words. For `EEMC1`, also his pointer of 2026-11-25 21:13 CST.
+- The comment above the batch-6 entries still says batch 7 is not listed. The card's Files name only the two entries,
+  so it is not edited; the new comment says it is superseded.
+
+**The lists.**
+- The five columns are copied from the source rows: md5 as the list gives it, `-` where it has none, and the licence
+  field unchanged. The `bp` column is dropped.
+- The relpath's directories become name components: `batch7_cngb/GPB_PHAGE` and `.../GPB_PHAGE/assemblies`;
+  `batch7_cngb/EEMC1`, `.../EEMC1/isolates` and `.../EEMC1/assemblies/<2 hex>` (256 directories). Each file lands
+  where `_fetch_batch7_cngb.sh` would have put it. The one difference is that each directory gets its own
+  `SHA256SUMS` and `SOURCE_URLS.tsv`, where the old script kept one pair per set with relpaths.
+- Row order is the source list's. Comment lines at the top name the set, the route and the licence label.
+- Neither list is placed in a release: no decision row assigns `EEMC1` or `GPB_PHAGE` to one, so both are `later`.
+  `GPB_PHAGE` comes first because it is small.
+- `EEMC1` is 75,085 files: run it with `--pause 0`, and after lists 01 to 21. At the default pause of 1 s the pauses
+  alone would add 75,085 s, about 20.9 h (*derived*).
+
+| # | List | Jobs (*measured*, `--check`) | md5 given | Size | Last line of `--check` (exit 0) |
+|---|---|---|---|---|---|
+| 21 | `21_later_batch7_GPB_PHAGE.tsv` | 104 | 102 | 6,518,982 bases (*derived*) | `check: 104 URLs, all covered by sources.yaml; nothing fetched` |
+| 22 | `22_later_batch7_EEMC1.tsv` | 75,085 | 75,082 | 181,337,158,637 bases (*derived*) | `check: 75085 URLs, all covered by sources.yaml; nothing fetched` |
+
+**Checks** (run on the laptop from `/tmp/biobox-wt/R-15` with absolute paths; full output in `r15/check_*.out`):
+
+```
+sh scripts/orchestrator/fetch_to_tower.sh --check --sources sources.yaml scripts/orchestrator/tower_jobs/21_later_batch7_GPB_PHAGE.tsv
+-> check: 104 URLs, all covered by sources.yaml; nothing fetched
+sh scripts/orchestrator/fetch_to_tower.sh --check --sources sources.yaml scripts/orchestrator/tower_jobs/22_later_batch7_EEMC1.tsv
+-> check: 75085 URLs, all covered by sources.yaml; nothing fetched
+sh scripts/orchestrator/fetch_to_tower.sh --check --sources sources.yaml <the 23 lists of tower_jobs/, named one by one>
+-> check: 87358 URLs, all covered by sources.yaml; nothing fetched
+```
+
+All lists together are 23 files and 87,358 jobs (*measured*): card R-14's 12,169, then 104 and 75,085.
+
+**Which entry each URL matched** (*measured*, `r15/compare.py` on the `match` lines):
+- All 75,189 `ftp://` lines match `tower_gpb_phage` (104) or `tower_eemc1` (75,085).
+- The 12,169 lines of the 21 earlier lists match the same entries, line for line and in order, as they did before
+  this card. The base check used copies of the tree's `sources.yaml` and `fetch_to_tower.sh`, taken with
+  `git show HEAD:...`. No https URL matches a batch-7 entry.
+
+**Why the two entries stand first in `sources.yaml`.** The script tries the forms in file order and stops at the
+first match. The tree has 1,046 forms (*measured*, `rg -c` of the form lines).
+- With the entries at the end of the file, each `EEMC1` URL was tried against about 1,040 forms before its own. The
+  `--check` of list 22 had not ended after 33 min on the laptop (macOS `awk`; *measured*, stopped by hand).
+- With the entries first (`tower_eemc1`, then `tower_gpb_phage`), it took 2.83 s (*measured*, `/usr/bin/time -p`).
+  The check of all 23 lists took 27.7 s.
+- The move changes no match of any other URL (above). `tower`'s `awk` was not timed.
+- Every run checks all its lists before the first request, so the speed matters for the fetch too, not only for
+  `--check`.

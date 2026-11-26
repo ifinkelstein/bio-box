@@ -10,17 +10,21 @@
 #           name     a directory under DEST, letters, digits . _ - in components joined by / (no . or .. component)
 #           file     the name the file is kept under in DEST/<name>/: letters, digits, space and . _ , = + ( ) -;
 #                    no /, no leading -, not ending .partial, not SOURCE_URLS.tsv or SHA256SUMS
-#           url      https only; must match a URL form of an entry of sources.yaml (below)
+#           url      https, or ftp where no https route exists (DEC-81 (5), card R-15); must match a URL form of an
+#                    entry of sources.yaml (below), and an ftp:// URL matches only a form that is itself ftp://
 #           md5      the provider's md5 (32 lower-case hex digits) or -; a file whose md5 differs is not kept
 #           licence  as the job list states it, recorded unchanged (a literal {} stays {}); empty is recorded as -
 #         Blank lines and lines starting # are skipped. The four-field lists of batch 1 (no licence) are accepted.
 #         Every line of every list is checked, and every URL matched, before the first request: any refusal, exit 2.
 #
 # The URL forms are read from sources.yaml at run time: every top-level `url` or `url_<what>:` line of an entry whose value
-# starts with https:// (or http://) is a form. {name} stands for one path segment (no /, ? or #); {path} and {x_path} for
-# a path of one or more segments. Everything else is literal, the URL must equal the form from its first to its last
-# character, and the host part of a form may hold no variable. Redirects are followed (https only) but only the URL given
-# is matched. The default User-Agent is `curl` (-A curl); no key, name, email address or project detail is sent.
+# starts with https:// (or http://, or ftp://) is a form. {name} stands for one path segment (no /, ? or #); {path} and
+# {x_path} for a path of one or more segments. Everything else is literal, the scheme included, so an https URL matches
+# only an https:// form and an ftp URL only an ftp:// form; the URL must equal the form from its first to its last
+# character, and the host part of a form may hold no variable. An http URL is refused whatever is listed. curl is held to
+# the job's own protocol (--proto and --proto-redir =https, or =ftp for an ftp job); redirects are followed within it, but
+# only the URL given is matched. The default User-Agent is `curl` (-A curl); no key, name, email address or project
+# detail is sent (an ftp login is curl's own anonymous one).
 #
 # Per file (as run on 2026-11-25): a file already in DEST/<name>/ and in its SHA256SUMS is skipped, never fetched again;
 # else curl writes DEST/<name>/.<file>.partial (a .partial is not a landed file); the partial must be non-empty, equal the
@@ -84,7 +88,7 @@ awk -v q="'" '
     v = $0; sub(/^    url[A-Za-z0-9_]*:[ \t]+/, "", v)
     sub("^[\"" q "]", "", v)
     split(v, a, /[ \t]/); u = a[1]; sub("[\"" q "]$", "", u)
-    if (u ~ /^https?:\/\//) print e "\t" u
+    if (u ~ /^(https?|ftp):\/\//) print e "\t" u
   }' "$SOURCES" > "$TMPD/forms"
 [ -s "$TMPD/forms" ] || die "$SOURCES holds no URL form"
 
@@ -92,7 +96,7 @@ awk -v q="'" '
 : > "$TMPD/jobs"
 awk -F '\t' -v forms="$TMPD/forms" -v out="$TMPD/jobs" '
   function to_ere(f,   o, i, c, j, name, host) {
-    host = f; sub(/^https?:\/\//, "", host); sub(/\/.*/, "", host)
+    host = f; sub(/^(https?|ftp):\/\//, "", host); sub(/\/.*/, "", host)
     if (host == "" || index(host, "{") || index(host, "}")) return ""
     o = ""; i = 1
     while (i <= length(f)) {
@@ -127,8 +131,8 @@ awk -F '\t' -v forms="$TMPD/forms" -v out="$TMPD/jobs" '
     ok = 1
     if (name !~ /^[A-Za-z0-9_][A-Za-z0-9_.-]*(\/[A-Za-z0-9_][A-Za-z0-9_.-]*)*$/ || name ~ /(^|\/)\.\.?(\/|$)/) { bad("refused name: " name); ok = 0 }
     if (file !~ /^[A-Za-z0-9_., ()=+-]+$/ || file ~ /^-/ || file == "." || file == ".." || file ~ /\.partial$/ || file == "SOURCE_URLS.tsv" || file == "SHA256SUMS") { bad("refused file name: " file); ok = 0 }
-    if (url !~ /^https?:\/\// || url !~ /^[A-Za-z0-9._~:\/?#@%&=+,;!*()-]+$/) { bad("refused URL: " url); ok = 0 }
-    else if (url !~ /^https:\/\//) { bad("not https: " url); ok = 0 }
+    if (url !~ /^(https?|ftp):\/\// || url !~ /^[A-Za-z0-9._~:\/?#@%&=+,;!*()-]+$/) { bad("refused URL: " url); ok = 0 }
+    else if (url !~ /^(https|ftp):\/\//) { bad("not https: " url); ok = 0 }
     if (!(md5 == "-" || (length(md5) == 32 && md5 ~ /^[0-9a-f]+$/))) { bad("md5 is neither - nor 32 lower-case hex digits: " md5); ok = 0 }
     if (lic !~ /^[A-Za-z0-9._ {}()=+,\/-]*$/) { bad("refused licence text: " lic); ok = 0 }
     if (lic == "") lic = "-"
@@ -191,7 +195,9 @@ while IFS=$'\t' read -r name file url md5 lic entry; do
   fi
   partial=.$file.partial
   rm -f -- "$partial"
-  if ! curl -fsSL -A curl --proto =https --proto-redir =https --retry 3 --retry-delay 5 --connect-timeout 30 -o "$partial" "$url"; then
+  proto=https
+  case "$url" in ftp://*) proto=ftp ;; esac
+  if ! curl -fsSL -A curl --proto "=$proto" --proto-redir "=$proto" --retry 3 --retry-delay 5 --connect-timeout 30 -o "$partial" "$url"; then
     rm -f -- "$partial"; fail FAIL_CURL "$name/$file" "$url"; continue
   fi
   if [ ! -s "$partial" ]; then rm -f -- "$partial"; fail FAIL_EMPTY "$name" "$file"; continue; fi

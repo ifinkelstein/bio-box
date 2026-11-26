@@ -10,6 +10,65 @@
 # Last checked against the files on disk: 2026-11-11.
 version: 1
 sources:
+  # Card R-15 (DEC-81 (5), 2026-11-26): batch 7 of tower, the two CNGBdb sets of _batch7_cngb_urls.tsv (written on
+  # tower 2026-11-25 21:37 CST; nothing of it was fetched). This supersedes the comment above the batch-6 entries that
+  # says batch 7 is not listed. ftp.cngb.org refused a connection on port 443 on 2026-11-26 (card R-15's note,
+  # planning/measurements/2026-11-26_tower_job_lists.md), so the files have no https route and their forms are ftp://
+  # (url_ftp, url_ftp_meta): fetch_to_tower.sh matches an ftp URL only against an ftp:// form. `url` is the set's CNGBdb
+  # project page, an https literal that matches that one page and no file; no job list names it. Each form is as narrow
+  # as the set's directories: one data volume, one project, then CNS<sample>/CNA<assembly>/<file> or public_info/<file>.
+  # The job lists are scripts/orchestrator/tower_jobs/21_later_batch7_GPB_PHAGE.tsv and 22_later_batch7_EEMC1.tsv.
+  # These two entries stand first in the list on purpose: fetch_to_tower.sh tries the forms in file order and stops
+  # at the first match, so the 75,085 URLs of EEMC1 are matched within a few forms instead of after about 1,040 of
+  # them (the check of list 22 had not ended after 33 min on the laptop with the entries last, card R-15's note).
+  # No other URL of the tree is ftp://, and the two https page literals match only themselves, so no other URL
+  # changes the entry it matches.
+  - name: tower_eemc1
+    what: >-
+      EEMC1 - CNGBdb project CNP0007106: 74,999 metagenome bins (EEMC.bin.<n>.fasta.gz), 83 isolate genomes
+      (BGI*.fasta.gz) and the project's three metadata tables (assembly; metagenome or environmental sample;
+      microbial sample); bins and isolates as the batch-7 worker's directory names call them
+    url: https://db.cngb.org/data_resources/project/CNP0007106/
+    url_ftp: ftp://ftp.cngb.org/pub/CNSA/data7/CNP0007106/CNS{sample}/CNA{assembly}/{file}
+    url_ftp_meta: ftp://ftp.cngb.org/pub/CNSA/data7/public_info/CNP0007106/{file}
+    checksum: >-
+      the provider's md5 for the 75,082 assemblies (in the job list, as _batch7_cngb_urls.tsv gives it; the fetcher
+      compares it before the file is kept); none for the 3 metadata tables; our sha256 is taken after the fetch
+    license: CNGBdb-CC-BY-4.0   # as the job list states it
+    redistributable: false   # DEC-80 (3): no record states a licence
+    fetched: >-
+      nothing yet: 75,085 files named in _batch7_cngb_urls.tsv on tower; the batch-7 runner was ended at 2026-11-26
+      08:09 CST before it fetched, and tower has no batch7_cngb/ directory (read 2026-11-26 by card R-15); listed here
+      before the fetch
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch7_cngb/EEMC1/
+    note: >-
+      CNGBdb-CC-BY-4.0 is the batch-7 worker's label; no provider record of the licence was kept, and card R-15
+      requested none. The list's bp column sums to 181,337,158,637 bases for the 75,082 assemblies (derived); no byte
+      size is recorded (the batch-7 worker said 52 GB, estimate). The `url` page is the one the PI named
+    approved: "by the PI, 2026-11-26 after about 13:10 CST, answering the orchestrating session's list of the decisions waiting for him: \"4. friday is holiday; ftp is fine, use it if needed\" (DEC-81 (5): batch 7, EEMC1 and GPB_PHAGE from CNGB, is released, listed here first, https tried first); earlier, 2026-11-25 21:13 CST, pointing the orchestrator to this set: \"this can be direct, no? https://db.cngb.org/data_resources/project/CNP0007106/\" (card R-11's note, section 3)"
+  - name: tower_gpb_phage
+    what: >-
+      GPB_PHAGE - CNGBdb project CNP0004979: 102 phage genome assemblies (one .fa.gz each) and the project's two
+      metadata tables (assembly; virus sample)
+    url: https://db.cngb.org/data_resources/project/CNP0004979/
+    url_ftp: ftp://ftp.cngb.org/pub/CNSA/data5/CNP0004979/CNS{sample}/CNA{assembly}/{file}
+    url_ftp_meta: ftp://ftp.cngb.org/pub/CNSA/data5/public_info/CNP0004979/{file}
+    checksum: >-
+      the provider's md5 for the 102 assemblies (in the job list, as _batch7_cngb_urls.tsv gives it; the fetcher
+      compares it before the file is kept); none for the 2 metadata tables; our sha256 is taken after the fetch
+    license: CNGBdb-open   # as the job list states it
+    redistributable: false   # DEC-80 (3): no record states a licence
+    fetched: >-
+      nothing yet: 104 files named in _batch7_cngb_urls.tsv on tower; the batch-7 runner was ended at 2026-11-26 08:09
+      CST before it fetched, and tower has no batch7_cngb/ directory (read 2026-11-26 by card R-15); listed here
+      before the fetch
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch7_cngb/GPB_PHAGE/
+    note: >-
+      CNGBdb-open is the batch-7 worker's label, not a licence; no provider record of the licence was kept, and card
+      R-15 requested none. The list's bp column sums to 6,518,982 bases for the 102 assemblies (derived); no byte size
+      is recorded. The project page in `url` follows the form of the page the PI named for EEMC1 and was not
+      requested. GPB_PHAGE was not named to the PI before DEC-81 (card R-11's note, section 3); DEC-81 (5) names it
+    approved: "by the PI, 2026-11-26 after about 13:10 CST, answering the orchestrating session's list of the decisions waiting for him: \"4. friday is holiday; ftp is fine, use it if needed\" (DEC-81 (5): batch 7, EEMC1 and GPB_PHAGE from CNGB, is released, listed here first, https tried first)"
   - name: inphared
     what: INPHARED phage genomes, release 14Apr2025, one gzipped FASTA and its metadata table; stage S1
     url: not recorded when it was fetched (2026-11-09, before this file existed). The project page is https://github.com/RyanCook94/inphared
