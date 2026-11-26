@@ -5,7 +5,90 @@ The running record of the cards in [`TASKS.md`](TASKS.md). Updated at every merg
 by an agent on its own branch `task/<ID>`, audited by the orchestrating session, and merged after its
 tests passed on the merged tree.
 
-## Audit and remediation, 2026-11-26 00:10 CST (current; supersedes the sections below where they differ)
+## Handoff, 2026-11-26 07:15 CST (Antigravity orchestrator closing; supersedes earlier sections where they differ)
+
+Written at the PI's instruction ("draft handoff and update docs.") to close the 2026-11-21–26 Antigravity orchestrating
+session cleanly. **Zero swarm workers are running (`r4-wave` and all scouts/stagers retired).** Every measurement below
+was verified live on 2026-11-26 at `07:13 CST`.
+
+**H0. Live Infrastructure State (*measured*, 2026-11-26 07:13 CST):**
+- **Repository (`plan/task-cards`):** Clean working tree, synced with `origin/plan/task-cards` (`d9bfb73` before this
+  handoff commit); GitHub Actions `ci` green (`eb46785` / `1783928`+, all audit cards `R-01`–`R-08`, `R-05b`, `R-10`,
+  `DEC-78`, plus `B-73`, `B-74`, `A-28` on branch).
+- **`wilkcomp02`:** Idle (`0` active user build/test units), `/tmp` **`427 GiB` free** (`60%` used of `1.1 TiB`).
+  - **Stage `V2` (1 of 19 in `r26.11.4`):** `13` run records published cleanly in `/tmp/if2453/r10/root/runs/stage=V2/`:
+    `inputs`, `ingest` (B-73 single `2.4 GB` shard, `37.474` vs `34.496` CPU-min = `1.086×`), `genecall.plan` + `5/5`
+    batches (`1.001×`–`1.022×`) + `genecall`, `crispr-minced` (`0.876×`), `igr`, `tapes` (`11,211,219` slots), and
+    `domains-pfam-38.2.plan` (B-74 zero OOM: `11,693,910` proteins, `2,328,745` copied free from earlier stages,
+    `9,365,165` to scan in `72` shards of `30.15M` residues, `17,131.6` CPU-min est).
+  - **Active guard stop (`v2/run/FAILED`, untouched):** `r26-11-4-wave-3.service` (`v2-3`) stopped cleanly at `23:39:13 CST`
+    on `r50_watch.py` (`exit 3`): `V2.domains-pfam-38.2.shard-00000..00008` crossed `280.4`–`283.3` CPU-min (`0` shards
+    published; staging left in `/tmp/if2453/stages/v2/tmp/staging/V2.domains-pfam-38.2.shard-*`). **Two compounding
+    causes (*measured*):** (1) concurrent 8-shard audit pytest (`pod_pytest.sh R-int --shards 8`) ran `21:55`–`23:35 CST`
+    beside `v2-3`'s `76`-thread Pfam fan-out (load `98` on `56` physical Xeon E7-4850 v3 cores; quiet-pod rerun of
+    `test_micro_replicons_runtime_within_budget` measured `40.09 s` vs `67.67 s` under load = `1.69×` CPU inflation); and
+    (2) `80`-thread SMT oversubscription (`20` concurrent 4-thread `pyhmmer` shards on `56` physical cores vs `V1`'s
+    `<= 14` shards at `237.7`–`245.3` CPU-min for identical `30.15M`-residue shards). **Needs PI word on this record
+    before relaunch.**
+- **`tower:/mnt/user/research-bulk/bio-box/sources_incoming/`:** **`278 GB` landed**, **`16 TB` free** (`52%` used of
+  `32 TB`), **zero laptop streaming**, `5` detached (`PPID=1`, `STAT=Ss`) runners cleanly daisy-chained:
+  - **Batches 1, 2, 3: COMPLETE** (`_batch3_detached.log`: `=== BATCH3 COMPLETE Thu Nov 26 01:55:49 CST 2026 ===`).
+  - **Batch 4 (`PID 2887304`, active `5h 17m`):** Completed `AVGD`, `RNA_OBL`, `RNA_UPVATLAS`, `NX2_CAVE`, `DSV70`,
+    `LR_COMPOST`, `EUK_VEUPATH`, and `SEGC1` `02.BGC`; currently pulling `SEGC1` `01.MAG.tar.xz` (`37 GB`), followed by
+    `OMD2` + `11,821` NCBI/ENA assemblies (`DTOL1`, `GFS1`, `NGOM1`, `SODA1`, `PLNT1`, `ATAC1`).
+  - **Chained behind Batch 4 (all alive, waiting cleanly):** Batch 5 (`PID 2893762`, `189` files, `93.18 GB`), Batch 6
+    (`PID 2957811`, `766` files, `220.12 GB`), Batch 6b (`PID 3008415`, `~124–129 GB`: flat `RNA_VIROID` fix, rescued
+    `CANDI1` `16.2 GB`, `RMD1` Tara Pacific coral `4,224` genomes `11.6 GB`, `CRBC_ISO`, `HROM_ORAL`, `C60_TOPAZ`,
+    `10,763` `O4` non-RefSeq organelles, `11,220` NCBI assemblies, `MIDAS_FULL`), and Batch 7 (`PID 3023133`, `75,189`
+    files, `~52.0 GB`: `EEMC1` `75,082` assemblies + `GPB_PHAGE` `102` isolates via anonymous `ftp://ftp.cngb.org`).
+
+**H1. Delivered & Committed Since `r26.11.3` Closeout (`2026-11-25`–`26`):**
+- **Runtime fixes merged:** **`B-73`** (`5d17859`, `MIN_SHARD_BASES = 320 * 2**20` coalescing in `l0seq/store.py::_batches`
+  against `LY-04`, verified live on `V2.ingest`) and **`B-74`** (`9b28770`, O(1)-memory PyArrow streaming of own
+  `protein_seq` outside DuckDB in `l1/domains.py` `_stage_uid_lengths`/`_measured_uids` + `DUCK_MEMORY_LIMIT = "1GB"` +
+  `preserve_insertion_order=False`, verified live on `V2.domains-pfam-38.2.plan`; CI memory test repaired by `R-10`).
+- **Per-release diversity figure workflow (`acc959a`):** `scripts/plot_release_diversity.py`,
+  `planning/measurements/release_diversity.json`, `planning/measurements/2026-11-24_release_r26.11.3/source_diversity_r26.11.3.{png,svg}`,
+  and `RUNBOOK.md` closeout step.
+- **External bare-metal compute evaluation (`bcc090b`):** Tier **H** card **`A-28`** (`DEC-79` pending) +
+  [`planning/design/A-28_bare_metal_compute.md`](../design/A-28_bare_metal_compute.md) (OCI Profile B clustering bursts
+  `~$346–$374/24 h` *derived*, Cherry Servers / Hetzner Auction Profile A stage builds, free UT Austin TACC Lonestar6 +
+  Stampede3 `nvdimm` track, zero-corruption sync protocol).
+- **`r26.11.5+` diversity roadmap, on-disk audits & PI login checklist:**
+  - [`2026-11-25_r26_11_5_diversity_survey.md`](../measurements/2026-11-25_r26_11_5_diversity_survey.md) (`3369387`)
+  - [`2026-11-25_r26_11_5_deep_collections.md`](../measurements/2026-11-25_r26_11_5_deep_collections.md) (`0e85288`)
+  - [`2026-11-25_r26_11_5_wide_and_audit_wishlist.md`](../measurements/2026-11-25_r26_11_5_wide_and_audit_wishlist.md) (`435ec63`) —
+    ranks zero-fetch on-disk treasures (`LR2+SAG1+NX1`, `REFSEQ-NEW` `5,036` post-`GTDB R226` complete reps, `G-RARE1..3`
+    `100%` remaining `GlobDB` phylum breadth, `MetaVR` archaeal/virophage/RNA slice, `Kavagutti` HiFi NCLDVs/MAGs,
+    `INPHARED 7Apr2026`), untapped `SPIRE`/`Logan`/`O4` tranches, and **mandatory pre-ingestion decontamination catches**
+    (`GFS1` 4 metazoan midges + diatoms, `WWV1` mixed RNA/prok/phage/protein files, `MIR1` `GOEV` `Poxviridae`/`Asfarviridae`,
+    `uhgv_extended` 92% already in `V3`, `jgi_img_pr` 0 new plasmids vs `PL3`).
+  - [`2026-11-25_pi_login_pulls.md`](../measurements/2026-11-25_pi_login_pulls.md) (`06850ce`, `4015cde`) — deferred PI
+    login-gated / ORCID / author-request / WAF / embargo checklist (`JGI SSO`, `Biosino NODE`, `Dryad ORCID`, `Zenodo
+    20336193`, `CyVerse` Turnstile).
+
+**H2. Exact Next Steps for the Incoming Session (In Order):**
+1. **PI decisions first** (see audit `R2` items 1–10 below + `A-28` `DEC-79` + **`V2` guard stop lift**):
+   - **Lift `V2` guard stop & pick Pfam SMT policy:** Resume `V2` on a **quiet pod** (never run `pod_pytest.sh` beside an
+     active build!) via **`scripts/stress/build_stage_pod/stage_wave.sh`** (card `R-07`, from a fresh mirror of
+     `plan/task-cards` HEAD `>= d9bfb73`, after archiving `v2/run/FAILED -> FAILED.v2-3` and clearing
+     `v2/tmp/staging/V2.domains-pfam-38.2.shard-*`). Recommendation: run `V2` Pfam at `<= 56` threads (`14` concurrent
+     shards = physical cores, zero SMT -> `~245` CPU-min matching `V1`), and before `PL2`/`PL3` either **(A)** land a
+     small Tier-L card cutting Pfam `shard_residues` from `30.15M` to `~22.6M` (`60%` budget, byte-identical output) for
+     safe `80`-thread night fan-out, or **(B)** keep `30.15M` shards and cap Pfam fan-out at `56` physical cores.
+2. **Finish `r26.11.4` 19-stage wave (`V2..GART2`) & cut `r26.11.4`:**
+   - Estimated `~24–26 h` wall for all 19 stages + `~10–14 h` for `r26.11.4` release train (`CLUSTER_METHOD=hybrid-b1`,
+     `DEC-77`/`DEC-78`, once PI clears `R2` item 1 and `DEC-77 (5)` review). Back up each stage onto `/stor/work` and
+     mirror to `tower`; run `scripts/plot_release_diversity.py` and both worked examples before announcing.
+3. **Close out `tower` Batches 4–7 & prep novelty-first `r26.11.5`:**
+   - Let `PIDs 2887304 -> 2893762 -> 2957811 -> 3008415 -> 3023133` finish on `tower`, record Batch 6b & Batch 7 URLs in
+     `sources.yaml` (following `R-08`), apply the `GFS1`/`WWV1`/`MIR1` decontamination filters, and stage `r26.11.5` in
+     the PI-approved novelty-first order (`G-RARE1..3` → Coral `RMD1`+`GBR_MGD` → `MV-EUKV`+`MV2` → `KAV-HIFI`+`INPHARED-2604`+`O4`
+     → `SPX2`+`LGRT2` → `LR2+SAG1+NX1`+`REFSEQ-NEW`+`tower` long-read `cMAGs`).
+4. **Housekeeping:** Prune the 43 merged Antigravity worktrees under `~/.gemini/antigravity-cli/worktrees/` (`R2` item 6)
+   and old pod mirrors (`/tmp/if2453/ci/rel1125{a..f}`) once unused.
+
+## Audit and remediation, 2026-11-26 00:10 CST (superseded where it differs from the handoff above)
 
 Written by the auditing session (Claude) at the PI's words "review this project as an auditor ..." and "fix all these
 issues top to bottom". The Antigravity orchestrator of the section below is still working beside it. The findings are
