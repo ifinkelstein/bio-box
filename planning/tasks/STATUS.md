@@ -72,16 +72,39 @@ established discipline as you keep going".
 - Card R-11 (`TASKS.md`, Phase R), at the PI's words of about 07:30 CST: one worker reads what the Antigravity
   sessions staged on `tower` and for the 19 stages on the pod, read-only, and prepares the corrections of
   `sources.yaml` on branch `task/R-11`. Not merged.
+- Card C-72, at the PI's words of about 07:40 CST ("explore additional sources of diversity that proir explorations
+  and current ingests may have missed ...") and 07:50 ("review roadmap as well. r26.11.5 should be modified if higher
+  diversity/priority datasets can be staged for ingest"): the survey is merged (`da13d2a`, row below, note
+  [`2026-11-26_missed_diversity_sources.md`](../measurements/2026-11-26_missed_diversity_sources.md)). Its largest
+  find is that every plan cuts from and dedupes against GlobDB r226 and GTDB R226 while GlobDB r232 (346,233 genomes
+  from 26 resources, 46,920 of them from 12 resources r226 lacked) and GTDB R232 (199,923 species) are out. Its §5
+  proposes a revised `r26.11.5`; **that is a proposal, not the roadmap, until the PI ratifies it** (W3 (4)).
 
 **W3. Next, in order:**
 1. Look at the first ten shard records (due about 08:35 CST: 61 minutes of wall each on the earlier stages); they
    should hold 216 to 255 CPU-minutes each. The scan is 72 shards, about 7.3 h of wall (*derived*: 72 / 10 × 61 min),
    then the merge, the second CRISPR producer, and the modes `after`, `check` and `backup`.
-2. The other 18 stages are launched as a wave of their own when `V2` has its `backup/DONE`, with `SCAN_JOBS=10`.
-   Before that launch, decide how gene calling is kept from 20 batches at once at night (W1, last point): the
-   profile's night cap is the PI's (DEC-74), and a bound on the fan-out in the code is a card.
+2. The other 18 stages (`PL2`, `PL3`, `CG1`, `MGE1`, `SAT1`, `ECE1`, `O1`, `O2`, `LPL1`, `SYM1`, `LRV1`, `LGRT1`,
+   `MGE2`, `MV1`, `V3`, `LR1`, `GART1`, `GART2`, the order of the confs' `AFTER=` lines) are launched as a wave of
+   their own when `V2` has its `backup/DONE` and card R-11 has read their inputs, with `SCAN_JOBS=10` and no change of
+   code. Gene calling at night (W1, last point) was weighed by this session: of the stages whose estimates are
+   recorded, only `MV1` (16 batches) and `V3` (14) would run more than ten batches at once
+   (`2026-11-24_a26_r26_11_4_confs.md`), at about 230 and 235 CPU-minutes a batch (*derived*: 3,677.75 / 16,
+   3,285.63 / 14), which leaves about a fifth under the guard where G1's Pfam shards at 14 at once cost 7% more than
+   at ten; judged acceptable, and those two stages are watched. A bound on the fan-out in the code, or a night cap at
+   the number of physical cores, would be a card and the PI's decision (DEC-74).
 3. The release train of `r26.11.4` is not launched: DEC-77 (5) needs the PI's review of cards B-71, B-72 and A-27,
    which now includes R-02, R-03 and R-05.
+4. For the PI, from card C-72 (the note's §5 has the table before and after): (a) the revised `r26.11.5`: keep
+   `G-RARE1..3`, `MV2` + `MV-EUKV`, `KAV-HIFI` + `INPHARED-2604`, `LR2` + `SAG1` + `NX1`; take in what is staged or
+   landed and the handoff's order left out (`GV1`, `EGV1`, `ECE2`, `MIR1`, `ASG1`, `SAG2`, `DPN1`, `SYM2`, `LRP1`,
+   `MIR2`, `MGE4`) and three new one-file sources (`GWV1` groundwater virome, `SAG3` oxygen-minimum-zone single cells,
+   `WET1` wetlands); move `SPX2`, `RMD1`, `O4`, `GBR_MGD`, `LGRT2`, `REFSEQ-NEW` and the long-read sets on `tower` to
+   `r26.11.6`; about 96 to 108 Gbp new (*derived* from estimates, the note's §5.4); (b) whether `r26.11.5` also
+   streams the GlobDB r232 genome archive (292,068,313 K in the provider's index) for a first cut of about 12 Gbp;
+   (c) whether later `G` tranches are cut from r232 instead of the r226 archive on `/stor`; (d) each new source's
+   approval, which comes before its `sources.yaml` entry and its fetch. The handoff below calls its own order
+   "PI-approved"; no row of `DECISIONS.md` holds it.
 
 ## Handoff, 2026-11-26 07:15 CST (Antigravity orchestrator closing; superseded where it differs from the section above)
 
@@ -1450,7 +1473,7 @@ Last full suite on the integration branch before the C-11 merge: 1,053 passed, 1
 pinned image; 3 min 40 s wall for the slowest shard, against 13.5 min in one process). The skips
 need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the laptop (AGENTS.md §5.5).
 
-## Merged (212 rows counted one per card row as before, and measurements; F-02 has ten sessions in; C-48c has parts 2 and 3, and C-48e part 1, the inputs, in)
+## Merged (213 rows counted one per card row as before, and measurements; F-02 has ten sessions in; C-48c has parts 2 and 3, and C-48e part 1, the inputs, in)
 
 The count stood at 190 after C-38c. The twelve card rows and four note rows that follow were not written at their
 merges; the audit of 2026-11-25 wrote them from git and from the orchestrator's log
@@ -1459,6 +1482,7 @@ table's distinct card IDs are fewer (some cards have several rows).
 
 | Card | Merge | What it did | Audit notes |
 |---|---|---|---|
+| C-72 (survey) | `da13d2a` | **Sources the surveys of 2026-11-25 missed, and a proposed `r26.11.5`.** `planning/measurements/2026-11-26_missed_diversity_sources.md` (a record per candidate, two rankings, a merged grab order, what was looked for and not found, the roadmap before and after), card C-72 after C-71, dated lines in cards C-69, C-70 and C-71, three rows in `CATALOG_GOAL.md` §4.3 (`653bb74`). No data fetched, `sources.yaml` untouched. The staging parts of the card are not started | Opus agent on `task/C-72`, read-only (web search and the providers' record pages, two `ls` on `tower`), audited by the orchestrating session: the note, the card and the three rows read in full; the GlobDB r232 directory index and dataset list and GTDB R232's release notes were read again through a separate fetch and agree with the note (genome archive 292,068,313 K; the 26 resources' counts, whose twelve new ones sum to 46,920; 901,341 genomes in 199,923 species clusters). Not checked again: the Zenodo and figshare records, the MGnify indexes, the papers' counts. The note uses a fourth label, *published* (the provider's own statement), beside the three of AGENTS §6, as cards C-69 to C-71 already do. No test reads the three files (`grep -rl` over `tests`: comments only), so none was run. The revised `r26.11.5` is a proposal for the PI (W3 (4)) |
 | R-10 | `62d2694` | **The C-48b memory bound reads the child's own peak.** `tests/r1/test_c48b_env_crosswalk.py::test_bounded_rss_on_100x_synthetic_inputs` reads the child's `VmHWM` (`ru_maxrss` only without `/proc`); the 512 MiB bound is unchanged (`317bfd2`) | Opus agent (the R-01 agent) on `task/R-10`. Found when `ci` of `2ea134d` (card B-74's commit) failed on this test (`575.82 MiB`): B-74's new tests sort before it and raised the suite process's peak, which a child's `ru_maxrss` carries (card R-01). Reproduced on `wilkcomp02` under a parent that had held 3 GB: `Peak RSS too high: 2893.64 MiB`; after: 237 passed both ways (with `tests/r0`). *Measured* (`wilkcomp02`, 2026-11-25): the child's own peak is 443 MiB (about 14% under the bound). Shown able to fail (600 MiB added in the child: 830.56 MiB). Every other `ru_maxrss` site in `tests/` was read: none bounds a child's `ru_maxrss` (the table is in the agent's report; the `runstep.measured` helper does not carry the parent's peak: 75,235,328 B under a parent that had held 3 GB). The card listed eight files; one needed the change. |
 | R-05b | `11731e7` | **Follow-up to R-05 after R-02: a live cut under a format-1 plan gets no DEC-77 cap.** `r50_watch._live_cut_cap` returns the default cap when the plan's `format` is 1, as `l2.cluster.cut_createindex_estimate` now returns None for it; `test_format1_plan_work_dir_and_no_exemption` replaces the test that asserted the exemption (`5ca7589`) | Opus agent (the R-05 agent) on `task/R-05b`, branched from the integration branch. Found by the `ci` run of R-02 and R-05 together (`8d8f85e`: `assert None is not None`). Seen failing first: 4 of 60 (`assert 20000.0 == 280.0`). Agent's run on the merged tree: 509 passed in 354.08 s (the watch, train, R-02 and `tests/r0` files). No card was written before the work: it is a follow-up inside R-05, recorded here. |
 | R-02 | `8d8f85e` | **Clustering scratch pruning survives a kill, a format-1 plan can be redone, and the method is recorded.** `l2/cluster.py`: `clean_consumed` writes its `.pruned.json` entry (temporary name, rename) before it removes anything, and a later call for the same step finishes a recorded prune or prunes again what a redo wrote; `_cut_doc` writes the pre-B-71 cut record and keeps the pre-B-71 refusal for a plan of `PLAN_FORMAT` 1, and `cut_createindex_estimate` grants it no exemption; a clustering by a method other than `cascade` writes one more ledger row per level with the reason `method:<mode>` (`method_rows`, `ledger_method`; `run`, `finish` and `reuse`), a `cascade` ledger staying byte for byte what it was. `tests/r1/test_r02_cluster_prune_crash.py` (79 tests, 12 with MMseqs2) (`6c0d2e2`) | Opus agent on `task/R-02`, audited by the orchestrating session (the diff of `cluster.py` read in full; `stage.py` unchanged: its resume already calls `clean_consumed` for every call after `lost` and the redo). Seen failing first: 78 of 79 on the code before the card (`a target was removed and no prune is recorded`; `cluster.nr50.15.prefilter.cut: ['createindex_cpu_min']`). Agent's runs on `wilkcomp02`: 171 passed and the one test card R-01 repairs failed (its branch predates R-01); `test_cluster_split.py`, `test_cluster_reuse.py`, `tests/r0`: 254 passed; `test_build_stage.py`: 49 passed. `params_hash` and `cluster_uid` are unchanged. Open: a one-process `run()` writes no plan record, so there the method is in the ledger only (R2 (9)). |
