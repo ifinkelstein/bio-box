@@ -422,20 +422,36 @@ def test_w39_100x_synthetic_memory_bound(w39_world, tmp_path):
     written = fastz.write_records(shard_dir, ".faa.zst", records, 2**30)
     shard_path = written[0]["path"]
 
+    # The child's own peak is VmHWM of /proc/self/status, the high-water mark of the memory it has had since its exec.
+    # Not `ru_maxrss`: on Linux a child's `ru_maxrss` carries the peak of the parent it was started from (exec keeps
+    # the larger of the old and new images' peaks), so under one pytest process over the whole suite (`uv run pytest`,
+    # GitHub Actions) it reports the suite's peak, 3,982,860,288 B on run 45711591139. Card R-01 (measured, wilkcomp02,
+    # 2026-11-25, Python 3.14.10 in the test image): a parent wrote 3 GB and freed it, then `subprocess.run` started a
+    # child that wrote 64 MiB; the child read ru_maxrss 3,011,248,128 B and VmHWM 78,209,024 B. This scan's VmHWM was
+    # 346,992,640 B under a parent that had peaked at 3 GB (its ru_maxrss 3,036,643,328 B). Card B-24's test measures
+    # its child the same way (tests/r2/test_micro_s0_cluster.py). `ru_maxrss` is used only where there is no /proc
+    # (macOS), and is printed beside VmHWM.
     child = (
-        "import json, resource, sys\n"
+        "import json, os, resource, sys\n"
         "from pathlib import Path\n"
         "from biobox.search import panel\n"
         "hmms = panel.load_panel_specs([sys.argv[1]], [], [], [], cutoff='gathering')\n"
         "hits = panel.scan_fastz_shards([Path(sys.argv[2])], hmms, cpus=1, block_residues=65536)\n"
         "rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss\n"
-        "rss_bytes = rss if sys.platform == 'darwin' else rss * 1024\n"
-        "print(json.dumps({'n_hits': len(hits), 'rss_bytes': rss_bytes}))\n"
+        "maxrss = rss if sys.platform == 'darwin' else rss * 1024\n"
+        "st = '/proc/self/status'\n"
+        "hwm = (next(int(x.split()[1]) * 1024 for x in open(st) if x.startswith('VmHWM:'))\n"
+        "       if os.path.exists(st) else None)\n"
+        "print(json.dumps({'n_hits': len(hits), 'hwm_bytes': hwm, 'maxrss_bytes': maxrss}))\n"
     )
     p = subprocess.run(
         [sys.executable, "-c", child, str(w39_world["hmm_m12"]), str(shard_path)],
         capture_output=True, text=True, check=True, timeout=180,
     )
     info = json.loads(p.stdout.strip().splitlines()[-1])
+    peak = info["hwm_bytes"] if info["hwm_bytes"] is not None else info["maxrss_bytes"]
+    print(f"\nw39 100x scan in a child: {info['n_hits']} hits, VmHWM {info['hwm_bytes']} B, "
+          f"ru_maxrss {info['maxrss_bytes']} B (with its parent's peak)")
     assert info["n_hits"] >= 100
-    assert info["rss_bytes"] < 2 * 1024**3, f"peak RSS {info['rss_bytes']} >= 2 GiB"
+    assert peak < 2 * 1024**3, (f"peak RSS {peak} >= 2 GiB (VmHWM {info['hwm_bytes']}, "
+                                f"ru_maxrss {info['maxrss_bytes']})")

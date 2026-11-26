@@ -5,7 +5,69 @@ The running record of the cards in [`TASKS.md`](TASKS.md). Updated at every merg
 by an agent on its own branch `task/<ID>`, audited by the orchestrating session, and merged after its
 tests passed on the merged tree.
 
-## Orchestrator active, 2026-11-22 06:10 CST (current; supersedes earlier handoff lines where they differ)
+## Audit and remediation, 2026-11-25 21:00 CST (current; supersedes the sections below where they differ)
+
+Written by the auditing session (Claude) at the PI's words "review this project as an auditor ..." and "fix all these
+issues top to bottom". The Antigravity orchestrator of the section below is still working beside it. The findings are
+in [`2026-11-25_audit.md`](../measurements/2026-11-25_audit.md); the cards are Phase R of [`TASKS.md`](TASKS.md).
+
+**R0. What is running** (*measured*, 2026-11-25 20:50 CST; `ssh ... "systemctl --user is-active r26-11-4-wave-2.service;
+tail -n 6 /tmp/if2453/stages/r26-11-4-wave.out; df -h /tmp"` and, on `tower`, the tail of `_batch3_detached.log`):
+- `wilkcomp02`: `r26-11-4-wave-2.service` is active since 20:00:38, in `V2` mode `run`, from the mirror
+  `/tmp/if2453/ci/rel1125e` (card B-73 in it); the first wave stopped at 17:08:20 on `V2.ingest` (`LY-04`). `/tmp` has
+  427 GiB free. The wave is a loop typed into the unit; after it, waves are launched with
+  `scripts/stress/build_stage_pod/stage_wave.sh` (card R-07, RUNBOOK "A wave of stages"). The release train of
+  `r26.11.4` is not launched: DEC-77 (5) needs the PI's review, and cards R-02, R-03 and R-05 change or test the
+  clustering it would run.
+- `tower`: fetch batch 3 is running into `sources_incoming/` (142 GB there by `du -sh`); job lists for batches 4 and 5
+  and their launch scripts are present. All URLs of the six job lists are now in `sources.yaml` (card R-08). The file
+  name of one `RNA_VIROID` job in `_batch3.tsv` holds a slash and will fail.
+- GitHub Actions: `ci` failed on every push from `f5c644b` (2026-11-24 09:26 UTC) to `76bad80`, each time on the same
+  four tests (card R-01); the run of `0e85288`, which holds card B-73, failed on those four and no other.
+
+**R1. Cards of the audit** (rows in the merged table): R-01 (the four tests), R-04 (`release retire` reads its tars),
+R-05 (the watch's cap for a running cut), R-06 (four small defects), R-07 (`stage_wave.sh`), R-08 (`sources.yaml` and
+`fetch_to_tower.sh`) are merged together after one run of their tests on the merged tree (*measured*, `wilkcomp02`,
+2026-11-25: 952 passed in 637.65 s over the first five cards' files and `tests/r0`; 318 passed in 32.82 s over
+R-06's) and one `ci` run of the merged branch `task/R-int`. R-03 (an independent oracle for the hybrid methods) is
+merged as its 20 passing checks, with a finding the PI decided the same evening (R2 (0), DEC-78). R-02 (pruning that survives a kill, a format-1
+redo, the method in the records) follows.
+
+**R2. For the PI** (none of these is an agent's to decide; the audit note §5 has the evidence):
+0. **Decided on 2026-11-25, about 21:20 CST ("keep the code, change the DEC-77 wording"; row DEC-78): what
+   "linclust NR90" means in DEC-77.** The code stays; DEC-78 and the design note §6.1 (1) now say what it runs. What
+   was put to the PI: card R-03 found that the NR90 step of
+   `hybrid-b1` (and of `hybrid-a` and `linclust`) is the linclust step that `mmseqs cluster` runs inside itself
+   (`kmermatcher --spaced-kmer-mode 1`, `align --alignment-mode 3 --comp-bias-corr 0`), not what
+   `mmseqs linclust --min-seq-id 0.9 -c 0.8 --cov-mode 1 --cluster-mode 2` runs (`0`, `2`, `1`); every other call and
+   argument is the same, and with those three flags given, `mmseqs linclust` gives the build's clusters. *Measured*
+   (`wilkcomp02`, 2026-11-25, MMseqs2 18.8cc5c, 2 threads, `tests/r2/test_r03_nr90_plain_linclust.py` through
+   `pod_pytest.sh`): 857 clusters against 859 on the fixture (6 proteins placed differently), 240 against 239 on a
+   planted set (8 proteins); on one planted pair of 85.6% gapless identity plain linclust joins the two at NR90 and
+   the build keeps them apart. Card C-38c's measurement, on which DEC-77 (1) rests (NR90 `+2.31%`), ran
+   `l2/cluster.workflow`'s own ten calls (`scripts/stress/c38c_linclust_vs_cascade.py`, `linclust_redundancy_calls`),
+   so it measured what the code runs. The choice: keep the code and say so in the design note §6.1 (1) and DEC-77's
+   wording, or change `workflow()` at three flags (NR90) and two (the `linclust` mode's NR50) and measure again. The
+   13 tests that assert equality with plain `mmseqs linclust` are on branch `task/R-03` (`5811b41`), red, not merged.
+1. Whether `cluster_uid` should change with the clustering method (`params_hash` does not hold it; DEC-77 (2), card 0-07).
+2. Ratify or undo: `90591d4` (the four protected documents moved and edited without a card), the merge of C-64 while
+   its dependency C-44 is held, and the agent-written design notes of the **H** cards F-01, C-50 and C-60.
+3. Whether the pod's owner agreed to DEC-73 and DEC-74 (DEC-16 recorded 56 threads at night and 200 GB).
+4. `~/bio-box` on the pod is at `f9af5b6` (2026-11-09) and builds run from rsync mirrors under `/tmp/if2453/ci/`:
+   `git push pod`, or change AGENTS.md §7.6 to what is done.
+5. The fetched and queued files that are not sequence data, the sources without a licence, and seven hosts never
+   approved by name (`planning/measurements/2026-11-25_tower_sources_incoming.md` §8).
+6. The 43 worktrees of the Antigravity session under `~/.gemini/antigravity-cli/worktrees/` are on merged branches.
+7. `GUIDE.md`'s worked commands name `rN.3` and `r26.11.1`, which are archived (DEC-66).
+8. Card R-05's part (3) (the default of `train_est.py --cluster-method`, `hybrid-b1`, against `cascade` in the
+   library) was withdrawn: it needs a test of card A-27 changed. `release_train.sh` always passes the method.
+
+**R3. Done outside a card, at the PI's word.** The orphan
+`/stor/work/Wilke/if2453/all-the-data/root_backups/root_rM2_20261114/.tmp.l1_and_records.tar.2921741` (9,838,919,680 B)
+was removed on 2026-11-25 at 19:55 ("remove orphat temp file"). The `tower` copies of `added_r26_11_1.tar` and
+`added_r26_11_3.tar` were read back and hash to their recorded values.
+
+## Orchestrator active, from 2026-11-21 17:25 CST (the Antigravity orchestrator; superseded where it differs from the section above)
 
 Resumed by Carbon orchestrator with Neon (`gemini-4-neon-medium`) worker swarm at the PI's instruction ("review md docs,
 the status md and other parts of this project. review last claud session here. then resume where that left off. run neon
@@ -1190,7 +1252,7 @@ Last full suite on the integration branch before the C-11 merge: 1,053 passed, 1
 pinned image; 3 min 40 s wall for the slowest shard, against 13.5 min in one process). The skips
 need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the laptop (AGENTS.md §5.5).
 
-## Merged (202 rows counted one per card row as before, and measurements; F-02 has ten sessions in; C-48c has parts 2 and 3, and C-48e part 1, the inputs, in)
+## Merged (209 rows counted one per card row as before, and measurements; F-02 has ten sessions in; C-48c has parts 2 and 3, and C-48e part 1, the inputs, in)
 
 The count stood at 190 after C-38c. The twelve card rows and four note rows that follow were not written at their
 merges; the audit of 2026-11-25 wrote them from git and from the orchestrator's log
@@ -1199,6 +1261,13 @@ table's distinct card IDs are fewer (some cards have several rows).
 
 | Card | Merge | What it did | Audit notes |
 |---|---|---|---|
+| R-03 | `e3230aa` | **An independent oracle for the hybrid clustering modes.** `tests/r2/test_r03_hybrid_oracle.py` (20 tests, MMseqs2 needed, skipped without it): NR50 of `hybrid-b1` equals `mmseqs cluster ... -s 2 --cluster-steps 2` and NR50 of `hybrid-a` the default `mmseqs cluster`, on the build's own `rep90`, cluster for cluster and call for call (19 and 23 calls); NR90 of every mode equals one `mmseqs linclust` call given the three flags of the code's decomposition; planted families are recovered; three inputs (the S0 fixture, a planted set, a near-threshold set, fixed seeds) | Opus agent on `task/R-03`, audited by the orchestrating session. **Finding, open item R2 (0)**: plain `mmseqs linclust` differs from the build in three flags; the 13 tests of that (`5811b41`, `tests/r2/test_r03_nr90_plain_linclust.py`) stay red on the branch, unmerged, for the PI. The card listed one file; the second was authorised by the orchestrating session. Shown able to fail: a one-step oracle gives 166 against 163 NR50 clusters on the near-threshold set and 15 against 19 calls. Limit: only the call checks tell two cascade steps from three. Agent's run on `wilkcomp02`: 20 passed in 150.44 s; on the merged tree with `tests/r0`: 244 passed in 148.45 s. |
+| R-08 | `a58b9ef` | **The fetches to `tower` of 2026-11-25 are listed in `sources.yaml`, and their script is in the tree.** 83 `tower_*` entries for the six job lists on `tower` (figshare files by exact URL, 209 lines; Zenodo by record), `scripts/orchestrator/fetch_to_tower.sh` (refuses, before any request, a URL that no `sources.yaml` entry covers; `--check`), `tests/r1/test_r08_fetch_to_tower.py`, `planning/measurements/2026-11-25_tower_sources_incoming.md` (`d600173`, `2ba0cc8`) | Sonnet agent on `task/R-08`, audited by the orchestrating session (the script and the entries read; the first commit's generic figshare form `files/{file_id}` matched every figshare file and was sent back). Seen failing first: the script absent (`exit 127`); then three unlisted figshare ids accepted (`assert 0 == 2`). *Measured* on `tower`, 2026-11-25 20:09 to 20:23: 119 files landed, 138,734,291,679 B, 36 directories; 690 jobs in six lists, all covered (`fetch_to_tower.sh --check`). Agent's run: 331 passed. Deviation: the test reads `sources.yaml` through `ROOT.joinpath` and skips in the image, which does not ship that file (`tests/r0/test_image_files.py` looks for the `ROOT / "..."` form). For the PI: the non-sequence files, the missing licences and seven hosts not approved by name (the note's §8). |
+| R-07 | `cce8fa0` | **The wave of stage builds is a script in the tree.** `scripts/stress/build_stage_pod/stage_wave.sh` (the stages in order through `stage_queue.sh`; stops at the first non-zero exit, a missing `DONE`, or the data root's `STOP`; `--resume-at STAGE --from-mode MODE`), `tests/r1/test_r07_stage_wave.py`, RUNBOOK "A wave of stages" (`8e2d24c`) | Sonnet agent on `task/R-07`, audited by the orchestrating session (the script read in full). Seen failing first: the script absent. Orchestrator's run on `wilkcomp02`: 475 passed in 105.75 s (its file, `test_stage_driver.py`, `tests/r0`). Not run on a real stage. |
+| R-06 | `67c2f36` | **Four small defects.** `duck_memory_limit` reads a cgroup v1 limit too and its tests take the limit as an input; `search_mem_gb` exits 2 on a `$MEM` it cannot parse (it printed 14); `panel._resolve_library_path` orders library versions numerically, from the file name or the version-named directory; the comment on `MIN_SHARD_BASES` (exactly 64 MiB at 0.20 B/bp; the constant unchanged). `tests/r1/test_r06_small_defects.py` (`a779fbd`, `1cdb5d9`) | Sonnet agent on `task/R-06`, audited by the orchestrating session (diff read; the first commit read the version from the file name only and would have picked `pfam/38.2/` over `pfam/38.3/`; sent back). Seen failing first: 17 of 25 new tests; then `assert '38.2' == '38.3'`. Agent's run: 318 passed; the same on the merged tree. |
+| R-05 | `d964107` | **The watch raises a running cut's CPU cap only where the plan grants DEC-77's exemption.** `r50_watch.py`: a live shared-index `.cut` without its record gets the one-process cap only when the `createindex` estimate over its target index is over the plan's part budget and within the cap (`stage._cluster_in_parts`'s test, with standard-library copies of the library's values held equal by tests); else `--cpu-max`. `tests/r1/test_r05_watch_live_cap.py`; one test of `test_a27_hybrid_train.py` migrated (`c80969b`) | Opus agent on `task/R-05`, audited by the orchestrating session (diff of `r50_watch.py` read in full). Seen failing first: 37 of 55 new tests (`assert 0 == 3`: a 300 CPU-minute cut under the budget was let run). Agent's run: 425 passed. The card's part (3) was withdrawn (open item R2 (8)). |
+| R-04 | `c5348ae` | **`release retire` checks what the tar holds and what the copies say.** `catalog.retire_release`: each `--tar` is read once as a stream (its sha256 and every member's), every file to be removed must be a regular-file member with the manifest's size and sha256, at least one `--copy <location>=<sha256>` equal to a tar's, recorded as the operator's statement; all before anything is written or removed. Records written before the card still verify. `tests/r1/test_r04_retire_guards.py`, RUNBOOK (retire) (`1553f4d`) | Opus agent on `task/R-04`, audited by the orchestrating session (diff of `catalog.py` and `cli.py` read in full). Seen failing first: 16 of 19 new tests (`assert 0 == 2`: a tar lacking a file retired the release). Agent's run: 249 passed in 467.54 s, the R2 fixture with MMseqs2 among them. `test_c54_release_retire.py`: calls migrated to the new `--copy` form, one assertion now exact on the new record form. A retire now needs the release's plan files in a tar. |
+| R-01 | `f13b783` | **The four tests that failed on GitHub Actions since `f5c644b`.** Two tests import their sibling module from its directory (`tests.r1` is no package under `uv run pytest`); the B-54 legacy fixture is a format-1 plan read with `_plan_input_dict`; the W-39 memory test reads the child's own `VmHWM` (the 2 GiB bound unchanged) (`f68c911`) | Opus agent on `task/R-01`, audited by the orchestrating session (diff read). All four reproduced on `wilkcomp02` by starting pytest as Actions does (`python -P`, one process, a parent that had held 3 GB): "4 failed, 107 passed"; after: 111 passed both ways. *Measured* (`wilkcomp02`, 2026-11-25): a child that wrote 64 MiB read `ru_maxrss` 3,011,248,128 B and `VmHWM` 78,209,024 B under a parent that had freed 3 GB; the scan's own peak is 346,992,640 B. The 3.98 GB on Actions was the suite's peak, not the scan's. |
 | B-73 | `6159a72` | **Coalesce undersized `seq_shards` ingest batches against the `LY-04` floor.** `src/biobox/l0seq/store.py` (`MIN_SHARD_BASES = 320 * 2**20`, `_batches(..., min_shard_bases)`), `tests/r1/test_b73_ingest_shard_floor.py` (`5d17859`). Found when `V2.ingest` was refused at 17:08 on 2026-11-25 | Row written by the audit. Card written at 19:54, commit 19:55, merge 19:56; `r26-11-4-wave-2.service` launched at 20:00:38 from `/tmp/if2453/ci/rel1125e` before the merge's `ci` run ended. Agent's run on `wilkcomp02`: 277 passed (the card's Done line). Read by the auditing session only: deterministic; the comment's "> 64 MiB at 0.20 B/bp" is exactly 64 MiB (card R-06). |
 | A-27 | `f1dad96` | **Release-train driver updates for hybrid clustering (`DEC-77`).** `train_est.py`, `r50_watch.py`, `release_train.sh`, `tests/r1/test_a27_hybrid_train.py` (`afbde21`) | Row written by the audit. Merged 11:22:39, pushed 11:23:24, the PI's "approved" 11:27:31. Outside the card's Files: `train_plan.py`, `tests/r1/test_a16_rate_guard_bands.py` (defaults 150 to 100 and 250 to 350, as `DEC-77` (4) states). `dec77_cut_cap(live_proc=True)` raises the cap of every running shared-index cut: card R-05. |
 | B-72 | `f9766db` | **Dead-intermediate clustering scratch pruning (`clean_consumed`) and level-split `cluster finish` (`DEC-77`).** `src/biobox/l2/cluster.py`, `src/biobox/stage.py`, `tests/r1/test_cluster_pruning.py` (`cc0a7a2`) | Row written by the audit. Outside the card's Files: `tests/r2/test_build_stage.py` (the lost-NR90-prefilter scenario became a lost-NR50-prefilter one). The prune is recorded after the removal: card R-02. |

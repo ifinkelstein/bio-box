@@ -17,7 +17,7 @@ Single entrypoint to every document in the repository. All documentation lives d
 
 | Path | What it holds |
 |---|---|
-| [`planning/DECISIONS.md`](planning/DECISIONS.md) | **Highest authority (`DEC-01`..`DEC-77`)**: append-only log of architectural, operational, storage, and source-scope decisions |
+| [`planning/DECISIONS.md`](planning/DECISIONS.md) | **Highest authority (`DEC-01`..`DEC-78`)**: append-only log of architectural, operational, storage, and source-scope decisions |
 | [`planning/CATALOG_GOAL.md`](planning/CATALOG_GOAL.md) | **Catalog roadmap & deferred-data register**: built stages, staged waves, reversible selection/filter registers, and queued viral, long-read, single-cell, integrative-MGE, niche, organellar, circular-RNA/Obelisk, and microbial-eukaryote sources |
 | [`sources.yaml`](sources.yaml) | Approved external data sources, URLs, licences, `redistributable` flags, and verified `sha256`/`md5` checksums |
 | [`refdb.yaml`](refdb.yaml), [`golden.yaml`](golden.yaml), [`golden.lock.yaml`](golden.lock.yaml) | Frozen reference libraries (Pfam 38.2, Rfam 15.1) and the 15-genome golden test set |

@@ -2169,12 +2169,21 @@ def _retire(a) -> int:
             return 2
         p, sha = raw.rsplit("=", 1)
         tars.append((p, sha))
+    # card R-04: --copy <LOCATION>=<SHA256>; the location may itself hold "=" (release=<R>), the sha256 never does
+    copies: list[tuple[str, str]] = []
+    for raw in a.copy:
+        if "=" not in raw:
+            print(f"refused: malformed --copy {raw!r}: expected <LOCATION>=<64-hex-sha256> (the sha256 from "
+                  "tower's SHA256SUMS)", file=sys.stderr)
+            return 2
+        loc, sha = raw.rsplit("=", 1)
+        copies.append((loc, sha))
     try:
         res = catalog.retire_release(
             Path(a.root),
             a.release,
             tars=tars,
-            copies=a.copy,
+            copies=copies,
             keep_latest=a.keep_latest,
             profile_path=Path(a.profile) if a.profile else None,
         )
@@ -2911,10 +2920,13 @@ def _main(argv: list[str] | None = None) -> int:
                     help="retire: newest non-archived rolling releases to keep live on disk (default 2, >= 1; DEC-66)")
     rl.add_argument("--tar", action="append", default=[], metavar="PATH=SHA256",
                     help="retire: local durable backup tar holding the release's files and its expected 64-hex sha256 "
-                         "(verified on disk before retiring; repeatable)")
-    rl.add_argument("--copy", action="append", default=[], metavar="PLACE",
-                    help="retire: remote backup copy metadata (e.g. tower:/path/file.tar=<sha256>) recorded in "
-                         "archived/release=<R>.json (repeatable)")
+                         "(read once before anything is removed: its sha256, and every file to be removed must be a "
+                         "member with the manifest's size and sha256; repeatable)")
+    rl.add_argument("--copy", action="append", default=[], metavar="LOCATION=SHA256",
+                    help="retire: the second copy of a --tar (e.g. tower:/path/file.tar=<sha256>), at least one; the "
+                         "sha256, read from tower's SHA256SUMS, must equal a --tar's and is recorded in "
+                         "archived/release=<R>.json as the operator's statement (the pod cannot reach tower; "
+                         "repeatable, card R-04)")
     rl.add_argument("--profile", help="retire: host profile YAML; removes <profile.tmp>/packs/release=<R> if present")
     st = sub.add_parser("stage", parents=[common], help="per-stage builder steps (card C-08)")
     st.add_argument("step", choices=STAGE_STEPS)

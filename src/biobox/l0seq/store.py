@@ -73,7 +73,7 @@ from biobox.registry.schemas import ARTIFACTS, table
 
 STORE_FORMAT = "bgzf-fasta-1"
 SHARD_BASES = 2**30  # ~0.33 GB on disk at 0.31 bytes/bp: inside the 256 MB-1 GB band (LY-04)
-MIN_SHARD_BASES = 320 * 2**20  # 335,544,320 bp (~104 MB at 0.31 B/bp; > 64 MiB even at 0.20 B/bp, card B-73)
+MIN_SHARD_BASES = 320 * 2**20  # 335,544,320 bp (~104 MB at 0.31 B/bp; exactly 64 MiB at 0.20 B/bp, card B-73)
 LINE_WIDTH = 80
 BGZF_LEVEL = 6
 DUCK_MEMORY_LIMIT = "1GB"  # ingest's DuckDB cap; larger sorts spill into the private scratch directory

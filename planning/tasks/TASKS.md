@@ -1554,14 +1554,14 @@ Done 2026-11-25 (STATUS row B-73; commit `5d17859`): `src/biobox/l0seq/store.py`
 
 ### A-28 External bare-metal compute & UT Austin TACC parallelization decision (`Profile A` stage builds & `Profile B` release clustering)
 **H** · Pod: no · Depends: none · PI decision card (`2026-11-25`)
-Files: `planning/design/A-28_bare_metal_compute.md`, `planning/DECISIONS.md` (append `DEC-78` once PI decides)
+Files: `planning/design/A-28_bare_metal_compute.md`, `planning/DECISIONS.md` (append `DEC-79` once PI decides; `DEC-78` was taken on 2026-11-25 by the wording of "linclust NR90")
 Why: `wilkcomp02` (`112` threads, `1.0 TiB` RAM, `1.1 TiB` `/tmp` NVMe, shared `40`-day / `80`-night cap) will remain comfortable through `r26.11.4` (`287 Gbp`, `DEC-77`), but `r26.11.5+` (`400–800+ Gbp`) will hit `/tmp` scratch limits during clustering and benefit from horizontal stage-build capacity. Because `bio-box` runs inside the pinned x86_64 `.sif` image (`bio-box_faec1f4.sif`) with stage-partitioned immutability (`AGENTS.md` §3.10) and cross-host byte-identity (§4.3), external bare metal requires zero core-code changes — only a dedicated `profiles/<host>.yaml` and a checksummed atomic sync workflow.
 Findings (full tables & formulas in `planning/design/A-28_bare_metal_compute.md`):
 - **Profile B (Burst 24–48 h big-release clustering, 128–512t, 1.5–3 TB RAM):** **Oracle Cloud (OCI) Bare Metal** wins (`BM.Standard.E6.256`: `256c/512t` Turin, `3 TB` RAM + `10 TB` block = `$14.42/hr` -> `~$346` per 24 h burst *derived*; `BM.DenseIO.E5.128`: `128c/256t` Genoa, `1.5 TB` RAM, `81.6 TB` local NVMe = `$15.60/hr` -> `~$374` per 24 h burst *derived*; `$0` setup, `10 TB/mo` free egress, `$0` idle burn). Avoid AWS EC2 `.metal` (`$90/TB` egress trap + Spot preemption risk) and Equinix Metal (EOL June 30, 2026).
 - **Profile A (Sustained stage building, 64–192t, 256–512 GB RAM, 4–8 TB NVMe):** **Cherry Servers** US Chicago EPYC 9554P (`64c/128t`, `384 GB` DDR5, `$1.34/hr` or `$630–$783/mo`, `$0` setup, `100 TB` free egress) or **Hetzner Server Auction** EU (`~$165–$495/mo`, `€0` setup, unmetered egress) or **OCI `VM.Standard.E5.Flex`** on-demand (`128 vCPU / 512 GB` + `4 TB` block = `$3.18/hr`, `~$76`/24 h burst).
 - **Free UT Austin TACC parallel track:** File a 30-minute **TxRAS Lonestar6** (`128c / 256 GB`, Profile A) + **NSF ACCESS Stampede3 `nvdimm`** (`4 TB RAM / 80c`, Profile B) Startup Allocation; native `tacc-apptainer` runs our x86_64 `.sif` unchanged with `$0` campus egress (skip ARM Vista).
-Decisions needed from PI (record in `DEC-78`): (Q1) approve pay-as-you-go **OCI** for Profile B bursts when releases outgrow `wilkcomp02`'s `1.1 TiB` `/tmp`; (Q2) select Profile A vendor (Cherry Servers vs Hetzner Auction vs OCI hourly vs defer to TACC); (Q3) approve submitting the free TACC TxRAS + ACCESS Startup allocations; (Q4) authorize follow-on **L** card `A-28a` (`profiles/<host>.yaml`, tar+checksum+collision-check sync script, and `S0` cross-host byte-identity gate).
-Accept: PI answers Q1–Q4 and `DEC-78` is appended to `planning/DECISIONS.md`.
+Decisions needed from PI (record in `DEC-79`): (Q1) approve pay-as-you-go **OCI** for Profile B bursts when releases outgrow `wilkcomp02`'s `1.1 TiB` `/tmp`; (Q2) select Profile A vendor (Cherry Servers vs Hetzner Auction vs OCI hourly vs defer to TACC); (Q3) approve submitting the free TACC TxRAS + ACCESS Startup allocations; (Q4) authorize follow-on **L** card `A-28a` (`profiles/<host>.yaml`, tar+checksum+collision-check sync script, and `S0` cross-host byte-identity gate).
+Accept: PI answers Q1–Q4 and `DEC-79` is appended to `planning/DECISIONS.md`.
 
 ### B-68 Refit shared-index `.cut` (`mmseqs createindex`) estimates in `train_est.py` (`DEC-53`, `DEC-64`)
 **L** · Pod: yes (pytest + read-only verification on `/tmp/if2453/r10/root`; zero writes to data root, `/tmp/if2453/c46/train_r26_11_3`, or `/stor`) · Depends: B-43, B-54, B-64, C-46 · found 2026-11-23 at `20:54` CST when `r26.11.3` (`109` records published) stopped on `cluster.nr50.15.prefilter.cut` (`113.827` vs `64.562` CPU-min, `1.763×` > `ACCEPT_CEILING = 1.60`)
@@ -2209,6 +2209,12 @@ their evidence are in [`../measurements/2026-11-25_audit.md`](../measurements/20
 depend on each other unless one says so. None of them writes to the data root or to `/stor`; none launches or stops a
 build. Tests that need MMseqs2, `hmmsearch` or MinCED must skip cleanly without them (GitHub Actions has none); the
 orchestrator pushes each task branch to `origin` and reads its `ci` run before the merge.
+
+Done 2026-11-25 (`STATUS.md` rows R-01, R-04, R-05, R-06, R-07, R-08; merged together through `task/R-int`): R-01
+(`f68c911`), R-04 (`1553f4d`), R-05 (`c80969b`; its part (3), the default of `train_est.py --cluster-method`, was
+withdrawn by the orchestrating session because it needs a test of card A-27 changed, which the card does not list),
+R-06 (`a779fbd`, `1cdb5d9`; the function is `_resolve_library_path`), R-07 (`8e2d24c`), R-08 (`d600173`, `2ba0cc8`; six
+job lists, not four, were on `tower` by then).
 
 ### R-01 Four tests fail on GitHub Actions since `f5c644b`
 **M** · Pod: yes (pytest only) · Depends: none · audit §2.1 (1)

@@ -55,7 +55,13 @@ def test_duck_memory_limit_clamps_to_half_of_tight_cgroup(threads: int):
     assert export.duck_memory_limit(threads, cgroup_bytes=2 * GIB) == "1GB"
 
 
-def test_open_store_scales_memory_limit_with_threads_and_supports_override(tmp_path):
+@pytest.fixture
+def roomy_cgroup(monkeypatch):
+    """The cgroup limit is an input (card R-06), not the live host's: a 64 GiB limit, as the tests assume."""
+    monkeypatch.setattr(export, "_cgroup_memory_bytes", lambda *a, **k: 64 * GIB)
+
+
+def test_open_store_scales_memory_limit_with_threads_and_supports_override(tmp_path, roomy_cgroup):
     manifest = {"release_id": "r-w42", "stages": [], "files": []}
     with export.open_store(tmp_path, release="r-w42", gene_call_version="gcv-1", manifest=manifest,
                            threads=4, tmp=tmp_path, relations=()) as st:
@@ -73,7 +79,7 @@ def test_open_store_scales_memory_limit_with_threads_and_supports_override(tmp_p
     assert 2.5 * GIB <= mem_override <= 3.2 * GIB
 
 
-def test_arrays_connect_scales_memory_limit_with_threads(tmp_path):
+def test_arrays_connect_scales_memory_limit_with_threads(tmp_path, roomy_cgroup):
     con24, scratch24 = arrays._connect(tmp_path, threads=24)
     try:
         mem24 = _duck_bytes(con24)

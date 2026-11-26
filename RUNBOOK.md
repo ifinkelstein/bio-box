@@ -879,6 +879,55 @@ waits for the unit `v2-queue` to end and for every marker of the stage's directo
 the build unit of any stage of `stages/*.conf` is active, looking again just before the dry run and just before the
 run; `release_train.sh`'s own lock knows those units too.
 
+## A wave of stages
+
+A wave is several stages built one after another. Which stages, and in what order, is the argument list of one script
+in the tree (card R-07, audit of 2026-11-25 section 2.1 (2): the first two waves were a loop typed into `systemd-run`,
+and when the unit was collected the loop was nowhere):
+`scripts/stress/build_stage_pod/stage_wave.sh [--resume-at STAGE --from-mode MODE] LOG STAGE...`. It runs
+`stage_queue.sh STAGE` for each stage in the order given (the queue waits for the stages of `AFTER` and runs the seven
+modes of "Building a stage"), writes one dated line to `LOG` at each start and end, and reads the data root's `STOP`
+file before each stage. It launches nothing through systemd, and it keeps no guard of its own: the guards are the
+driver's.
+
+It ends the wave at once, with a non-zero status and one last line that names the stage, the mode and the status, on
+any of these, and starts no later stage: a stage or mode that exits non-zero (the wave exits with that status); a stage
+that exits 0 but has no `backup/DONE`, or a resumed mode that exits 0 and leaves no `DONE` (status 6); a `STOP` file of
+the data root (status 3). A list with a name that is not a stage, a stage twice, no stage, or a `--resume-at` stage that
+is not the first of the list is refused with status 2 before anything runs. The directories come from the variables of
+the two stage scripts: `STAGE_BIN` (the directory of the scripts), `STAGES_HOME` (`/tmp/if2453/stages`) and
+`STAGE_ROOT` (the data root, `/tmp/if2453/r10/root`, whose `STOP` is read).
+
+Launch it in one unit of its own at `nice 19`, the log beside the stages' (the unit name is the wave's name; the stage
+names after the log are the whole plan, so put them in a file of the tree or in the note that orders the wave):
+
+```bash
+systemd-run --user --unit=r26-11-4-wave-3 --collect -p MemoryMax=4G -p MemorySwapMax=0 -p TimeoutStopSec=300 \
+  -p StandardOutput=append:/tmp/if2453/stages/r26-11-4-wave-3.out -p StandardError=append:/tmp/if2453/stages/r26-11-4-wave-3.out \
+  nice -n 19 bash "$TREE/scripts/stress/build_stage_pod/stage_wave.sh" /tmp/if2453/stages/r26-11-4-wave-3.log PL2 PL3 CG1
+```
+
+When it stops, read in this order: the last line of the wave's log (stage, mode, status; `systemctl --user status
+<unit>` shows the unit's exit status, the wave's own); then `/tmp/if2453/stages/<stage>/queue.out`, the stage's
+`driver.log`, and the `FAILED`, `REFUSED` or `STOPPED` file in the mode's directory under `/tmp/if2453/stages/<stage>/`.
+A `run/FAILED` stays a stop until a person moves it aside ("Building a stage"); a `STOP` in the data root is removed by
+a person, after reading why it was written.
+
+To resume, fix the cause, then launch the wave again from the stage that stopped. The stages already built are left out
+of the list (their `backup/DONE` is there). If the stopped stage finished some modes (`ls /tmp/if2453/stages/<stage>/*/DONE`),
+name the first mode without a marker: `--resume-at STAGE --from-mode MODE` runs `stage_driver.sh STAGE <mode>` for that
+mode and each mode after it, needing each mode's `DONE` before the next, and then goes on to the rest of the list through
+the queue. For `V2` stopped after `estimate`, `rehearse` and `before`, with `PL2` and `PL3` still to build:
+
+```bash
+systemd-run --user --unit=r26-11-4-wave-4 --collect -p MemoryMax=4G -p MemorySwapMax=0 -p TimeoutStopSec=300 \
+  -p StandardOutput=append:/tmp/if2453/stages/r26-11-4-wave-4.out -p StandardError=append:/tmp/if2453/stages/r26-11-4-wave-4.out \
+  nice -n 19 bash "$TREE/scripts/stress/build_stage_pod/stage_wave.sh" --resume-at V2 --from-mode run /tmp/if2453/stages/r26-11-4-wave-4.log V2 PL2 PL3
+```
+
+A mode run this way still refuses without the markers before it and with a marker made for another conf; the wave does
+not lift that.
+
 ## Cutting the next release
 
 Releases are rolling (DEC-52, card C-46): a new release is cut whenever at least one stage has been
@@ -935,8 +984,9 @@ durable tar backup) and `$WORK/announcement.md`. It never deletes or moves anyth
 release.
 
 **The clustering method (DEC-77; cards B-71, B-72, A-27).** `release_train.sh` clusters with
-`CLUSTER_METHOD` (or `--cluster-method`), whose default in the train is `hybrid-b1`: linclust for NR90, then
-a two-step cascade (`-s 1,2`) for NR50. The other methods are `cascade` (the method of every release up to
+`CLUSTER_METHOD` (or `--cluster-method`), whose default in the train is `hybrid-b1`: for NR90 the linclust step
+of `mmseqs cluster` (its ten calls, with `--spaced-kmer-mode 1`, `--alignment-mode 3` and `--comp-bias-corr 0`;
+not a plain `mmseqs linclust` call, DEC-78), then a two-step cascade (`-s 1,2`) for NR50. The other methods are `cascade` (the method of every release up to
 `r26.11.3`, and the default of `bio-box build-stage --cluster-method` and `bio-box release cluster plan`),
 `hybrid-a` and `linclust`. The method is in the plan (`PLAN_FORMAT = 2`, key `method`); a resumed train keeps
 the method of its first launch, and a release never reuses the clustering of a release made with another
@@ -1470,12 +1520,22 @@ Never delete:
 
 Under DEC-66 (`S-4`, card C-54), the newest two rolling releases (`r<YY>.<MM>.<n>`) and any signed milestone release (`rS<k>.<n>`) keep their large `release=` files on `/tmp`. An older release whose durable backup `.tar` is verified on both `/stor/work` and `tower` may be retired with `bio-box release retire`:
 
-- It verifies the release in full (`verify_manifest`), checks the local `--tar <PATH>=<SHA256>` on disk, writes `archived/release=<R>.json` atomically, and unlinks only the eight large `release=<R>` data tables (`cluster_member`, `cluster_member_aln`, `member_cluster`, `token_dict`, `tape_tokens`, `token_postings`, `contig_dim`, `genome_dim`) plus `l2/cluster_plan/release=<R>/*.json` (and `<profile.tmp>/packs/release=<R>/` when `--profile` is given).
+- It verifies the release in full (`verify_manifest`), then reads each local `--tar <PATH>=<SHA256>` once, as a stream (card R-04): the tar's sha256 must be the one given, and every file it is about to remove must be a regular-file member of the tars, named as `tar -C "$ROOT"` stores it (`l2/...` or `./l2/...`), with the manifest's size and sha256 (a plan file: its size and sha256 on disk), and no tar may hold it with other bytes. A release's files may be spread over several tars (`l1_and_records.tar`, `l2.tar`, `l3.tar`): give each with its own `--tar`. A tar of another release, a partial tar, or one with another version of a file is refused (`exit 2`) and nothing is written or removed. One pass over each tar gives both its sha256 and every member's, so a tar is read once.
+- At least one `--copy <LOCATION>=<SHA256>` is required, and each sha256 must equal one of the `--tar`s'. The pod cannot reach `tower`, so read the sha256 from `tower`'s `SHA256SUMS` (on the laptop, as in "Mirror to tower") and type it: `bio-box` does not check the copy, and the record stores it as the operator's statement (`{"location": ..., "sha256": ..., "stated_by": "operator"}`). Records written before card R-04 hold each copy as one string and still verify.
+- Only then it writes `archived/release=<R>.json` atomically and unlinks only the eight large `release=<R>` data tables (`cluster_member`, `cluster_member_aln`, `member_cluster`, `token_dict`, `tape_tokens`, `token_postings`, `contig_dim`, `genome_dim`) plus `l2/cluster_plan/release=<R>/*.json` (and `<profile.tmp>/packs/release=<R>/` when `--profile` is given). Run again on a retired release, with the same `--tar`s, it reads the tars again before removing any file left behind.
 - Every stage's files and the release's `manifests/release=<R>.json`, `catalog/release=<R>.duckdb`, `release_def/release=<R>/`, `ledger/release=<R>/`, and `runs/stage=<R>/` stay on disk.
 - `bio-box release verify --root "$ROOT" --release <R>` still exits 0 with the unchanged manifest hash (`verified (archived: <k> release files, stages ..., manifest hash <h>)`), `bio-box releases` shows `archived` in the `manifest` column, `--release latest` and clustering reuse (card B-49) skip it, and readers (`sql`, `find`, `seq`, `export`, `search`, `nbr`) exit 2 with the restore command.
 
+On the laptop, read the copy's sha256 from `tower` (`BIOBOX_TOWER` as in "Mirror to tower"); it must be the line of the same tar the pod's `--tar` names:
+
 ```bash
-bio-box release retire --root "$ROOT" --release rM.2 --tar "$TAR_PATH=$TAR_SHA" --copy "tower:/mnt/user/research-bulk/bio-box/root_backups/$TAR_NAME=$TAR_SHA" --profile "$PROFILE"
+ssh "${BIOBOX_TOWER:-root@tower}" grep "$TAR_NAME" /mnt/user/research-bulk/bio-box/root_backups/SHA256SUMS
+```
+
+Then on the pod:
+
+```bash
+bio-box release retire --root "$ROOT" --release rM.2 --tar "$TAR_PATH=$TAR_SHA" --copy "tower:/mnt/user/research-bulk/bio-box/root_backups/$TAR_NAME=$TOWER_SHA" --profile "$PROFILE"
 bio-box release verify --root "$ROOT" --release rM.2
 ```
 
