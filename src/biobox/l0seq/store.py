@@ -73,6 +73,7 @@ from biobox.registry.schemas import ARTIFACTS, table
 
 STORE_FORMAT = "bgzf-fasta-1"
 SHARD_BASES = 2**30  # ~0.33 GB on disk at 0.31 bytes/bp: inside the 256 MB-1 GB band (LY-04)
+MIN_SHARD_BASES = 320 * 2**20  # 335,544,320 bp (~104 MB at 0.31 B/bp; > 64 MiB even at 0.20 B/bp, card B-73)
 LINE_WIDTH = 80
 BGZF_LEVEL = 6
 DUCK_MEMORY_LIMIT = "1GB"  # ingest's DuckDB cap; larger sorts spill into the private scratch directory
@@ -355,10 +356,14 @@ def _object_order(objects: list[SourceObject]) -> list[tuple[bytes, SourceObject
     return sorted(keyed, key=_order_key)
 
 
-def _batches(per_object: list[tuple[int, int]], shard_bases: int) -> list[list[int]]:
+def _batches(per_object: list[tuple[int, int]], shard_bases: int, min_shard_bases: int = 0) -> list[list[int]]:
     """Objects (index, new bases), in sha256 order, cut into maximal runs of at most `shard_bases`
     new bases; an object above `shard_bases` is a batch of its own. Objects that store nothing new
-    are in no batch (TASKS §2, card B-15)."""
+    are in no batch (TASKS §2, card B-15).
+
+    When `len(batches) > 1` and `0 < min_shard_bases < shard_bases`, any batch under `min_shard_bases`
+    is coalesced into its smaller adjacent neighbor until every batch meets the floor or one batch
+    remains (card B-73, LY-04), preserving strictly contiguous `obj_idx` runs in sha256 order."""
     batches: list[list[int]] = []
     held = 0
     for i, bases in per_object:
@@ -367,6 +372,22 @@ def _batches(per_object: list[tuple[int, int]], shard_bases: int) -> list[list[i
             held = 0
         batches[-1].append(i)
         held += bases
+    if len(batches) > 1 and 0 < min_shard_bases < shard_bases:
+        bases_of = dict(per_object)
+        totals = [sum(bases_of[i] for i in b) for b in batches]
+        while len(batches) > 1 and min(totals) < min_shard_bases:
+            j = min(range(len(batches)), key=lambda k: (totals[k], k))
+            if j == 0:
+                nbr = 1
+            elif j == len(batches) - 1:
+                nbr = j - 1
+            else:
+                nbr = j - 1 if totals[j - 1] <= totals[j + 1] else j + 1
+            lo, hi = min(j, nbr), max(j, nbr)
+            batches[lo] = batches[lo] + batches[hi]
+            totals[lo] += totals[hi]
+            batches.pop(hi)
+            totals.pop(hi)
     return batches
 
 
@@ -709,7 +730,9 @@ def _shard_paths(stage: str, n: int) -> list[str]:
     return [f"l0seq/seq_shards/stage={stage}/shard-{j:04d}.fa.gz" for j in range(n)]
 
 
-def _decide(con, new_path: Path, n_objects: int, shard_bases: int) -> tuple[list[int], list[list[int]], list[int]]:
+def _decide(
+    con, new_path: Path, n_objects: int, shard_bases: int, min_shard_bases: int | None = None
+) -> tuple[list[int], list[list[int]], list[int]]:
     """Over the views `seen` and `old_loc`: write the stage's new sequences to `new_path` (the view `new_seq`)
     and cut the objects into batches (`_batches`). Returns (sequences kept per object, the batches, new bases
     per object)."""
@@ -728,7 +751,8 @@ def _decide(con, new_path: Path, n_objects: int, shard_bases: int) -> tuple[list
                                    "GROUP BY obj_idx ORDER BY obj_idx").fetchall():
         kept[i], new_bases[i] = n, int(bases)
         per_object.append((i, int(bases)))
-    return kept, _batches(per_object, shard_bases), new_bases
+    floor = MIN_SHARD_BASES if min_shard_bases is None else min_shard_bases
+    return kept, _batches(per_object, shard_bases, floor), new_bases
 
 
 def _write_shard(path: Path, members: list[tuple[int, Path]], wanted, nxt, check: Callable[[int, Path], None],
