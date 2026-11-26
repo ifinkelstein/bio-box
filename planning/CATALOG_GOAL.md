@@ -57,8 +57,8 @@ tranche stops paying; at that point the habitat is **deferred, not finished** (ย
 The order that follows (the orchestrator's, 2026-11-20, for the PI to change):
 
 1. High-diversity & ART-RT-enriched viral/plasmid stages on disk (ยง3; `DEC-67`, `DEC-70`, `DEC-71`):
-   - `G1 + SPX1 -> r26.11.3` (building now);
-   - **`V2 + PL2 + PL3 + CG1` (plus `MV1` if ready in time, else leading `r26.11.5`) -> `r26.11.4`** (`DEC-71`: pulls in already-on-pod `CGVR` `120,568` gut viral bins `CG1` and `MetaVR` `24.4M` UViGs `MV1` alongside `IMG/VR` `V2` and conjugative plasmids `PL2`+`PL3`, while deferring eukaryotic giant viruses `GV1` behind the ART-RT/long-read wave and keeping strain-rich `C1`..`C4` and `C6` in item 6).
+   - `G1 + SPX1 -> r26.11.3` (released 2026-11-25);
+   - **the 19 stages `V2, PL2, PL3, CG1, MGE1, SAT1, ECE1, O1, O2, LPL1, SYM1, LRV1, LGRT1, MGE2, MV1, V3, LR1, GART1, GART2` -> `r26.11.4`** (`DEC-72`, card A-26; building since 2026-11-25; this replaces the earlier `V2 + PL2 + PL3 + CG1` cut of `DEC-71`, which pulls in already-on-pod `CGVR` `120,568` gut viral bins `CG1` and `MetaVR` `24.4M` UViGs `MV1` alongside `IMG/VR` `V2` and conjugative plasmids `PL2`+`PL3`, while deferring eukaryotic giant viruses `GV1` behind the ART-RT/long-read wave and keeping strain-rich `C1`..`C4` and `C6` in item 6).
 2. **ART-RT & intact-neighborhood priority wave (`r26.11.5+`, `DEC-70`, `DEC-71`)**:
    - **`MV1` (`MetaVR` non-redundant Complete/HQ/MQ vOTU reps + all jumbo/large UViGs `>= 30 kb`, `pyrodigal-gv`, card C-62)** if not already cut in `r26.11.4`;
    - **Public long-read (`PACBIO_SMRT` and `OXFORD_NANOPORE`) metagenome assemblies (`LR1`.., card C-56)** called with **`pyrodigal-gv` (`--genecall-mode gv-meta`, card B-67)** and enriched first for soil/*Myxococcota*, cyanobacterial/freshwater, and activated-sludge/wastewater HiFi assemblies (eliminating the `38.2%` Illumina tandem-array collapse rate and preserving TAG/TGA-recoded jumbophage ORFs);

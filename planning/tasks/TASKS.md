@@ -2265,6 +2265,17 @@ Why: three batches were fetched on `tower` into `/mnt/user/research-bulk/bio-box
 Do: (1) Read, do not write, on `tower` (`ssh -o BatchMode=yes root@tower`): every `SOURCE_URLS.tsv`, `SHA256SUMS`, the job lists `_batch1_jobs.tsv`, `_batch2_part1.tsv`, `_batch2_part2.tsv`, `_batch3.tsv` and the two logs. A batch may still be running: record what has landed and name what has not. (2) `sources.yaml`: one entry per source directory in the file's existing form (`name`, `what`, `url` form, `files` with bytes and sha256, `license` as the record states it, `fetched` with date and host `tower`, `stored`, `approved` with the PI's words and time from the audit note; `note` where the licence field is empty or the record is not sequence data). The Global Soil Virus Atlas entry gains its `fetched` line. (3) The note: per source, files, bytes, whether the provider's md5 was checked, and a list of fetched files that are not sequence data or metadata of sequences (for the PI; nothing is deleted). (4) `fetch_to_tower.sh`: the script as run (one job list of `<name><TAB><file><TAB><url><TAB><md5 or -><TAB><licence>`), refusing a URL whose host and path form is not in `sources.yaml`; test it with a stub `curl` as `tests/r1/test_relay_to_tower.py` stubs `ssh`. No name, email address or project detail in any request (the scripts send `curl`'s default or `-A curl`).
 Accept: the test fails first and passes; every URL in the four job lists matches a `sources.yaml` entry (a check in the note, with its command); `tests/r0` passes.
 
+### Cards written after their merge (audit of 2026-11-25)
+
+Five merges of 2026-11-24 and 25 named a task ID in their commits and had no card here. These records were written by
+the audit from the commits; they are not a model for new work (AGENTS §1.1: the card comes first).
+
+- **B-56a** (`4e256c8`, commit `16e26d6`; **L**): `genecall._genome_bases` uses `KeyLookup.find_first` (follow-up of cards B-56 and B-66). Files: `src/biobox/l1/genecall.py`, `tests/r1/test_b56a_genecall_genome_bases.py`.
+- **W-41** (`104e55b`, commit `41743ac`; **L**): `pack._problems` sorts `part-<k>` shards by their integer index, so a target with ten or more shards has its true last shard checked against the size floor. Files: `src/biobox/search/pack.py`, `tests/r1/test_w41_pack_verify_shard_order.py`.
+- **A-25b** (`16e96b8`, commit `c97b0e7`, and `ae65070` on `plan/task-cards`; **L**): `search_mem_gb()` in `examples/_shared/launch.sh` derives `--mem-gb` from `$MEM` (2 GB headroom, least 1, `SEARCH_MEM_GB` overrides) in place of the fixed 14 of the two examples' `run.sh`. Files: `examples/_shared/launch.sh`, `examples/crispr_cas_neighbourhoods/run.sh`, `examples/rnap/run.sh`, `tests/r1/test_a25b_example_search_mem.py`. Follow-ups: cards R-01 (a test's import) and R-06 (an unparseable `$MEM`).
+- **W-42** (`539213b`, commit `426c0e0`; **L**): `duck_memory_limit` in `src/biobox/search/export.py` scales DuckDB's `memory_limit` with the thread count and the cgroup's limit; `arrays.py` uses it. Files: `src/biobox/search/export.py`, `src/biobox/search/arrays.py`, `tests/r1/test_w42_export_duck_memory.py`. Follow-up: card R-06 (cgroup v1; the test's dependence on the host).
+- **W-38a** (`f60c7d4`, commits `e34d5ca` and `63e359f`; **L**, a pre-build under card W-38): the protocol and harness of a GPU bake-off of protein language models and 3Di, not yet run. Files: `planning/design/W-38a_bakeoff_protocol.md`, `scripts/stress/w38a_plm_bakeoff.py`, `tests/r1/test_w38a_plm_bakeoff.py`.
+
 ---
 
 ## Phase G. S1: complete phages

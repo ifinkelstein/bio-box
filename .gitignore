@@ -5,3 +5,4 @@ __pycache__/
 .DS_Store
 mutants/
 mutation_recheck.tsv
+skill-discovery/
