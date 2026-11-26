@@ -152,6 +152,36 @@ holiday; ftp is fine, use it if needed; omd2: fetch away; bbsag20 fetch last, ys
   13:08; card C-79 is done on its branch (`MV2` 98,920 UViGs and 3.909 Gbp; `MVEUKV` 105,902 vOTUs and 1.257 Gbp;
   both mirrored to `tower`), pushed for `ci`, not merged.
 
+**W10. Wave-4 stopped at `V2`'s `check`, 2026-11-26 16:32:54 CST (current; nothing is building).** This session was
+stopped by its usage limit from about 14:55 to 17:20 and read the stop at 17:21.
+- What happened (*measured*, `tail /tmp/if2453/stages/r26-11-4-wave-4.log`, `ls /tmp/if2453/stages/v2/*/`, 17:21):
+  `V2` mode `run` ended 16:07:28 with exit 0 and its marker (`run/DONE`, `run/complete.json`; the 72 Pfam shards at
+  ten at a time never met the guard); `after` ended 16:31:07 with exit 0 (nine releases verified); `check` ended
+  16:32:54 with exit 1: "RESULT: FAILED: contigs both stored by the stage and held by another: 43"
+  (`check/1/check.out`). No `backup`. The wave unit ended; `/tmp` has 425 GB free.
+- **It is not a guard stop and not a fault of the build.** *Measured* (`wilkcomp02`, 17:30, a read-only DuckDB
+  query over `l0seq/contig_index/stage=*` in the image, 2 threads, 8G scope): `V2`'s index holds 243,915 rows for
+  243,509 contigs; 243,466 are default variants with 8,199,089,073 bp, as staged; the 43 others are contigs `S1`
+  holds as default, of which `V2` adds one non-default variant each (new raw bytes, 320,799 bp in all), which is
+  what `store._write_tables` is written to do. `stage_check.py` counts every row of the stage's index as stored and
+  so fails the stage. Every other assertion of the check passed (0 contigs held by two other stages, 0 neither
+  stored nor held, the ledger's 18,112 skips equal the held set, the copy sources' rows equal).
+- What follows, by the rule for a stop of the code (card first, a test seen failing, the fix on a branch, read
+  before merge, the merged tree's run, a green `ci`, then the relaunch): **card R-17** (`TASKS.md`, Phase R). When it
+  is merged, the wave is resumed with `stage_wave.sh --resume-at V2 --from-mode check ... V2 PL2 PL3 ...` from a new
+  frozen mirror (which also holds card A-30), `SCAN_JOBS=10`. Nothing under `/tmp/if2453/stages/v2/` is moved or
+  edited by hand; `check/FAILED` is withdrawn by the mode's own rerun.
+- Since W9, on their branches: card C-80 (`2ca0fd8`; `KAVHIFI` 5,522 genomes and 4.659 Gbp, `INPH2604` 353 genomes
+  and 31.5 Mbp; `ci` green), card C-77 (`fee5f0c`; `SAG2`, all 9,698 cells of the zip, 8.020 Gbp, none held, none in
+  R232 or r232 among the 7,745 the test could see), card C-76 after a second pass (`bb3d609`; `LR2`, `SAG1`, `NX1`
+  whole, as cards C-66 and C-58 staged them, with an `r232_status.tsv` each). Card R-15 is merged (`e445342`; `ci`
+  green). Card C-75's worker was cut by the usage limit at about 16:50; its stream unit `c75-stream` still runs.
+- **A rule this session set at about 14:50, the PI's to change (he was told then):** no genome in hand is left out
+  of a stage of `r26.11.5` because GTDB R232 or GlobDB r232 lists it; its r232 status is recorded beside it. The first
+  pass of card C-76 had removed 3,160 of `SAG1`'s 5,537 genomes and 537 of `NX1`'s 896 on that ground. Reason: none
+  is held by the catalog, DEC-79 (1) counted the three stages whole, and the cut from r232 planned for `r26.11.6` is
+  deduplicated against what `r26.11.5` holds (W5 (5)).
+
 **W9. State at 14:30 CST, 2026-11-26** (the PI's words of about 14:00: "so retire as needed to free tmp/", DEC-83,
 and "update me on whats running on pod; work independentlyto keep pod busy"):
 - `wilkcomp02` (*measured*, 14:27, `systemctl --user list-units`, `find runs/stage=V2 -newer run/since`): `v2-4`
