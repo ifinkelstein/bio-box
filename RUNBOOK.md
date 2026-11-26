@@ -879,6 +879,55 @@ waits for the unit `v2-queue` to end and for every marker of the stage's directo
 the build unit of any stage of `stages/*.conf` is active, looking again just before the dry run and just before the
 run; `release_train.sh`'s own lock knows those units too.
 
+## A wave of stages
+
+A wave is several stages built one after another. Which stages, and in what order, is the argument list of one script
+in the tree (card R-07, audit of 2026-11-25 section 2.1 (2): the first two waves were a loop typed into `systemd-run`,
+and when the unit was collected the loop was nowhere):
+`scripts/stress/build_stage_pod/stage_wave.sh [--resume-at STAGE --from-mode MODE] LOG STAGE...`. It runs
+`stage_queue.sh STAGE` for each stage in the order given (the queue waits for the stages of `AFTER` and runs the seven
+modes of "Building a stage"), writes one dated line to `LOG` at each start and end, and reads the data root's `STOP`
+file before each stage. It launches nothing through systemd, and it keeps no guard of its own: the guards are the
+driver's.
+
+It ends the wave at once, with a non-zero status and one last line that names the stage, the mode and the status, on
+any of these, and starts no later stage: a stage or mode that exits non-zero (the wave exits with that status); a stage
+that exits 0 but has no `backup/DONE`, or a resumed mode that exits 0 and leaves no `DONE` (status 6); a `STOP` file of
+the data root (status 3). A list with a name that is not a stage, a stage twice, no stage, or a `--resume-at` stage that
+is not the first of the list is refused with status 2 before anything runs. The directories come from the variables of
+the two stage scripts: `STAGE_BIN` (the directory of the scripts), `STAGES_HOME` (`/tmp/if2453/stages`) and
+`STAGE_ROOT` (the data root, `/tmp/if2453/r10/root`, whose `STOP` is read).
+
+Launch it in one unit of its own at `nice 19`, the log beside the stages' (the unit name is the wave's name; the stage
+names after the log are the whole plan, so put them in a file of the tree or in the note that orders the wave):
+
+```bash
+systemd-run --user --unit=r26-11-4-wave-3 --collect -p MemoryMax=4G -p MemorySwapMax=0 -p TimeoutStopSec=300 \
+  -p StandardOutput=append:/tmp/if2453/stages/r26-11-4-wave-3.out -p StandardError=append:/tmp/if2453/stages/r26-11-4-wave-3.out \
+  nice -n 19 bash "$TREE/scripts/stress/build_stage_pod/stage_wave.sh" /tmp/if2453/stages/r26-11-4-wave-3.log PL2 PL3 CG1
+```
+
+When it stops, read in this order: the last line of the wave's log (stage, mode, status; `systemctl --user status
+<unit>` shows the unit's exit status, the wave's own); then `/tmp/if2453/stages/<stage>/queue.out`, the stage's
+`driver.log`, and the `FAILED`, `REFUSED` or `STOPPED` file in the mode's directory under `/tmp/if2453/stages/<stage>/`.
+A `run/FAILED` stays a stop until a person moves it aside ("Building a stage"); a `STOP` in the data root is removed by
+a person, after reading why it was written.
+
+To resume, fix the cause, then launch the wave again from the stage that stopped. The stages already built are left out
+of the list (their `backup/DONE` is there). If the stopped stage finished some modes (`ls /tmp/if2453/stages/<stage>/*/DONE`),
+name the first mode without a marker: `--resume-at STAGE --from-mode MODE` runs `stage_driver.sh STAGE <mode>` for that
+mode and each mode after it, needing each mode's `DONE` before the next, and then goes on to the rest of the list through
+the queue. For `V2` stopped after `estimate`, `rehearse` and `before`, with `PL2` and `PL3` still to build:
+
+```bash
+systemd-run --user --unit=r26-11-4-wave-4 --collect -p MemoryMax=4G -p MemorySwapMax=0 -p TimeoutStopSec=300 \
+  -p StandardOutput=append:/tmp/if2453/stages/r26-11-4-wave-4.out -p StandardError=append:/tmp/if2453/stages/r26-11-4-wave-4.out \
+  nice -n 19 bash "$TREE/scripts/stress/build_stage_pod/stage_wave.sh" --resume-at V2 --from-mode run /tmp/if2453/stages/r26-11-4-wave-4.log V2 PL2 PL3
+```
+
+A mode run this way still refuses without the markers before it and with a marker made for another conf; the wave does
+not lift that.
+
 ## Cutting the next release
 
 Releases are rolling (DEC-52, card C-46): a new release is cut whenever at least one stage has been
