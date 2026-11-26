@@ -57,7 +57,10 @@ together (`8d8f85e`) failed on exactly that test of card R-05. The whole suite o
 passed (776, 474, 387, 452, 662, 457; 16 skipped in all); shard 0 "1 failed, 469 passed, 4 skipped" (that R-05 test);
 shard 5 "1 failed, 505 passed, 4 skipped": `test_synthworld_intergenic.py::test_micro_replicons_runtime_within_budget`,
 a bound on CPU time (68.5 s against 56; 67.7 s again alone at 23:00) while wave-3 held about 76 threads; its code is
-unchanged since 2026-11-14 and no card of the audit touches it. It is to be run again on a quiet pod. After R-05b
+unchanged since 2026-11-14 and no card of the audit touches it. Run again alone on a quiet pod it passes (*measured*,
+`wilkcomp02`, 2026-11-26 01:03 CST, nothing of ours running, load 17 from other accounts: 40.09 s of CPU, 1 passed in
+148.66 s), so the same work cost 1.69 times the CPU under that evening's load (*derived*: 67.67 / 40.09), which is
+also the likeliest reason wave-3's scan shards passed 280 CPU-minutes against an estimate of 237.9. After R-05b
 and card R-10 (a memory test of card C-48b that card B-74's new tests tipped over on Actions), the final merged tree
 passed its targeted run (*measured*, `wilkcomp02`, 2026-11-25 23:20 to 23:35: 462 passed in 772.09 s over the
 clustering, watch, R-02, B-74 and `tests/r0` files) and `ci` (`eb46785`, green), and was merged as `1783928`.
