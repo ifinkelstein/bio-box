@@ -30,11 +30,13 @@ R-05 (the watch's cap for a running cut), R-06 (four small defects), R-07 (`stag
 `fetch_to_tower.sh`) are merged together after one run of their tests on the merged tree (*measured*, `wilkcomp02`,
 2026-11-25: 952 passed in 637.65 s over the first five cards' files and `tests/r0`; 318 passed in 32.82 s over
 R-06's) and one `ci` run of the merged branch `task/R-int`. R-03 (an independent oracle for the hybrid methods) is
-merged as its 20 passing checks, with a finding for the PI (R2 (0)). R-02 (pruning that survives a kill, a format-1
+merged as its 20 passing checks, with a finding the PI decided the same evening (R2 (0), DEC-78). R-02 (pruning that survives a kill, a format-1
 redo, the method in the records) follows.
 
 **R2. For the PI** (none of these is an agent's to decide; the audit note §5 has the evidence):
-0. **Before `r26.11.4` is clustered: what "linclust NR90" means in DEC-77.** Card R-03 found that the NR90 step of
+0. **Decided on 2026-11-25, about 21:20 CST ("keep the code, change the DEC-77 wording"; row DEC-78): what
+   "linclust NR90" means in DEC-77.** The code stays; DEC-78 and the design note §6.1 (1) now say what it runs. What
+   was put to the PI: card R-03 found that the NR90 step of
    `hybrid-b1` (and of `hybrid-a` and `linclust`) is the linclust step that `mmseqs cluster` runs inside itself
    (`kmermatcher --spaced-kmer-mode 1`, `align --alignment-mode 3 --comp-bias-corr 0`), not what
    `mmseqs linclust --min-seq-id 0.9 -c 0.8 --cov-mode 1 --cluster-mode 2` runs (`0`, `2`, `1`); every other call and

@@ -984,8 +984,9 @@ durable tar backup) and `$WORK/announcement.md`. It never deletes or moves anyth
 release.
 
 **The clustering method (DEC-77; cards B-71, B-72, A-27).** `release_train.sh` clusters with
-`CLUSTER_METHOD` (or `--cluster-method`), whose default in the train is `hybrid-b1`: linclust for NR90, then
-a two-step cascade (`-s 1,2`) for NR50. The other methods are `cascade` (the method of every release up to
+`CLUSTER_METHOD` (or `--cluster-method`), whose default in the train is `hybrid-b1`: for NR90 the linclust step
+of `mmseqs cluster` (its ten calls, with `--spaced-kmer-mode 1`, `--alignment-mode 3` and `--comp-bias-corr 0`;
+not a plain `mmseqs linclust` call, DEC-78), then a two-step cascade (`-s 1,2`) for NR50. The other methods are `cascade` (the method of every release up to
 `r26.11.3`, and the default of `bio-box build-stage --cluster-method` and `bio-box release cluster plan`),
 `hybrid-a` and `linclust`. The method is in the plan (`PLAN_FORMAT = 2`, key `method`); a resumed train keeps
 the method of its first launch, and a release never reuses the clustering of a release made with another

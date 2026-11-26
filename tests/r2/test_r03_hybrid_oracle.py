@@ -9,11 +9,11 @@ inputs: the micro-S0 fixture's proteins (as tests/r2/test_cluster_split.py build
 clusters (`remote_root`, seed 2). Every MMseqs2 call uses 2 threads; the database is made as the builder makes its
 own (FASTA sorted by uid, `createdb --shuffle 0`), from the proteins read here.
 
-Open question (for the PI, card R-03): plain `mmseqs linclust` with the level's parameters differs from the build in
-exactly the three flags `DECOMPOSITION_FLAGS["nr90"]`: the build has 857 NR90 clusters against plain linclust's 859
+Decided by DEC-78 (the PI, 2026-11-25: the code stays): plain `mmseqs linclust` with the level's parameters
+differs from the build in exactly the three flags `DECOMPOSITION_FLAGS["nr90"]`: the build has 857 NR90 clusters against plain linclust's 859
 on the fixture and 240 against 239 on the planted set (measured on wilkcomp02, 2026-11-25, MMseqs2 18.8cc5c, through
 `scripts/pod_pytest.sh`). The tests of that difference are in
-tests/r2/test_r03_nr90_plain_linclust.py on branch task/R-03, pending the PI's decision. Card C-38c's measurement,
+tests/r2/test_r03_nr90_plain_linclust.py on branch task/R-03 and are not merged. Card C-38c's measurement,
 on which DEC-77 rests, ran `l2/cluster.workflow`'s own ten calls (`scripts/stress/c38c_linclust_vs_cascade.py`,
 `linclust_redundancy_calls`), not plain `mmseqs linclust`.
 
