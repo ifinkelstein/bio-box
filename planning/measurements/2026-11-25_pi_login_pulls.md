@@ -1,6 +1,6 @@
 # PI Login-Gated & Manual-Action Data Pull Checklist (`r26.11.5+`)
 
-*Created: 2026-11-25 | Scope: Every high-value `bio-box` source that requires a portal login, API token, ORCID OAuth, or author access-request click. Everything open-access (including **CNGBdb** `ftp.cngb.org/pub/CNSA/` and **CyVerse `iVirus`** `data.cyverse.org/dav-anon/`, both confirmed anonymous HTTPS!) is already auto-chained detached onto `tower` across Batches 1–7.*
+*Created: 2026-11-25 | Scope: Every high-value `bio-box` source that requires a portal login, API token, ORCID OAuth, WAF whitelist, or author access-request click. Everything open-access — including **CNGBdb `EEMC1` (`75,082` assemblies, `51.99 GB`) & `GPB_PHAGE` (`102` complete isolated phages)** via anonymous `ftp://ftp.cngb.org/pub/CNSA/` — is already auto-chained detached onto `tower` across Batches 1–7 (`PID 3023133`).*
 
 ---
 
@@ -30,7 +30,7 @@
   1. **`CPR1` (`PBGD` + `PPGD`, *Nat. Microbiol.* Nov 2026):** `https://www.biosino.org/node/project/detail/OEZ00021651` — **`24,523` *Patescibacteria* (CPR) genomes (`13,242` HQ) + `18,876` patesciphages (`12,867` vOTUs)** (`*published*`).
   2. **`GDSV 2.0` (Global Deep-Sea Sediment Virome):** `https://www.biosino.org/node/project/detail/OEP003844` — **`554,664` deep-sea sediment DNA vOTUs** from 159 cores (`*published*`).
   3. **`DSR-RNA` (Deep-Sea Sediment RNA Virome):** `https://www.biosino.org/node/project/detail/OEP002537` — **`85,059` VLP-purified benthic RNA vOTUs (`98.28%` novel) + `1,463` complete benthic RNA genomes** (`*published*`, for `C-50`).
-  4. **`MEER` Mariana Trench Hadal (`OEP004067` / `eLMSG LMSG_G000037053.1–44616.1`):** `https://www.biosino.org/node/project/detail/OEP004067` — **`7,564` hadal SRGs (`89.4%` novel)** *(only needed if CNGBdb mirror `CNP0004890` in Batch 7 lacks SRG FASTAs)*.
+  4. **`MEER` Mariana Trench Hadal (`OEP004067` / `eLMSG LMSG_G000037053.1–44616.1`):** `https://www.biosino.org/node/project/detail/OEP004067` — **`7,564` hadal SRGs (`89.4%` novel)** *(verified CNGBdb `CNP0004890` only holds raw FASTQ reads; Biosino NODE is the real SRG archive)*.
   5. *Bonus on same `eLMSG` login:* **`MBAMD-ISO`** (`652` acid-mine-drainage isolates).
 
 ---
@@ -58,7 +58,10 @@
 ## 5. One-Click Author Access Request & WAF-Blocked Browser Grabs
 
 - **Zenodo `20336193` (`EUK-DSDNA-EVE`):** `https://zenodo.org/records/20336193` — `781,111` eukaryotic Maverick/Polinton/EVE loci (`CC BY 4.0`, `access_right: restricted`). Log into Zenodo, click **Request access**, and forward the approval `?token=...` URL when emailed.
-- **Browser-only WAF sites (small files, zero login, just AWS/Cloudflare WAF blocking `curl`):**
+- **Browser-only WAF / Turnstile sites (zero login, just WAF/Turnstile blocking `curl` from `tower`):**
+  - **CyVerse `iVirus` (`TARA-RNA` `10.25739/qhr0-8j16`, `Guliya` 41 kyr ice-core virome):** `data.cyverse.org/dav-anon/` redirects `tower` to `https://unblockme.cyverse.org/` (Cloudflare Turnstile); note `PF_VLP1` (`9,963` Stordalen Mire vOTUs via `zenodo:15637204`) is already in open Batch 6.
+  - `ELEPHANT1` (`CNGBdb CNP0004215`, `6,313` MAG bins): controlled-access on CNGBdb (requires CNGBdb account/request; `EEMC1` + `GPB_PHAGE` are already open in Batch 7).
+  - `GCSV` (`PRJCA048260`, `193k` cold-seep vOTUs): currently unreleased on NGDC BioProject (`watch for release`).
   - `GV-MYCODNA` (*Mycodnaviridae*, first fungal giant virus family): `https://doi.org/10.7302/p5ay-ng61` (UMich Deep Blue Data, Cloudflare WAF)
   - `MBGG1` (Migratory bird `5,823` MAGs): `https://figshare.com/s/8699370b85d1875209b2` (AWS WAF)
   - `ET1_1KP` (1,000 Plant/Algal Transcriptomes): CyVerse WebDAV (Cloudflare Turnstile)
