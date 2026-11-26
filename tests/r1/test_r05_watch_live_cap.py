@@ -282,10 +282,14 @@ def test_unsafe_names_get_default(tmp_path):
     assert mod.dec77_cut_cap(root, REL, CUT_15, 280.0, live_proc=False, tmp=scratch) == 280.0  # not live
 
 
-# --- a format-1 plan (no method: cascade) hashes its work directory without `method` -----------------------------
+# --- a format-1 plan (no method: cascade) hashes its work directory without `method`, and grants no DEC-77 ------
+# Card R-02: a PLAN_FORMAT 1 cut keeps the pre-B-71 record and refusal, so `cut_createindex_estimate` is None for it
+# and build-stage never runs its cut with `exempt: DEC-77`; the watch gives it the default cap.
 
 
-def test_format1_plan_work_dir_and_exemption(monkeypatch, capsys, tmp_path):
+@pytest.mark.parametrize("step", [CUT_15, CUT_19])
+@pytest.mark.parametrize("est", [100.0, 600.0, 19_000.0])
+def test_format1_plan_work_dir_and_no_exemption(monkeypatch, capsys, tmp_path, step, est):
     mod = _load_watch()
     root, scratch = _setup(tmp_path)
     plan = _plan_doc(method=None, fmt=1)
@@ -295,10 +299,20 @@ def test_format1_plan_work_dir_and_exemption(monkeypatch, capsys, tmp_path):
     assert mod.work_dir(scratch, root, plan2) == l2._work_dir(scratch, root, l2._plan_input_dict(plan2))
     assert mod.work_dir(scratch, root, plan) != mod.work_dir(scratch, root, plan2)
 
-    _write_index(scratch, root, plan, CUT_19, 600.0)
-    assert _library_grants(root, scratch, CUT_19, "cascade") is not None
-    rc, out = _run_watch(monkeypatch, capsys, tmp_path, [_live(CUT_19, 3_500.0)])
-    assert rc == 0 and out["reasons"] == [], out
+    index = _write_index(scratch, root, plan, step, est)  # in the format-1 plan's own work directory
+    assert index.parent.parent.parent == mod.work_dir(scratch, root, plan)
+    assert _library_grants(root, scratch, step, "cascade") is None  # card R-02: no DEC-77 for a format-1 plan
+    assert mod.dec77_cut_cap(root, REL, step, 280.0, live_proc=True, tmp=scratch) == 280.0
+    rc, out = _run_watch(monkeypatch, capsys, tmp_path, [_live(step, 300.0)])
+    assert rc == 3 and any("over 280" in r for r in out["reasons"]), out
+
+    # the same target under a format-2 cascade plan: exempt where the library grants it (format 2 unchanged)
+    _write_plan(root, plan2)
+    _write_index(scratch, root, plan2, step, est)
+    lib = _library_grants(root, scratch, step, "cascade")
+    want = CAP if lib is not None and lib <= CAP else 280.0
+    assert (lib is not None) == (est > BUDGET)
+    assert mod.dec77_cut_cap(root, REL, step, 280.0, live_proc=True, tmp=scratch) == want
 
 
 # --- the process's own --root and --tmp locate its work directory ------------------------------------------------
