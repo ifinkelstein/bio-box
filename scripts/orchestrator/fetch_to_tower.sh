@@ -25,7 +25,9 @@
 # Per file (as run on 2026-11-25): a file already in DEST/<name>/ and in its SHA256SUMS is skipped, never fetched again;
 # else curl writes DEST/<name>/.<file>.partial (a .partial is not a landed file); the partial must be non-empty, equal the
 # md5 if one is given, and pass the archive test of its extension (gzip -t, unzip -tq, tar -tf, a FASTA's first byte >)
-# where that tool exists; then the sha256 and size are taken, `mv -n` puts it in place, and one line is appended to
+# where that tool exists (a file whose md5 equalled the provider's is kept when only that test fails, and is reported as
+# OK plus a second stdout line WARN_<TEST>\t<name>\t<file>; a file with no md5 that fails it is removed, FAIL_<TEST>);
+# then the sha256 and size are taken, `mv -n` puts it in place, and one line is appended to
 # DEST/<name>/SHA256SUMS (`<sha256>  <file>`) and to DEST/<name>/SOURCE_URLS.tsv (filename, url, bytes, sha256, license,
 # date_utc; the header is written when the file is made). A failed file is reported (FAIL_*, on stderr), its partial is
 # removed, and the run goes on with the next. If DEST/STOP exists the run ends cleanly before the next file.
@@ -204,6 +206,8 @@ while IFS=$'\t' read -r name file url md5 lic entry; do
     *.tar) command -v tar >/dev/null 2>&1 && ! tar -tf "$partial" >/dev/null 2>&1 && bad=FAIL_TAR ;;
     *.fasta|*.fna|*.fa) [ "$(head -c 1 "$partial")" = ">" ] || bad=FAIL_FASTA ;;
   esac
+  warn=
+  if [ -n "$bad" ] && [ "$md5" != "-" ]; then warn=WARN_${bad#FAIL_}; bad=; fi
   if [ -n "$bad" ]; then rm -f -- "$partial"; fail "$bad" "$name" "$file"; continue; fi
   bytes=$(wc -c < "$partial")
   bytes=$((bytes + 0))
@@ -214,6 +218,7 @@ while IFS=$'\t' read -r name file url md5 lic entry; do
   printf '%s  %s\n' "$sha" "$file" >> SHA256SUMS
   printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$file" "$url" "$bytes" "$sha" "$lic" "$dt" >> SOURCE_URLS.tsv
   printf 'OK\t%s\t%s\t%s\t%s\t%s\t%s\n' "$name" "$file" "$bytes" "$sha" "$lic" "$dt"
+  [ -z "$warn" ] || printf '%s\t%s\t%s\n' "$warn" "$name" "$file"
   OK=$((OK + 1))
   [ "$PAUSE" = 0 ] || sleep "$PAUSE"
 done < "$TMPD/jobs"
