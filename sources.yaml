@@ -1574,7 +1574,12 @@ sources:
     record: https://doi.org/10.6084/m9.figshare.20431332.v1 (Figshare article 20431332, published 2022-08-04, read 2026-11-24)
     files:
       - {file: Support-data.gz, id: 36556458, bytes: 1675816300, md5: cfbc18185b27bf2d6c2a9c9d1765def7, sha256: 3cd7e07da707d65cb454df78632227e34c07f420a1ee006751248f92e4884bb5}
-    not_taken: bac-MAGs-fnas.tar.gz, bacterial-trees-data.tar.gz, euk-MAGs-fna.tar.gz, mitochondrias-fna.tar.gz, NCLDV-data.tar.gz (only phages-fna.tar.gz taken for LRV1)
+    not_taken: >-
+      bacterial-trees-data.tar.gz (alignments and trees, not genomes); euk-MAGs-fna.tar.gz (28 eukaryotic MAGs,
+      560,955,601 bp, left for card C-60, kept byte for byte in the KAVHIFI staging directory) and
+      mitochondrias-fna.tar.gz (10 genomes, 274,163 bp, deferred to a later organelle stage: the archive gives no
+      per-record genetic code). Taken: phages-fna.tar.gz for LRV1 (card C-67); bac-MAGs-fnas.tar.gz (2,214 MAGs) and
+      NCLDV-data.tar.gz (3,309 NCLDV contigs) for KAVHIFI (card C-80)
     checksum: md5 cfbc18185b27bf2d6c2a9c9d1765def7 published by Figshare API v2 (matched at fetch); sha256 recorded above
     limits: one connection; at most 2 requests per second; User-Agent curl; stop after 5 refusals in a row
     license: CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/, Figshare API v2)
@@ -1589,7 +1594,69 @@ sources:
       e02b993234d740cb535ae99c9410870e6c2a5b3c03996e5af80a72ee305e13be after DEC-65 exact DTR trimming; 655 distinct
       genomes after 24 within-stage repeats; mirrored on tower:/mnt/user/research-bulk/bio-box/sources/LRV1/);
       planning/measurements/2026-11-24_lrv1_v4_inputs.md
-    approved: under DEC-50 (entry written by card C-67 on 2026-11-24 before any fetch)
+    staged:
+      - stage: KAVHIFI
+        object: /stor/scratch/Wilke/if2453/bio-box-staging/KAVHIFI/kavagutti_hifi_bacterial_mags.fna
+        bytes: 4692735019
+        sha256: 5c310ee70e183ecf4a5132fd85a2d738824a93d521e3d75bc38471bc3942dcd5
+        metadata_dir: /tmp/if2453/c80/KAVHIFI/ (genomes.json sha256 1efb3b86fc62f5cdf18b397cf561b0ddea0c029c61beba37739650afd7e5ef6c; moved into /tmp/if2453/s2/inputs/KAVHIFI/ by card A-29)
+        derived_from: >-
+          bac-MAGs-fnas.tar.gz inside Support-data.gz (sha256 3cd7e07d…884bb5): 2,214 MAGs, 527,434 records,
+          4,607,298,152 bp; kind prokaryote, quality contig, genetic code screened per genome (all 2,214 code 11);
+          none carries an INSDC accession, so card C-74's index could not test any (0 of 2,214)
+      - stage: KAVHIFI
+        object: /stor/scratch/Wilke/if2453/bio-box-staging/KAVHIFI/kavagutti_hifi_ncldv.fna
+        bytes: 82769235
+        sha256: 02275a2997b6dee6989cd0df16f7a7bbc3979fba8fcadc2798fe9232eaa4c6c1
+        derived_from: >-
+          NCLDV-data.tar.gz (NCLDV/NCLDV-fna): 3,309 contigs, 81,362,268 bp after DEC-65 (1) (11 exact DTRs trimmed by
+          1,637 bp, 11 circular); kind virus (gv-meta); 3,308 distinct contigs
+        rule: >-
+          scripts/stress/build_stage_pod/c80_kavagutti_inphared.py kav (DEC-65, DEC-79, DEC-80): 16 contigs / 138,278 bp
+          held by SPX1; planning/measurements/2026-11-26_kavhifi_inph2604_inputs.md
+        left_for_later: >-
+          28 eukaryotic MAGs (card C-60): /stor/scratch/Wilke/if2453/bio-box-staging/KAVHIFI/deferred/euk-MAGs-fna.tar.gz
+          (173,569,286 B, sha256 f9ea899e78b1751cd4e49f693a8bf3f3d27e527fe194bcd630676767d0ecd8fe); 10 mitochondrial
+          genomes: /tmp/if2453/c80/KAVHIFI/deferred/mitochondrias-fna.tar.gz (84,999 B, sha256
+          4bc99a12ca14f84e39412853178ad510b348ff28f8c019ec1d19198a5db6b76a); DEC-59, planning/CATALOG_GOAL.md §4.1
+    approved: under DEC-50 (entry written by card C-67 on 2026-11-24 before any fetch); parts taken by card C-80 on 2026-11-26 from the copy on the pod, no new fetch
+  - name: inphared_7apr2026
+    what: >-
+      INPHARED bacteriophage genomes, release 7Apr2026 (Millard Lab; 36,025 records in 7Apr2026_genomes.fa.gz and its
+      data tables): an archive already on wilkcomp02 under /stor/scratch/Wilke/if2453/fragdef/db/inphared/7Apr2026/
+      (tower holds the system of record, tower:/mnt/user/research-bulk/fragdef/db/inphared/7Apr2026/, with the same
+      sha256); card C-80 (DEC-79), stage INPH2604
+    url: https://millardlab-inphared.s3.climb.ac.uk/{file}
+    page: https://millardlab.org/bacteriophage-genomics/ (and https://github.com/RyanCook94/inphared; as the inphared_9aug2025 entry)
+    files:
+      - {file: 7Apr2026_genomes.fa.gz, bytes: 714521461, sha256: 331cb0487b5ed60863faab38c6be1496e5ec015a5c0f787dd9ce865212f110c9}
+      - {file: 7Apr2026_data.tsv.gz, bytes: 1694073, sha256: 20aff20fd61f8efbe52a5c5ffec267c3b953a7df2fcaf8f626dc0b05dd62046b}
+    not_taken: >-
+      the vConTACT2 annotation tables, the website table and 7Apr2026_data_excluding_refseq.tsv.gz (metadata); the
+      derived plain files 7Apr2026_genomes.fa and 7Apr2026_genomes.nonrefseq.fa
+    checksum: sha256 in the archive's MANIFEST.json and SHA256SUMS, re-verified against tower on 2026-10-18 (its manifest); not re-measured by card C-80
+    records: >-
+      36,025 records (35,508 whose sequence S1 or SAT1 holds; 131 whose accession S1 or SAT1 holds under a changed
+      sequence; 386 new by accession and sequence, 34,889,413 bp; measured on wilkcomp02, 2026-11-26, card C-80)
+    license: INSDC (public) for the sequences; AGPL-3.0 for INPHARED's scripts (as the inphared_9aug2025 entry records); no licence file read for this release
+    redistributable: true
+    fetched: >-
+      none by card C-80 (pre-existing on-pod archive; 0 network fetch, DEC-51); pulled onto the pod on 2026-10-13 and
+      its metadata tables on 2026-10-18 (MANIFEST.json of the archive)
+    stored: /stor/scratch/Wilke/if2453/fragdef/db/inphared/7Apr2026/ (read-only)
+    staged:
+      - stage: INPH2604
+        object: /tmp/if2453/c80/INPH2604/inphared_7apr2026_delta.fna
+        bytes: 35496233
+        sha256: de2c3531ac6930a3da2c4f77f0fdb333e8fb16ec970f6b0089efd910d4aa1c15
+        metadata_dir: /tmp/if2453/c80/INPH2604/ (genomes.json sha256 cacb54f32459b70880d3bdbfe80018ca59cd5891b063f228d25b874265ff06b0; moved into /tmp/if2453/s2/inputs/INPH2604/ by card A-29; the FASTA is under 64 MB and stays with its metadata)
+        derived_from: 7Apr2026_genomes.fa.gz (sha256 331cb048…2f110c9)
+        rule: >-
+          scripts/stress/build_stage_pod/c80_kavagutti_inphared.py inph (DEC-65 (2), DEC-79): records whose accession is
+          in neither S1 (root contig_label) nor SAT1 (records.tsv) and whose contig_uid S1 and SAT1 do not hold, byte
+          identical to the archive: 386 records, 353 distinct genomes, 31,534,280 bp; 8 contigs / 533,414 bp held by MV1;
+          planning/measurements/2026-11-26_kavhifi_inph2604_inputs.md
+    approved: under DEC-50 and DEC-51 (an on-pod archive, as metavr; entry written by card C-80 on 2026-11-26, no fetch)
   - name: virion2_wec_marine_virome
     what: >-
       VirION2 long-read marine virome assemblies (Zablocki et al. 2021, PeerJ 9:e11088, doi:10.7717/peerj.11088,
