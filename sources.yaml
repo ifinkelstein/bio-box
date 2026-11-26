@@ -947,6 +947,40 @@ sources:
           /stor/scratch/Wilke/if2453/bio-box-staging/MV1/MV1_left_for_later.tsv.gz (23,419,058 rows, 298,672,948 bytes,
           sha256 d7389a9d1df966f4e73a34a514225855f25031d6b29e63a26702783edbad7f5c; includes 98,920 ordered MV2 spillover
           UViGs / 3.909 Gbp); DEC-59, planning/CATALOG_GOAL.md
+      - stage: MV2
+        object: /stor/scratch/Wilke/if2453/bio-box-staging/MV2/mv2.fna
+        bytes: 3915276060
+        sha256: 5a706ef42466f73488d5b9914a8a9a5ded42bcaf715b9902d63d6802e3767bb7
+        metadata_dir: /tmp/if2453/c79/MV2/ (genomes.json sha256 136fc16f335d5345a8b12db191d4476d4e9d20e18b4407e0dcbf1a6cc1054fcb; moved into /tmp/if2453/s2/inputs/MV2/ by card A-29)
+        derived_from: >-
+          METAVR.fna.bgz (sha256 6a636c69…45f4d740), METAVR_main_table.parquet (sha256 b1260bd4…8e87dfb7) and
+          MV1_left_for_later.tsv.gz (sha256 d7389a9d…dbad7f5c)
+        rule: >-
+          scripts/stress/build_stage_pod/c79_metavr_mv2_eukv.py stage (DEC-65, DEC-79): the 98,920 mv2_spillover rows
+          in mv2_rank order (3,909,189,032 bp; 98,830 genomes after 90 DEC-27 repeated sets, 101,483 distinct contigs,
+          3.906 Gbp; 669 exact DTRs trimmed; 100,319 contigs / 3.861 Gbp new after the root and r26.11.4; measured
+          wilkcomp02 2026-11-26, planning/measurements/2026-11-26_mv2_mveukv_inputs.md); template
+          stages/templates/MV2.conf (DEPTH=called)
+      - stage: MVEUKV
+        object: /stor/scratch/Wilke/if2453/bio-box-staging/MVEUKV/mveukv.fna
+        bytes: 1263638675
+        sha256: 8ec7b906090ccbf82258d3e323e0bd8d3c360831c9c442bf0cf6b46c8112151f
+        metadata_dir: /tmp/if2453/c79/MVEUKV/ (genomes.json sha256 a9b7ffb8760e323c5cba91038d383deef0ea4df8d90027d891a1773b1246d3d2; moved into /tmp/if2453/s2/inputs/MVEUKV/ by card A-29)
+        derived_from: >-
+          METAVR.fna.bgz (sha256 6a636c69…45f4d740), METAVR_main_table.parquet (sha256 b1260bd4…8e87dfb7) and
+          MV1_left_for_later.tsv.gz (sha256 d7389a9d…dbad7f5c)
+        rule: >-
+          scripts/stress/build_stage_pod/c79_metavr_mv2_eukv.py stage (DEC-65, DEC-79): one representative per vOTU of
+          ictv_taxonomy p__Nucleocytoviricota, c__Maveriviricetes, c__Polintoviricetes that MV1 and MV2 left, among rows
+          of viral_confidence High, length >= 5,000 bp, not concatemer, contamination <= 10% (105,902 vOTUs,
+          1,257,254,288 bp; 105,877 genomes, 106,061 distinct contigs; 105,998 contigs / 1.256 Gbp new after the root
+          and r26.11.4; no Mirusviricota in ictv_taxonomy; measured wilkcomp02 2026-11-26,
+          planning/measurements/2026-11-26_mv2_mveukv_inputs.md); template stages/templates/MVEUKV.conf
+          (DEPTH=annotated, pfam 38.2 gathering)
+        left_for_later: >-
+          /tmp/if2453/c79/MVEUKV/MVEUKV_left_for_later.tsv.gz (781,287 vOTUs, 10,138,171 bytes, sha256
+          6210883be377598b095513a707e850dd4ecba8f7d19531c1d95fe98a735b6efe: 486,502 low-confidence at 5 kb and more
+          for a later MVEUKV2, 253,118 under 5 kb, 41,667 with no eligible member); DEC-59, planning/CATALOG_GOAL.md
     approved: under DEC-51 and DEC-71 (card C-62, 2026-11-23; on-pod archive, no network fetch)
   - name: iceberg3
     what: >-
