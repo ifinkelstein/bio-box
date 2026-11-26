@@ -1486,19 +1486,11 @@ sources:
           4.924 Gbp net new after S1..GART2; genomes.json sha256
           9667599059cddfd012bb437fa4ea87bfeeb81d8cb9f4cdeaccf4cc36fea908ad; objects.json sha256
           e7977369f84893f3419c878226dc20eac3d0d4e48b5d6c6a27993f9de64b2234; s2_check_inputs.py SAG1 problems: [];
-          awaiting /tmp headroom after r26.11.3 before moving into /tmp/if2453/s2/inputs/SAG1/; superseded by the
-          r232 stage below: 3,160 of these SAGs are in GTDB R232)
-      - stage: SAG1
-        object: /stor/scratch/Wilke/if2453/bio-box-staging/SAG1/sag1_gorg_r232.fna.gz
-        bytes: 443042003
-        sha256: e598a257102fb298c7baa3b162011fe60705c440395a58c4302a19c0a5664424
-        metadata_dir: >-
-          /tmp/if2453/c76/SAG1/ (card C-76, 2026-11-26: the 5,537 SAGs above re-diffed by ENA assembly accession
-          against GTDB R232 and GlobDB r232; 3,160 removed [1,824 in both, 1,336 in GTDB R232 only], 1 SAG not in the
-          ENA table; 2,377 SAGs, 107,571 distinct contigs, 1.452 Gbp, 805 contigs held by S1..GART2 -> 106,766 contigs /
-          1.437 Gbp net new; genomes.json sha256 553cfa9e2b147230ea81f339f3dbf6dea5010f457a8ea425b816890701e3fb0d;
-          objects.json sha256 5906f13a8a39766dfe31cba531aa02aee59cee7ea65c7e517956ab0a984bb210; s2_check_inputs.py
-          SAG1 problems: []; planning/measurements/2026-11-26_lr2_sag1_nx1_r232.md)
+          awaiting /tmp headroom after r26.11.3 before moving into /tmp/if2453/s2/inputs/SAG1/; card C-76,
+          2026-11-26: files re-checked against these sizes and sha256, kept whole, 954 contigs held by S1..GART2;
+          r232 status recorded in /tmp/if2453/c76/SAG1/r232_status.tsv: 3,160 SAGs in GTDB R232 [1,824 of them also
+          in GlobDB r232], 2,376 in neither, 1 not in the ENA table; recorded for the later r232 cut, not used to
+          remove; planning/measurements/2026-11-26_lr2_sag1_nx1_r232.md)
     approved: under DEC-50 (entry written by card C-58 on 2026-11-24 before any fetch)
   - name: ena_gorg_sag_tables
     what: >-
@@ -1662,14 +1654,6 @@ sources:
       2026-11-24 on wilkcomp02 (all MD5s matched, 0 refusals): metadata_MAGs_2019_EMERGE.tsv 704,660 B sha256
       a9469dcb612602ea306779ebca9b0f0c4ee48b206160def087f469c16deaec36; EMERGE_MAGs_2019_long-short-hybrid.tar.gz
       981,258,523 B sha256 acb77d18cdd949c02422655cd0ed1ac5b1a5557a1db9e6571ab194d22e99a33f (733 MAGs)
-    staged:
-      - stage: LR2
-        object: /stor/scratch/Wilke/if2453/bio-box-staging/LR2/lr2_compendia.fna.gz
-        bytes: 6329546501
-        sha256: 89dba3ba4098796fd3042b132089b9ea5393949d48dc7bf2783912e0b1eef377
-        metadata_dir: >-
-          /tmp/if2453/c66/LR2/ (733 genomes of the stage's 49,205; none carries an INSDC accession, so card C-76's
-          R232 / r232 re-diff of 2026-11-26 could not see them and removed none)
     approved: under DEC-50 (entry written by card C-66 on 2026-11-24 before any fetch)
   - name: emerge_stordalen_v2_0_1
     what: >-
@@ -1708,14 +1692,6 @@ sources:
     fetched: >-
       2026-11-24 on wilkcomp02 (MD5 matched, 0 refusals): MQ_HQ_MAGs_20200502.tar.gz 4,559,302,199 B sha256
       0837e3805ab3aa28f44810c0197f474021eeed4d881de4f691994521635e7103 (3,733 ONT HQ/MQ MAGs)
-    staged:
-      - stage: LR2
-        object: /stor/scratch/Wilke/if2453/bio-box-staging/LR2/lr2_compendia.fna.gz
-        bytes: 6329546501
-        sha256: 89dba3ba4098796fd3042b132089b9ea5393949d48dc7bf2783912e0b1eef377
-        metadata_dir: >-
-          /tmp/if2453/c66/LR2/ (3,733 genomes of the stage's 49,205; none carries an INSDC accession, so card C-76's
-          R232 / r232 re-diff of 2026-11-26 could not see them and removed none)
     approved: under DEC-50 (entry written by card C-66 on 2026-11-24 before any fetch)
   - name: bickhart_2022_rumen_hifi
     what: >-
@@ -1750,8 +1726,9 @@ sources:
           22d9f1fe2e07ff0756f34806fed450f6592d9bea9f80b49eceb54066f2143061; objects.json sha256
           fbe792620f011a9a7a6f842e5fe165946d2055a2b45dc0387e3eb4c516e9b3a8; s2_check_inputs.py LR2 problems: [];
           awaiting /tmp headroom after r26.11.3 before moving into /tmp/if2453/s2/inputs/LR2/; card C-76,
-          2026-11-26: the R232 / r232 re-diff by accession found none of the 49,205 genomes, since no LR2 genome
-          carries an INSDC accession, so these files are final; planning/measurements/2026-11-26_lr2_sag1_nx1_r232.md)
+          2026-11-26: files re-checked, kept whole; r232 status in /tmp/if2453/c76/LR2/r232_status.tsv: no genome
+          carries an INSDC accession, so all 49,205 are not visible to the accession test, none removed;
+          planning/measurements/2026-11-26_lr2_sag1_nx1_r232.md)
     approved: under DEC-50 (entry written by card C-66 on 2026-11-24 before any fetch)
   - name: microflora_danica_mags
     what: >-
@@ -1787,14 +1764,6 @@ sources:
       6a3fec6350909d3de39819eb06e3509d9ddeec8339374b3956e61d27f5c08fde (8,177 rows; 8,151 already in GTDB R226 /
       GlobDB r226; 26 novel genomes fetched 26/26 via homd.org + NCBI Datasets v2 -> 20 after skani 96% ANI dedup
       staged in NX1)
-    staged:
-      - stage: NX1
-        object: /stor/scratch/Wilke/if2453/bio-box-staging/NX1/nx1_compendia_r232.fna.gz
-        bytes: 373416208
-        sha256: ca595eef10c6dcde2b49bd0d71118bd39cf4d0826446541da21b524befc5d7cb
-        metadata_dir: >-
-          /tmp/if2453/c76/NX1/ (17 of the 20 genomes staged by card C-66: card C-76's R232 / r232 re-diff of
-          2026-11-26 removed 3 that GTDB R232 holds)
     approved: under DEC-50 (entry written by card C-66 on 2026-11-24 before any fetch)
   - name: lost_city_serpentinizing_mags
     what: >-
@@ -1811,14 +1780,6 @@ sources:
     fetched: >-
       2026-11-24 on wilkcomp02 (MD5 matched, 0 refusals): Brazelton-2022-Lost-City-fluids-MAGs-v1.2.zip 108,269,292 B
       sha256 1e6a437b8563f140f54ec1da9efdf99ae2b3d1d32ee1272921854996638405d9 (32 MAGs staged in NX1)
-    staged:
-      - stage: NX1
-        object: /stor/scratch/Wilke/if2453/bio-box-staging/NX1/nx1_compendia_r232.fna.gz
-        bytes: 373416208
-        sha256: ca595eef10c6dcde2b49bd0d71118bd39cf4d0826446541da21b524befc5d7cb
-        metadata_dir: >-
-          /tmp/if2453/c76/NX1/ (32 genomes; named bins with no INSDC accession, so card C-76's R232 / r232 re-diff of
-          2026-11-26 could not see them and removed none)
     approved: under DEC-50 (entry written by card C-66 on 2026-11-24 before any fetch)
   - name: polar_cyanobacteria_mats_mags
     what: >-
@@ -1836,14 +1797,6 @@ sources:
       2026-11-24 on wilkcomp02 (MD5 matched, 0 refusals): polar-cyanobacteria-MAGs.tar.gz 42,459,494 B sha256
       b77d65bcc916744cd89c2e086b947e31c79e7ffe72ec73cd493acac29d4faf5a (37 MAGs -> 20 after skani 96% ANI dedup
       staged in NX1)
-    staged:
-      - stage: NX1
-        object: /stor/scratch/Wilke/if2453/bio-box-staging/NX1/nx1_compendia_r232.fna.gz
-        bytes: 373416208
-        sha256: ca595eef10c6dcde2b49bd0d71118bd39cf4d0826446541da21b524befc5d7cb
-        metadata_dir: >-
-          /tmp/if2453/c76/NX1/ (20 genomes; named MAGs with no INSDC accession, so card C-76's R232 / r232 re-diff of
-          2026-11-26 could not see them and removed none)
     approved: under DEC-50 (entry written by card C-66 on 2026-11-24 before any fetch)
   - name: rhizosphere_colombia_mags
     what: >-
@@ -1865,14 +1818,6 @@ sources:
       a1d48c834769372a10ad9ec90ab95b472f1d53ae8eb56c4c7b52284c4695ef5e (54 HQ MAGs); MQ_MAGs.tar.gz 104,038,041 B
       sha256 5de95eb4b8f34d04ed0438aa02193ba167d436db2bbda42d020975e70dbcc704 (92 MQ MAGs); metadata.tar.gz 9,599,613 B
       sha256 2322ecc0f6a4582ff789e7bfc51f82a130728c353cddd27c9be042d4c9364f2a (146 MAGs staged in NX1)
-    staged:
-      - stage: NX1
-        object: /stor/scratch/Wilke/if2453/bio-box-staging/NX1/nx1_compendia_r232.fna.gz
-        bytes: 373416208
-        sha256: ca595eef10c6dcde2b49bd0d71118bd39cf4d0826446541da21b524befc5d7cb
-        metadata_dir: >-
-          /tmp/if2453/c76/NX1/ (146 genomes; named MAGs with no INSDC accession, so card C-76's R232 / r232 re-diff of
-          2026-11-26 could not see them and removed none)
     approved: under DEC-50 (entry written by card C-66 on 2026-11-24 before any fetch)
   - name: ena_c66_nx1_holobiont_subsurface
     what: >-
@@ -1903,19 +1848,11 @@ sources:
           889 code 11 / 6 code 25 / 1 code 4, 5 contigs held by S1..SAG1 -> 391,098 contigs / 3.398 Gbp = 99.999% net
           new; genomes.json sha256 2ea62f7c05baccc7f685e25be9557f21e68a6cb0740e5186132970589176895a; objects.json sha256
           d808af5f52d1b11d03194dee0dac911041243caa2b44b7ceeabba8e8a595f172; s2_check_inputs.py NX1 problems: [];
-          awaiting /tmp headroom after r26.11.3 before moving into /tmp/if2453/s2/inputs/NX1/; superseded by the
-          r232 stage below: 537 of these MAGs are in GTDB R232)
-      - stage: NX1
-        object: /stor/scratch/Wilke/if2453/bio-box-staging/NX1/nx1_compendia_r232.fna.gz
-        bytes: 373416208
-        sha256: ca595eef10c6dcde2b49bd0d71118bd39cf4d0826446541da21b524befc5d7cb
-        metadata_dir: >-
-          /tmp/if2453/c76/NX1/ (card C-76, 2026-11-26: the 896 genomes above re-diffed by INSDC accession against
-          GTDB R232 and GlobDB r232; 537 removed [473 in both, 64 in GTDB R232 only], of them 534 of this entry's 678
-          [144 left] and 3 of eHOMD's 20; 359 genomes, 221,377 distinct contigs, 1.207 Gbp, 3 contigs held by S1..GART2
-          -> 221,374 contigs / 1.207 Gbp net new; genomes.json sha256
-          8b8233520381cbc0a1e4092e0db5928abc76d1c37b8b651fa3d7d441ac8de44d; objects.json sha256
-          c971e2de30af28682a72b275f9fe5e604be2e073d41e10131be115b0132fcf93; s2_check_inputs.py NX1 problems: [];
+          awaiting /tmp headroom after r26.11.3 before moving into /tmp/if2453/s2/inputs/NX1/; card C-76,
+          2026-11-26: files re-checked against these sizes and sha256, kept whole, 5 contigs held by S1..GART2;
+          r232 status recorded in /tmp/if2453/c76/NX1/r232_status.tsv: 537 genomes in GTDB R232 [473 of them also
+          in GlobDB r232; 61 of this entry's 678 and 3 of eHOMD's 20 in GTDB R232 only], 161 in neither, 198 named
+          MAGs not visible to the accession test; recorded for the later r232 cut, not used to remove;
           planning/measurements/2026-11-26_lr2_sag1_nx1_r232.md)
     approved: under DEC-50 (entry written by card C-66 on 2026-11-24 before any fetch)
   - name: logan50_nonhuman
