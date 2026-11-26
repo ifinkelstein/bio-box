@@ -237,3 +237,58 @@ names none of these directories.
 - Do not run list 18 before card R-13 is merged.
 - `fetch_to_tower.sh` takes its lock in the destination, and the old `_fetch_batch2.sh` runs of batches 4 and 5 do not
   take it. A list started while those run would share the line with them; it would not collide with them.
+
+## 2026-11-26, card R-14: the licence hold lifted (DEC-80)
+
+DEC-80 (the PI, about 08:41 CST: "all personal use, no worries re license i approve") lifts the hold of the section
+"Held for the PI" above. The 25 jobs held there are now
+[`scripts/orchestrator/tower_jobs/20_later_licence_released.tsv`](../../scripts/orchestrator/tower_jobs/20_later_licence_released.tsv).
+`r12/build14.py` in the card's scratch directory wrote the list from R-12's record of the held jobs. Nothing was fetched, and `tower` was not
+read again.
+
+**What the list holds.**
+- Each line is copied unchanged from `_batch6.tsv` or `_batch6b.tsv`, the licence field included (`open-zenodo-verify`,
+  `open-github-verify`, `open-academic`, or the worker's `CC BY 4.0`, `cc-by-4.0`, `CC BY-SA 4.0`).
+- DEC-80 makes no licence. For each set the licence stays as the earlier table says: an empty field in the record, or no
+  record kept, so the job list's text is a label only. The sets are `redistributable: false` (DEC-80 (3), DEC-51).
+- The `tower_*` entries of `sources.yaml` carry no `redistributable` field. This card's Files do not allow adding one,
+  so the `false` is stated here and in the list's header.
+- Order, as R-12 ordered its lists: first the `RMD1` genome tarball, which is `r26.11.6` by DEC-79 (a comment line says
+  so), then the other nine sets smallest first. The size is the provider's bytes, else the worker's size statement, and
+  sets with neither come last (`C60_EUKCEN`, `C60_SMAG`).
+- `AMBIRNA` (`main`) and `MOPUP_MICRO` (`master`) each have a comment line saying their URLs name a GitHub branch, not
+  a pinned commit.
+
+**Jobs and bytes.**
+- 25 jobs (*measured*, `--check`).
+- 34,603,814,116 bytes for the 12 jobs with a size in `batch6_probe.json` (*derived*). Of that, `PROMGE2`'s
+  `mge100.fna.gz` is 33,912,610,622 bytes (*derived*, the record's `Content-Length`).
+- No record of size for 13 jobs: two of `PROMGE2`'s tables, and `C60_SMAG`, `C60_EUKCEN`, `HROM_ORAL`, `CRBC_ISO` and
+  `RMD1`. For the last three the workers stated about 2.285, 9.161 and 11.572 GB, 23.018 GB together (*estimate*).
+
+**Sequence rule.** R-12's rule was applied again. The 25 were already the jobs that rule kept: genome, MAG, SAG, contig
+and viral sequence, and tables that describe them (lineage, species and genome metadata, MGE clusters and nesting, the
+SMAG supplemental tables). None is left out. What R-12 left out of these sets by kind stays out, and so do the other
+holds: `MIDAS_FULL`, `C60_TOPAZ`, PDB, CDS-only, anvi'o, models and code, batch 7. That covers `PROMGE2`'s profile
+table and README, `C60_SMAG`'s GFF and EggNOG, the READMEs of `AMBIRNA`, `MOPUP_MICRO` and `HROM_ORAL`, and
+`AMBIRNA/cmsearch.txt`.
+
+**`sources.yaml`: unchanged.** No `note` or `license` text of these ten entries says the set is held for the PI on licence.
+Their notes say what the record states, for example "states the licence as none (an empty field)" or "no provider record
+of the licence was kept", and that stays true. Two kinds of text say "Held for the PI by card R-11", and neither is a
+licence hold, so the card does not let this change them:
+- the `approved` lines of the batch-6 entries: no PI word named batch 6;
+- the `MIDAS_FULL` and TOPAZ notes.
+
+**Checks** (run on the laptop from `/tmp/biobox-wt/R-14`; full output in the card's scratch directory):
+
+```
+sh scripts/orchestrator/fetch_to_tower.sh --check --sources sources.yaml scripts/orchestrator/tower_jobs/20_later_licence_released.tsv
+-> check: 25 URLs, all covered by sources.yaml; nothing fetched
+sh scripts/orchestrator/fetch_to_tower.sh --check --sources sources.yaml scripts/orchestrator/tower_jobs/*.tsv
+-> check: 12169 URLs, all covered by sources.yaml; nothing fetched
+```
+
+All lists together are 21 files and 12,169 jobs (*measured*). That is R-12's 19 lists (12,129), this list (25), and
+`2026-11-26_c72_part1.tsv` (15) of card C-72, merged on the integration branch. The script refuses any name and file
+named twice across the lists it is given, so no job repeats across the 21.
