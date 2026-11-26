@@ -132,6 +132,26 @@ continue to work autonomously making reasonable decisions on pod to keep the wor
   R-14); `GBR_MGD` is free to be staged in `r26.11.6`; the MGnify catalogues are approved as sources for `r26.11.6`.
   Entries still record the licence as a record states it or as not stated, with `redistributable: false`.
 
+**W7. Decided 2026-11-26, about 13:10 CST (DEC-81;** the PI's words "1. prepare it[ 2. later. 3. yes 4. friday is
+holiday; ftp is fine, use it if needed; omd2: fetch away; bbsag20 fetch last, ys releases can roll to dec name"):
+- The review DEC-77 (5) asks for is being prepared as one note for the PI to sign
+  (`planning/measurements/2026-11-26_dec77_review.md`, a worker reading cards B-71, B-72, A-27, R-02, R-03, R-05 and
+  R-05b and their evidence). The release train of `r26.11.4` still waits for his signature.
+- Card A-28 (compute beyond the pod) waits.
+- Card A-30: the stages of a wave share their rehearsal and their release verification where nothing has changed,
+  for the wave of `r26.11.5`. It changes what the driver checks, so it is read line by line before merge.
+- Friday 2026-11-27 is a holiday: staging compute may run beside the build by day (W5 (8) is replaced). The build's
+  own profile still plans by its weekday rule.
+- `ftp://` may be used where a source has no https route: batch 7 is released as card R-15 (listed first, https
+  tried first). `OMD2` is fetched as queued; `BBSAG20` last, as list 19 already orders it.
+- Release names roll with the date (DEC-52): a train started in December names the release `r26.12.<n>`.
+- Since W6: the five sources of DEC-79 (4) are on `tower` (*measured*, the run's log, 13:04 CST: "DONE ok=15 skip=0
+  fail=0", every md5 equal to the provider's); the second run of `fetch_to_tower.sh` (pid 144525, 13:05 CST) takes
+  lists 01 to 20 in order, log `fetch_logs/2026-11-26_lists_01_to_20.log`; card C-73 is merged (`0317b7b`, its `ci`
+  green, run `45875493173`) and cards C-74 (the r232 index on the pod) and C-69 (`EGV1`) were launched on it at about
+  13:08; card C-79 is done on its branch (`MV2` 98,920 UViGs and 3.909 Gbp; `MVEUKV` 105,902 vOTUs and 1.257 Gbp;
+  both mirrored to `tower`), pushed for `ci`, not merged.
+
 **W6. State at 12:25 CST, 2026-11-26** (this session was stopped by its usage limit from about 09:20 to 12:20; the
 build needed nothing meanwhile):
 - `wilkcomp02` (*measured*, 12:22, `find runs/stage=V2 -name 'domains-pfam-38.2.shard-*.json'`, `ls
