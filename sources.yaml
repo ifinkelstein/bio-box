@@ -184,6 +184,12 @@ sources:
       (curl 35; the host resolves to 192.101.102.34); url_readme answered HTTP 400 three times (an HTML body of 247
       bytes). Five failures in a row, so the fetch stopped (the limits above); nothing was retried with other client
       settings. The README's content above was read through a web page reader, not fetched to the pod
+    fetched_tower: >-
+      2026-11-25 21:57:25 UTC by curl on tower (the PI's NAS; _fetch_one.sh, `-A curl`; entry added by card R-08,
+      after the fetch): 35846_b8b9149f2f59ff950549b5c89b8b35e2.tar, 960,593,920 bytes (equal to the Content-Length
+      of 2026-11-23 above), sha256 8ff20350e9986f2a99efccf4ae7fb5ccd7f18d8899635a4e816fb6b2ad987df0 (measured on
+      tower, SOURCE_URLS.tsv read 2026-11-25 20:12 CST); no provider checksum exists. Same file as entry tower_gsv1
+    stored_tower: tower:/mnt/user/research-bulk/bio-box/sources_incoming/GSV1/ (SOURCE_URLS.tsv and SHA256SUMS there)
     note: >-
       url_readme corrected by card C-39 on 2026-11-16: the datahub.pnnl.gov form redirects (302) to the site's front
       page; the same path on data.pnnl.gov serves the README to a page reader, but answers 400 to curl from the pod.
@@ -1859,3 +1865,1356 @@ sources:
           b146639b9a45b7eb44afa0f01628c0397151c9eb787bc968d1eeb2e6c2888e73; s2_check_inputs.py LGRT1 problems: [];
           kept on /tmp per AGENTS.md §7.3 64 MB /stor floor)
     approved: under DEC-50 (entry written by card C-64 on 2026-11-24 before any fetch)
+  # Entries `tower_<directory>`: files the PI's NAS `tower` holds or is to fetch under
+  # /mnt/user/research-bulk/bio-box/sources_incoming/<directory>/ (card R-08, from the audit of 2026-11-25, section 2.1 (3)).
+  # Three batches were fetched on 2026-11-25 by curl on tower before these entries existed (AGENTS.md section 8 and DEC-50
+  # ask for the entry first); batches 4 and 5, and the rest of batch 3, were queued but not fetched when the entries were
+  # written (2026-11-25 20:12 CST), and say so under `fetched`. The URL forms below are the ones the job lists on tower
+  # use (a figshare file is listed by its exact URL, as elsewhere in this file); scripts/orchestrator/fetch_to_tower.sh refuses any other URL. {file} and {strain} are one path segment, {path} one
+  # or more. `files` lists what had landed (bytes and sha256 measured on tower, md5 = the provider's, checked before the file
+  # was kept); `license` is the job list's own text, a literal {} where the record gave none. Nothing was deleted.
+  - name: tower_egv1
+    what: >-
+      Egovirales genomes (ITEM_08_Egovirales_Genomes.zip, figshare); the job list gives no description
+    url: https://ndownloader.figshare.com/files/66974843
+    files:
+      - {file: "ITEM_08_Egovirales_Genomes.zip", bytes: 24753281, sha256: 1eac3b0438c1d020034cb3339fd122273c2968f27131d44b071abd2bbc579f55, md5: 1288ed17163e96afe6332523ff9ac94b}
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: not recorded (the job list and SOURCE_URLS.tsv of this batch have no licence column)
+    fetched: >-
+      1 of 1 files by curl on tower, UTC 2026-11-25T21:54:54Z to 2026-11-25T21:54:54Z (_fetch_one.sh, -A curl);
+      bytes and sha256 above measured on tower, copied from SOURCE_URLS.tsv on 2026-11-25 20:12 CST
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/EGV1/ (SOURCE_URLS.tsv and SHA256SUMS there)
+    approved: "by the PI, 2026-11-25 15:47 CST: \"stage the nucleotides ... on tower\" (the audit of 2026-11-25)"
+  - name: tower_ece2
+    what: >-
+      pro-tycheposons (a GitHub archive of thackl/pro-tycheposons at one commit) and Inocle_001 to Inocle_029 FASTA
+      files (Zenodo record 16656823); the job list gives no description
+    url: https://github.com/thackl/pro-tycheposons/archive/a0f299fd6932e5ea81c52cbaf6f2c81aa19be724.tar.gz
+    url_2: https://zenodo.org/api/records/16656823/files/{file}/content
+    files:
+      - {file: "pro-tycheposons-a0f299fd6932e5ea81c52cbaf6f2c81aa19be724.tar.gz", bytes: 134806177, sha256: 1cbcfa29abbaadfe45734c86c633a514546d11ed800b841985409462c05e2843}
+      - {file: "Inocle_001.fasta", bytes: 316535, sha256: d51aee98baa4ecd980d5245808667d030b68b824174b5e7b04c068066ed67def, md5: 296b5304397b239058612601aabae4b6}
+      - {file: "Inocle_002.fasta", bytes: 346818, sha256: 0cfda559cae59e78dce35476cca3a1978689e101fd966c9901f9f51e611d2695, md5: 7026f7370bcd3f7c7e35d8cf1a29809e}
+      - {file: "Inocle_003.fasta", bytes: 368571, sha256: 12026b330e78cd2b9f9e6bac12f02723929d1bda20b98a9b9b8a78f1a7be77ac, md5: bd88fda4ae6385cf0ecd949b76020e02}
+      - {file: "Inocle_004.fasta", bytes: 372570, sha256: fb0230e92ac8598e3de64808e38ab2f48ba22c15464b037f2d281123d1496dc7, md5: 50e9c206eae96c55fb57b9753dc5c45a}
+      - {file: "Inocle_005.fasta", bytes: 377011, sha256: abb9b093cebee54b5c41a9f04932f6c63fbfc36ab961533292854d1a2e10eeb8, md5: dbe0fac23f07b40ec76a2e70d200764a}
+      - {file: "Inocle_006.fasta", bytes: 377074, sha256: e925ed651924db833e6877519906f884b8aa8e2157a75a0860a76d45086e3b8a, md5: 87c26207c54d00dd7904b5449ec9d6a6}
+      - {file: "Inocle_007.fasta", bytes: 377870, sha256: 8e4c93e67e165a3827b78c520870be8f3c6ccf5c1ac78a907949f009f74a4636, md5: 2b2b5a430d609f473503ea95ee5ea473}
+      - {file: "Inocle_008.fasta", bytes: 378898, sha256: 976f9916086c927a6d7f58ba5cf352460abd30017145934474da6b0035c1330c, md5: d766ec7f74958233bef1bd8ce2ac13cf}
+      - {file: "Inocle_009.fasta", bytes: 379368, sha256: 20455027e4a023ae91ff0cc0ae17316177d60e62ba6b008cff974de1573ecf49, md5: a3ca0024a31afad73c15a6609ab16c07}
+      - {file: "Inocle_010.fasta", bytes: 391527, sha256: bf313631dd0d4c24b801855af44dcc50abd9120148524bd669cd48fe89d2ed68, md5: a7195e1786111f9da90c00b9264d28ae}
+      - {file: "Inocle_011.fasta", bytes: 310342, sha256: 3cb8133e59d657f8692b64209fee8a28b43a5132ddf57ffb0e87e925b5c30f0f, md5: ad15dc50bf4b328e7d5994b23802ad98}
+      - {file: "Inocle_012.fasta", bytes: 381691, sha256: bfee62e1977fd97123a21aded32f4cb778a364c14c0b8fd5d8d0e1c339ff972c, md5: ecca9c70b0c563f228ca35663f8e9759}
+      - {file: "Inocle_013.fasta", bytes: 386173, sha256: 504689e4a9b7002685891750bba4aeeaa3a122ead6c5e114241355a306f1941a, md5: 7b430d1484d2ef7a7626e21779ce8b14}
+      - {file: "Inocle_014.fasta", bytes: 360391, sha256: 8aafe8e6492d1bbe1dbedbb11abea74502c3cc7973c2489dc3db512403cab055, md5: d03623b47bd825a987d2b09cc4e764cd}
+      - {file: "Inocle_015.fasta", bytes: 367105, sha256: 6ab77a5dab59da84533a59d505fac69b858d6a6bc557398e28b661e34d494e6a, md5: 19973ec9de9620e34842e06d43b4955f}
+      - {file: "Inocle_016.fasta", bytes: 395032, sha256: 9864956a86f4698ce9d5622fbf5ec9195090d53fe722caa3b43f09a390e419c1, md5: fb4a52c3966a183955b4fdef6bd6300f}
+      - {file: "Inocle_017.fasta", bytes: 293769, sha256: 9631f39ed76afeade096301bf640c9b858150901d8f290b35bd7697c67561933, md5: 2136a9293fd6d076aa186939abdd5b7a}
+      - {file: "Inocle_018.fasta", bytes: 297823, sha256: 0ff98c483d50cbd7ab82034f571acb90cbc9ebe619fd9dce38782135c7fd7e8f, md5: f03cfb0a3c472ad51a49f9f3d1aac0fb}
+      - {file: "Inocle_019.fasta", bytes: 307243, sha256: f3c778ec7b955d0d2baa90ac90e46082a1cdaea62c3387610e1f5fc963411a06, md5: cebc431fb73ff0b12695ae42446b259c}
+      - {file: "Inocle_020.fasta", bytes: 308165, sha256: d9a82e2aeacbe30d73e1a72c428ecb21014c1a71be73c9561ccfcb1bcda8b06e, md5: ab2fb0b2d63f4217764e29a66977bb41}
+      - {file: "Inocle_021.fasta", bytes: 313744, sha256: 0663a82941d08fcbfbb5ed1d65509444b75f6f926a5a155c5843744a5b169857, md5: af9e779da28ee949974fc837c26503a0}
+      - {file: "Inocle_022.fasta", bytes: 292640, sha256: 51d080f827579920faf8ebbef0be8708edff6d6708b7cd9f6dbb91ba7c322af0, md5: 4bb56a4856440718c28969b22e4517e8}
+      - {file: "Inocle_023.fasta", bytes: 278196, sha256: c9315d965a925d9d2dc21c4376405b04d1dffa884007c18b4d7b5c7192a5adfa, md5: 6e39de5cf02f3463217a1fcda2856b8b}
+      - {file: "Inocle_024.fasta", bytes: 280193, sha256: 2e240e7899a465bd716cd26506e49b51aa31df5b6562e697ef5dc66272dbbee8, md5: eb6bff4ff77f5a27f24d7bbb6612d662}
+      - {file: "Inocle_025.fasta", bytes: 288338, sha256: 072b302d3135e3c1eb5f64c0b0bc9ab6c2e3ff790f95211cc14bbdaf04c208de, md5: b23547347f2aafc0555a1a95f8f970f0}
+      - {file: "Inocle_026.fasta", bytes: 274283, sha256: d6a5464a3fe1eeb315e89c91e6a881f9e9b4ea6690cd85c7306ae4e354d84fe0, md5: 047597c94d2b6b65d0cb78963299eeca}
+      - {file: "Inocle_027.fasta", bytes: 225172, sha256: 7a8c8b2f64a45cc082b1583003fe0464cb18813a4ecf444445fdb2acc1580cb6, md5: 6ffdcb63bcdd523addea46b83320a1c8}
+      - {file: "Inocle_028.fasta", bytes: 233011, sha256: f11c255216e123433aec182fad1aeed2ffa84cc74ebb3a0b23fc79f9282383d3, md5: 51e3cccdca7fce489f1351311ce8f7c7}
+      - {file: "Inocle_029.fasta", bytes: 277758, sha256: c658f482f4d11e4f4883ca62c62218b9593c18fbf44933d744ad480d8ec31d0c, md5: 799d554a64a9e40a7ad995786bee705e}
+    checksum: the provider's md5 for 29 of 30 files (checked before the file was kept); our sha256 for all
+    license: not recorded (the job list and SOURCE_URLS.tsv of this batch have no licence column)
+    fetched: >-
+      30 of 30 files by curl on tower, UTC 2026-11-25T21:55:03Z to 2026-11-25T21:56:05Z (_fetch_one.sh, -A curl);
+      bytes and sha256 above measured on tower, copied from SOURCE_URLS.tsv on 2026-11-25 20:12 CST
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/ECE2/ (SOURCE_URLS.tsv and SHA256SUMS there)
+    approved: "by the PI, 2026-11-25 15:47 CST: \"stage the nucleotides ... on tower\" (the audit of 2026-11-25)"
+  - name: tower_mir1
+    what: >-
+      Mirusviricota and related giant-virus files from figshare (medvedeva2025, gaia2023, bellas2023 file names);
+      the job list gives no description
+    url: https://ndownloader.figshare.com/files/54652007
+    url_2: https://ndownloader.figshare.com/files/54826010
+    url_3: https://ndownloader.figshare.com/files/36228657
+    url_4: https://ndownloader.figshare.com/files/36228654
+    url_5: https://ndownloader.figshare.com/files/39542833
+    url_6: https://ndownloader.figshare.com/files/39542977
+    url_7: https://ndownloader.figshare.com/files/39543070
+    url_8: https://ndownloader.figshare.com/files/39543211
+    url_9: https://ndownloader.figshare.com/files/39543214
+    url_10: https://ndownloader.figshare.com/files/39543781
+    files:
+      - {file: "medvedeva2025_01_Genomes.zip", bytes: 103802995, sha256: 3a25bdcf1e6fdcc8b77d3311cb2beac709c5b2eed077d02bd85ee3c81b440583, md5: 1a8199783f7705c549296f149ad2c86f}
+      - {file: "medvedeva2025_Supplemental_Tables.zip", bytes: 171531061, sha256: 1395f1b36420c6f9497ea70ef7d50d1cfe82cb02c06bc03c4594bf3c04552194, md5: 9550ebb49371dd96a63815bc120d85ee}
+      - {file: "gaia2023_Mirusviricota_Genomes.zip", bytes: 6878358, sha256: 27d35749f88a19be05c0a01262ed6d694f97dce2255e637302ded9983cfdffbf, md5: 69cbd33325d8b5959ecae2c0fd6a59bd}
+      - {file: "gaia2023_GOEV_Genomic_DB.zip", bytes: 169969474, sha256: 1ceb59648e361d84607183e66358db419597e8ed31fd59f4472e377bef73bc4d, md5: 00cf7397e6b6e117187bd734749bf3e3}
+      - {file: "bellas2023_mcp-loci-hq.fna.gz", bytes: 122077568, sha256: 75c6354c512f76940b61a53941022b2854fd04092a54cf23461b0dc9127aea52, md5: 22d996417c265861c97924f45cd155c1}
+      - {file: "bellas2023_MCPs_group_by_genome.fasta.tar.gz", bytes: 11377178, sha256: 095fa6b98ffda48f577152c820220e80eeca406e915fb3f8812f51b5883e1d1e, md5: d1639a393b847014dc39618a38edc727}
+      - {file: "bellas2023_Dinobryon_divergens_5000bp_FLYE_PLV.fasta", bytes: 2642591, sha256: a67f7fc42c6c3308b4eb42c93765099108be0364d066e56b3bdd454469561d18, md5: c11ed2d7be35d138a4159edc99bf2e27}
+      - {file: "bellas2023_Synura_5000bp_FLYE_assembly_PLV.fasta", bytes: 3097604, sha256: f5a24a6e12cef3ba501fffd58a3a29bd49848103923762472e2f3d23f3241ca9, md5: cafd71f194dea0d520dcceedbbb378a8}
+      - {file: "bellas2023_Synura_10000bp_FLYE_assembly_PLV.fasta", bytes: 1416977, sha256: 45384e149eb5859a3ef175b25a7cc1f27e8346e2077796e2f732b83d86b3f65d, md5: a3ab641b6fa11dde91d0d523c27b0658}
+      - {file: "bellas2023_Readme.txt", bytes: 2301, sha256: 25db67782a8df6e689936cf2d9ffe9c6243382a29e653d014ff3a23090ed1475, md5: f2075188d482146068cd2703557dc5a1}
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: not recorded (the job list and SOURCE_URLS.tsv of this batch have no licence column)
+    fetched: >-
+      10 of 10 files by curl on tower, UTC 2026-11-25T21:56:12Z to 2026-11-25T21:56:55Z (_fetch_one.sh, -A curl);
+      bytes and sha256 above measured on tower, copied from SOURCE_URLS.tsv on 2026-11-25 20:12 CST
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/MIR1/ (SOURCE_URLS.tsv and SHA256SUMS there)
+    approved: "by the PI, 2026-11-25 15:47 CST: \"stage the nucleotides ... on tower\" (the audit of 2026-11-25)"
+  - name: tower_gsv1
+    what: >-
+      the Global Soil Virus Atlas archive (the same URL as entry gsv_atlas); the job list gives no description
+    url: https://g-83fdd0.1beed.03c0.data.globus.org/cartuids/35846_b8b9149f2f59ff950549b5c89b8b35e2.tar
+    files:
+      - {file: "35846_b8b9149f2f59ff950549b5c89b8b35e2.tar", bytes: 960593920, sha256: 8ff20350e9986f2a99efccf4ae7fb5ccd7f18d8899635a4e816fb6b2ad987df0}
+    checksum: no provider md5 (field -); our sha256 only, and the script's archive test
+    license: not recorded (the job list and SOURCE_URLS.tsv of this batch have no licence column)
+    fetched: >-
+      1 of 1 files by curl on tower, UTC 2026-11-25T21:57:25Z to 2026-11-25T21:57:25Z (_fetch_one.sh, -A curl);
+      bytes and sha256 above measured on tower, copied from SOURCE_URLS.tsv on 2026-11-25 20:12 CST
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/GSV1/ (SOURCE_URLS.tsv and SHA256SUMS there)
+    note: >-
+      Same archive as entry gsv_atlas (licence there: CC0); this copy was fetched on tower
+    approved: "by the PI, 2026-11-25 15:47 CST: \"stage the nucleotides ... on tower\" (the audit of 2026-11-25)"
+  - name: tower_asg1
+    what: >-
+      Data.zip from figshare file 60829597; the job list gives no description and the archive was not opened
+    url: https://ndownloader.figshare.com/files/60829597
+    files:
+      - {file: "Data.zip", bytes: 4961607078, sha256: a6b0eb73a82963b91c3e073ea4fdc29c15832dcf669f2f6a2b5fba2bd218ff56, md5: bdcf212083b851812133c7cef5d2cd07}
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: not recorded (the job list and SOURCE_URLS.tsv of this batch have no licence column)
+    fetched: >-
+      1 of 1 files by curl on tower, UTC 2026-11-25T22:03:11Z to 2026-11-25T22:03:11Z (_fetch_one.sh, -A curl);
+      bytes and sha256 above measured on tower, copied from SOURCE_URLS.tsv on 2026-11-25 20:12 CST
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/ASG1/ (SOURCE_URLS.tsv and SHA256SUMS there)
+    approved: "by the PI, 2026-11-25 15:47 CST: \"stage the nucleotides ... on tower\" (the audit of 2026-11-25)"
+  - name: tower_et1
+    what: >-
+      MMETSP Trinity assemblies and contig-ID name maps (Zenodo record 3247846); the job list gives no description
+    url: https://zenodo.org/api/records/3247846/files/{file}/content
+    files:
+      - {file: "mmetsp_dib_trinity2.2.0_contigIDnamemaps.tar.gz", bytes: 870310909, sha256: 22f2e7ca590b216ac54abfe5f3cd3490a909896654bcb3b3e4b06ade5cbc7b07, md5: ec79885deaf2c97677acec0560aadd9b}
+      - {file: "mmetsp_dib_trinity_zenodo.fasta.tar.gz", bytes: 7154603885, sha256: bef4054ea8b56de525f93ce752b92a11b9f552fc7f0b61bbf843634ca849c6df, md5: 78c908575cb2c75c2d0ae71f817175b9}
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: not recorded (the job list and SOURCE_URLS.tsv of this batch have no licence column)
+    fetched: >-
+      2 of 2 files by curl on tower, UTC 2026-11-25T22:04:17Z to 2026-11-25T22:44:48Z (_fetch_one.sh, -A curl);
+      bytes and sha256 above measured on tower, copied from SOURCE_URLS.tsv on 2026-11-25 20:12 CST
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/ET1/ (SOURCE_URLS.tsv and SHA256SUMS there)
+    approved: "by the PI, 2026-11-25 15:47 CST: \"stage the nucleotides ... on tower\" (the audit of 2026-11-25)"
+  - name: tower_mge4
+    what: >-
+      Item 3 (MGE4 - PIMEs 2026 assemblies only; 14.3 MB)
+    url: https://zenodo.org/api/records/22794128/files/{file}/content
+    files:
+      - {file: "Donor_strain-pKJK5_AtraI.fasta", bytes: 4696601, sha256: 5d46aa3ceeefc3c9b1b43e73be29eac67efd7587131ed0d83a9ef73664b68ddc, md5: b2a436ea8698de815c6fd4ba93d3a296}
+      - {file: "RHB23_traJ_reconverted.fasta", bytes: 5052879, sha256: 7845c8c4316d0cf02244d3683744d308c12538e843123e956a78e629e3c6dc1d, md5: 976ad411df0837447110574b48e77ca9}
+      - {file: "Transconjugant.fasta", bytes: 4543652, sha256: 6f99fb96dbedd8e3f04b456be7327d2a4ab206b58567aa28bf5f2345037cd8c2, md5: 6eb6ca5cf8e2fc57e77e97970e660eb5}
+      - {file: "Samples_name.pdf", bytes: 31942, sha256: 8380bba16f80c9cbf73f86a4cd5736359fdc19ca7620e7863f62d8f8b009c1c7, md5: bc2cc2557a7ea02b1ec0cdde8d0ff347}
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: CC BY 4.0   # as the job list states it
+    fetched: >-
+      4 of 4 files by curl on tower, UTC 2026-11-25T22:05:24Z to 2026-11-25T22:05:31Z (_fetch_batch2.sh, curl's
+      default User-Agent); bytes and sha256 above measured on tower, copied from SOURCE_URLS.tsv on 2026-11-25 20:12
+      CST
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/MGE4/ (SOURCE_URLS.tsv and SHA256SUMS there)
+    approved: "by the PI, 2026-11-25 15:47 CST: \"stage the nucleotides ... on tower\" (the audit of 2026-11-25)"
+  - name: tower_o3_fungal
+    what: >-
+      Item 4 (O3_FUNGAL - Sarhan 2025/2026 2,695 circular fungal mitogenomes; 131 MB)
+    url: https://ndownloader.figshare.com/files/57603328
+    url_2: https://ndownloader.figshare.com/files/57603334
+    files:
+      - {file: "All_fungal_mitochondrial_genomes_accessions.tsv", bytes: 869651, sha256: b6fb1dfbf84d7438e9312587cd19f61c3909b96acd04d1414865cc0b5366c56b, md5: 0646b303a2ec104701382ddc2e8cd2d2}
+      - {file: "Assembled_fungal_mitochondrial_genomes.fasta", bytes: 136853604, sha256: 75509f65fe8a2647f9209868a21aac4024e7ff55aa834aa902ce850e5e36865a, md5: 201793fb64fe9f4fe1c049863f255b21}
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: CC BY 4.0   # as the job list states it
+    fetched: >-
+      2 of 2 files by curl on tower, UTC 2026-11-25T22:05:33Z to 2026-11-25T22:05:41Z (_fetch_batch2.sh, curl's
+      default User-Agent); bytes and sha256 above measured on tower, copied from SOURCE_URLS.tsv on 2026-11-25 20:12
+      CST
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/O3_FUNGAL/ (SOURCE_URLS.tsv and SHA256SUMS there)
+    approved: "by the PI, 2026-11-25 15:47 CST: \"stage the nucleotides ... on tower\" (the audit of 2026-11-25)"
+  - name: tower_lrp1
+    what: >-
+      Item 2 (LRP1 - EU Urban Water circular plasmidome; 238 MB)
+    url: https://zenodo.org/api/records/13143815/files/{file}/content
+    files:
+      - {file: "metagenome_plasmidome_plasmid2.fasta", bytes: 249389715, sha256: 26fc65b932b9b9276ce7966877732f4163a8ba5facba52d8de3deda3db18bf65, md5: 67e1365a8f7450534390e112f152bb8b}
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: CC BY 4.0   # as the job list states it
+    fetched: >-
+      1 of 1 files by curl on tower, UTC 2026-11-25T22:09:48Z to 2026-11-25T22:09:48Z (_fetch_batch2.sh, curl's
+      default User-Agent); bytes and sha256 above measured on tower, copied from SOURCE_URLS.tsv on 2026-11-25 20:12
+      CST
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/LRP1/ (SOURCE_URLS.tsv and SHA256SUMS there)
+    approved: "by the PI, 2026-11-25 15:47 CST: \"stage the nucleotides ... on tower\" (the audit of 2026-11-25)"
+  - name: tower_dsv1
+    what: >-
+      Item 6 (DSV1 - GCVD Coral Virus DB + Langwig 2024 Hydrothermal Vent Viruses; 454 MB); DSV1 - DSVv1 Deep
+      Subsurface Virome (10,422 vOTUs) (figshare:34745214, CC BY 4.0)
+    url: https://ndownloader.figshare.com/files/43971075
+    url_2: https://ndownloader.figshare.com/files/47650567
+    url_3: https://ndownloader.figshare.com/files/70484649
+    url_4: https://ndownloader.figshare.com/files/70484646
+    url_5: https://ndownloader.figshare.com/files/70484652
+    url_6: https://ndownloader.figshare.com/files/70484676
+    files:
+      - {file: "CHOP_DB.fasta.gz", bytes: 88759104, sha256: 19f9bedc27891e0516bdcdad997c12eaa754d2f37954e4f0f03c25a18df484db, md5: e333a33bcad43e24a6f11fa158eaa8ae}
+      - {file: "49962_VentViruses.fna", bytes: 387593220, sha256: 799f626a49feed1cb8f34223703f3359a01b5642ca9ad5ac6bce83d591dfe6e4, md5: b0b5dc8fe322d0613f961149b7980369}
+      - {file: "Supplementary_Table_1.xlsx", bytes: 77242, sha256: f01571efbcf78f5d8453d47378e3419608e74e724d6892b4244866b33fcb37f7, md5: 93a8b7d82de959b23ea2328173b094af}
+      - {file: "Supplementary_table_3.xlsx", bytes: 511232, sha256: 39ec619c42838ef5eb21ada5abdcd1c8647e3238f046bfc819d5585bb8edc8f2, md5: 50e16774ee12a6a4e573fb4c16fe99ed}
+      - {file: "Supplementary_Table_2.xlsx", bytes: 1416675, sha256: d2c84e25ffcc9e2a3d9b145163853b970b54ccb0120b0c5b96c1364ef3ae67e1, md5: 25e98091acfd4a9118b342ad67e2299f}
+      - {file: "DSVv1_publicDB_novelty_10422_matched.csv", bytes: 1725756, sha256: 1e1562ab0915c027437091e9607c56dbbe7c6237216a7ea475b93a8400511509, md5: 847ca16987dfde4affb384593b6e1f1e}
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: CC BY 4.0   # as the job list states it
+    fetched: >-
+      6 of 6 files by curl on tower, UTC 2026-11-25T22:09:56Z to 2026-11-26T00:31:16Z (_fetch_batch2.sh, curl's
+      default User-Agent); bytes and sha256 above measured on tower, copied from SOURCE_URLS.tsv on 2026-11-25 20:12
+      CST
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/DSV1/ (SOURCE_URLS.tsv and SHA256SUMS there)
+    approved: "by the PI, 2026-11-25 15:47 CST: \"stage the nucleotides ... on tower\" (the audit of 2026-11-25)"
+  - name: tower_mir2
+    what: >-
+      Item 3 (MIR2 - Bulzu 2025 cryptophyte PLVs + Bellas 2026 PLV Framework; 1.05 GiB)
+    url: https://zenodo.org/api/records/14540677/files/{file}/content
+    url_2: https://ndownloader.figshare.com/files/65710359
+    files:
+      - {file: "README.txt", bytes: 1238, sha256: 7746f36d1a84a2f0ec0c71f0ea7595e5384aceaddc1821cd786f4bdd9a22dd0a, md5: fdc29ba25d8358501fa959a91b818174}
+      - {file: "genomes_polinton_virophages.zip", bytes: 8293636, sha256: 5b24231f9ec9188bf69c74e58e9fbba82064df4191c77e9c20dc21268bd3f179, md5: b4f6220c1ef765e60c0863b4e45f1232}
+      - {file: "EVE_annotations_table.zip", bytes: 26563179, sha256: ed7af0ae03c2a4df23de07d8fb0891ccc6394243ecdc1eba7a46e154a619e1ab, md5: 9702fc31e6aaae2da1789651d5d3509a}
+      - {file: "PLV_framework_supplementary_data.tar.gz", bytes: 265729817, sha256: b834e1f722cb85f8cceb2175dbcd80d1d44891b90b41ec2632320045dcd4b682, md5: f2734f5c91aff514598b41899b0bf81a}
+      - {file: "protist_genomes_assembled.tar.gz", bytes: 831184917, sha256: 71204065be973c2e4d57deaaf32880e0263bf7824178f22ce647c836378f7309, md5: 4a896acb58c3d243acbc4d088d23cd5e}
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: CC BY 4.0   # as the job list states it
+    fetched: >-
+      5 of 5 files by curl on tower, UTC 2026-11-25T22:10:09Z to 2026-11-25T22:26:37Z (_fetch_batch2.sh, curl's
+      default User-Agent); bytes and sha256 above measured on tower, copied from SOURCE_URLS.tsv on 2026-11-25 20:12
+      CST
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/MIR2/ (SOURCE_URLS.tsv and SHA256SUMS there)
+    approved: "by the PI, 2026-11-25 15:47 CST: \"stage the nucleotides ... on tower\" (the audit of 2026-11-25)"
+  - name: tower_sym2
+    what: >-
+      Item 5 (SYM2 - Schulz/Woyke protist endosymbionts + CPR + giant viruses; 3.10 GiB)
+    url: https://portal.nersc.gov/cfs/nelli/ms_protistsymb/{file}
+    files:
+      - {file: "viruses.fna.tar.gz", bytes: 113889853, sha256: 691f86b60fff42275b9089941d8562f5407b881e6c2556a91c72789ef6e868a3}
+      - {file: "bins_fna.tar.gz", bytes: 161076450, sha256: be31d772e296b7c4a3f73834ef0a49401f38274fa5f2a0a1944051992816857a}
+      - {file: "source_data.tar.gz", bytes: 254624379, sha256: 4a4528070982184571845b322ecfa70cfc270ba2abbb1d3d4c74bc6edce9cda4}
+      - {file: "assemblies_fna.tar.gz", bytes: 2789033552, sha256: cc2048e43ad1b9f24e093844ec5c3266cd24fdad236abc9e0bd08873b5471600}
+    checksum: no provider md5 (field -); our sha256 only, and the script's archive test
+    license: open-public-NERSC   # as the job list states it
+    fetched: >-
+      4 of 4 files by curl on tower, UTC 2026-11-25T22:26:46Z to 2026-11-25T22:30:08Z (_fetch_batch2.sh, curl's
+      default User-Agent); bytes and sha256 above measured on tower, copied from SOURCE_URLS.tsv on 2026-11-25 20:12
+      CST
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/SYM2/ (SOURCE_URLS.tsv and SHA256SUMS there)
+    approved: "by the PI, 2026-11-25 15:47 CST: \"stage the nucleotides ... on tower\" (the audit of 2026-11-25)"
+  - name: tower_dpn1
+    what: >-
+      Item 1 (DPN1 - DPANN-MGE + Nanobdellota closed circular ONT; 9.33 GiB)
+    url: https://zenodo.org/api/records/11215303/files/{file}/content
+    url_2: https://zenodo.org/api/records/20174424/files/{file}/content
+    files:
+      - {file: "Metadata_for_DPANN_viruses_and_unclassified_MGEs_assembled_from_metagenomes.txt", bytes: 1660, sha256: c8842d9665a55abf11f37f9f085a5337ba2300808cb3fe5e8eb2ba070e10fea8, md5: a83488ee38ea2b219ab57bdad401b082}
+      - {file: "Metadata_for_3662_DPANN_archaeal_genomes.txt", bytes: 493344, sha256: 001b21efe08f15d8cf8ee55b9c821b7ae5dc684a0190a1acf286647cbf5ca06c, md5: 88e8d6e00ae2c9aa041f9873dd2efdfa}
+      - {file: "DPANN_viruses_and_unclassified_MGEs_assembled_from_metagenomes.fna", bytes: 517244, sha256: 2e1a7228ab0d35ecad68cbdbaa1ce861ac5fd246191f706422adce7137ec4722, md5: a58401211e100638266c784bcbd2b865}
+      - {file: "3662_DPANN_archaeal_genomes.tar.gz", bytes: 976420873, sha256: 26247aab5ee48918df5164a1e377fe01729e7a53e5dc33b2d675df9c39bc3390, md5: 6f5762933b1e3628a20baf16a15568b5}
+      - {file: "Nanobdellota_Zen.zip", bytes: 9013602602, sha256: 1257b93c8202a1f5c665081ed59283e20ec3f1248170ffa4643d6705f885a04c, md5: 4ce733826a915f098dc88aaaaf10f3d5}
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: CC BY 4.0   # as the job list states it
+    fetched: >-
+      5 of 5 files by curl on tower, UTC 2026-11-25T22:30:10Z to 2026-11-25T23:06:42Z (_fetch_batch2.sh, curl's
+      default User-Agent); bytes and sha256 above measured on tower, copied from SOURCE_URLS.tsv on 2026-11-25 20:12
+      CST
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/DPN1/ (SOURCE_URLS.tsv and SHA256SUMS there)
+    approved: "by the PI, 2026-11-25 15:47 CST: \"stage the nucleotides ... on tower\" (the audit of 2026-11-25)"
+  - name: tower_nx2_extreme
+    what: >-
+      Item 11 (NX2_EXTREME - Hatiba Mons Red Sea Vents; 888 MiB)
+    url: https://zenodo.org/api/records/19235833/files/{file}/content
+    files:
+      - {file: "Metadata_Hatiba_Mons_Red_Sea_vents.xlsx", bytes: 12432, sha256: 2b5d7a456554ef8e3a278b2d210795cdc38ce2a9425dbccdd69668561db81e41, md5: 2a367edacc55e85b8cd499543d672856}
+      - {file: "GTDB_Archaeal-MAGs.tsv", bytes: 109543, sha256: bc76c84d3f69713f15e66f4071e6070bd93325c5780b1ba8ceb5d3814922f430, md5: 0d09f8305c2a8afa1593ad7f83d506ae}
+      - {file: "CheckM2_1217-MAGs.tsv", bytes: 150762, sha256: 9cb46997073b8a915ed48dae621befd30d23cfeaa25d9e4cbe7cbbf955877c42, md5: a880fee095b357ab04dffbe7ed770c8f}
+      - {file: "GTDB_Bacterial-MAGs.tsv", bytes: 359971, sha256: 987745b9977606a7185cbd715ccfe570bfdbb26ee4b2f97aa57054ea6eb98e13, md5: bbb8f4b115266827b1612d64d3494d61}
+      - {file: "1217_MAGs.zip", bytes: 930909823, sha256: d4ee99fa2b54f58548ebfaff9649fdc4bbb064c9a5e5707e251d591ba8cfd958, md5: 61c9a42013146a15a08170b646db9874}
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: CC BY 4.0   # as the job list states it
+    fetched: >-
+      5 of 5 files by curl on tower, UTC 2026-11-25T23:06:44Z to 2026-11-25T23:08:48Z (_fetch_batch2.sh, curl's
+      default User-Agent); bytes and sha256 above measured on tower, copied from SOURCE_URLS.tsv on 2026-11-25 20:12
+      CST
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/NX2_EXTREME/ (SOURCE_URLS.tsv and SHA256SUMS there)
+    approved: "by the PI, 2026-11-25 15:47 CST: \"stage the nucleotides ... on tower\" (the audit of 2026-11-25)"
+  - name: tower_tsv1
+    what: >-
+      Item 7 (TSV1 - GSAPD + UK Peatland + TPLV; 3.24 GiB; gsv_atlas already staged in GSV1/)
+    url: https://zenodo.org/api/records/19510112/files/{file}/content
+    url_2: https://zenodo.org/api/records/21773290/files/{file}/content
+    url_3: https://ndownloader.figshare.com/files/51500924
+    files:
+      - {file: "Soil_activate_prophage.fasta.gz", bytes: 228837359, sha256: 4441312fb36db03b1fe84dd838b11654eb5cbaf150d3a4b0e2af990f31cb1f8b, md5: 64dcfaa8537d483c67d63eb04d5ebed8}
+      - {file: "Soil_dormant_prophage.fasta.gz", bytes: 324160680, sha256: f121cbf7e7fb5f88cc6e7c095474cf29e73560c5876f01f0b727768927617f20, md5: c026ab83002e0dd2bca790f199b11254}
+      - {file: "vOTU-abundance-profile.txt", bytes: 64531775, sha256: 87c648637b91f2a0cedbbfb3d4c19d2ba0234caedb47f71e9294647db9dac82c, md5: 6117681d483a302efa293d5a863c7583}
+      - {file: "uk_peatland_genomes.tar.gz", bytes: 1246657224, sha256: 5e679a3b4360d50cc6d82c35438fecb35683938bd25cf2315463ed227c0978c0, md5: aab3620e6c47a9fb087f72f072d81625}
+      - {file: "TPLV-viral-genomes.fna", bytes: 1600512693, sha256: 3abd1504938e216f124eab84ccd460b17d571aa22c7b6a95d364e38ae4ed5868, md5: 2820e702486066140eebba3bdc7ba7d0}
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: CC BY 4.0   # as the job list states it
+    fetched: >-
+      5 of 5 files by curl on tower, UTC 2026-11-25T23:09:10Z to 2026-11-25T23:13:17Z (_fetch_batch2.sh, curl's
+      default User-Agent); bytes and sha256 above measured on tower, copied from SOURCE_URLS.tsv on 2026-11-25 20:12
+      CST
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/TSV1/ (SOURCE_URLS.tsv and SHA256SUMS there)
+    approved: "by the PI, 2026-11-25 15:47 CST: \"stage the nucleotides ... on tower\" (the audit of 2026-11-25)"
+  - name: tower_sag2
+    what: >-
+      Item 10 (SAG2 - GORG-Dark SAGs; 2.30 GiB)
+    url: https://ndownloader.figshare.com/files/54602522
+    files:
+      - {file: "GORG-Dark_SAGs.zip", bytes: 2471331739, sha256: 69c567f45ec5a9a814feb5ee2f0ea0d34eed8f39bf77761f02c5fb146c417c51, md5: 780173f01b6cc923c5709978966eb6a5}
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: CC BY 4.0   # as the job list states it
+    fetched: >-
+      1 of 1 files by curl on tower, UTC 2026-11-25T23:15:40Z to 2026-11-25T23:15:40Z (_fetch_batch2.sh, curl's
+      default User-Agent); bytes and sha256 above measured on tower, copied from SOURCE_URLS.tsv on 2026-11-25 20:12
+      CST
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/SAG2/ (SOURCE_URLS.tsv and SHA256SUMS there)
+    approved: "by the PI, 2026-11-25 15:47 CST: \"stage the nucleotides ... on tower\" (the audit of 2026-11-25)"
+  - name: tower_rv1
+    what: >-
+      Item 8 (RV1 - RVD Rumen Virome Database; 6.45 GiB)
+    url: https://zenodo.org/api/records/7412085/files/{file}/content
+    files:
+      - {file: "RVD_taxonomy_classification.xlsx", bytes: 7273664, sha256: 1d546b653287fc66215b2006a935af207eeb2458cc0e8ed6f6a93758b49d7f1d, md5: a5c77bb0bf282ba25530317b6536ace0}
+      - {file: "RVD_host_prediction.xlsx", bytes: 10570231, sha256: b8599df7d77b2e90d27ff5f9faea1471f9012df353a2dac82838b67d3138b309, md5: dc14d50605c138ad7753f7f8171d1677}
+      - {file: "RVD_checkv_res.tsv", bytes: 43272197, sha256: eeba28b205cbaa3e74429cce38e1e84448c55b6d91a4e2b42fb8634244e3cb94, md5: 4c7075de49ca983ae93ffa612da7aa5a}
+      - {file: "RVD.fa", bytes: 6862121493, sha256: 86496f5812d3803db0598c2d30d02e653c13c94cba428bf9d5d6ed9b39c7077e, md5: 6ff2877c39ea3b7e5145f6b099f790f6}
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: CC BY 4.0   # as the job list states it
+    fetched: >-
+      4 of 4 files by curl on tower, UTC 2026-11-25T23:15:43Z to 2026-11-25T23:25:47Z (_fetch_batch2.sh, curl's
+      default User-Agent); bytes and sha256 above measured on tower, copied from SOURCE_URLS.tsv on 2026-11-25 20:12
+      CST
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/RV1/ (SOURCE_URLS.tsv and SHA256SUMS there)
+    approved: "by the PI, 2026-11-25 15:47 CST: \"stage the nucleotides ... on tower\" (the audit of 2026-11-25)"
+  - name: tower_ghm1_vhm1
+    what: >-
+      Item 9 (GHM1_VHM1 - Global Hot Spring Microbiomes & Virome; 12.67 GiB)
+    url: https://ndownloader.figshare.com/files/71721769
+    url_2: https://ndownloader.figshare.com/files/71689698
+    url_3: https://ndownloader.figshare.com/files/71703284
+    files:
+      - {file: "README.txt", bytes: 699, sha256: b7219415e54a76fa3f8dafd2bdefdd2f87631ac0be5d325d2ffb5e808a407ea8, md5: b6dee57562c7beec74340af368c13eaa}
+      - {file: "ALL-MAG-summary.xlsx", bytes: 4457472, sha256: ccc02bca8f1a45d68e4af2d8577904ae1d59effc017c3c51b26cb067e95ec3c2, md5: 213ea494882438d4e64be1138c32082c}
+      - {file: "ALL-MAGs.tar.gz", bytes: 13603865182, sha256: 73c8f7b841fdea72f1976df52bc76e04b8af36e2f4cd28c33350dd75fb0de296, md5: e7a4ba21ac0009d8f49dd67b8955fbac}
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: CC BY 4.0   # as the job list states it
+    fetched: >-
+      3 of 3 files by curl on tower, UTC 2026-11-25T23:25:49Z to 2026-11-25T23:41:02Z (_fetch_batch2.sh, curl's
+      default User-Agent); bytes and sha256 above measured on tower, copied from SOURCE_URLS.tsv on 2026-11-25 20:12
+      CST
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/GHM1_VHM1/ (SOURCE_URLS.tsv and SHA256SUMS there)
+    approved: "by the PI, 2026-11-25 15:47 CST: \"stage the nucleotides ... on tower\" (the audit of 2026-11-25)"
+  - name: tower_candi1
+    what: >-
+      CANDI1 - CAnDi Anaerobic Digestion (11k spp + 536k vOTUs) (zenodo:23322224, cc-by-4.0)
+    url: https://zenodo.org/api/records/23322224/files/{file}/content
+    files:
+      - {file: "mobilome-recovery-workflow.zip", bytes: 92244, sha256: cd30fa850ed9d39a31035ad9db8932bc087fe2cff15776232cc9995a73c09ad0, md5: 1a16dedd97b14f47dcb2f795b257171d}
+      - {file: "CAnDi-classifier.zip", bytes: 3236919, sha256: a36ef3a84ac49f76b09bb823e47ac8d2cf774a3d170fecce1e2de881a89c1cf1, md5: 90e6839e47d4b8c822623a075bb0eaaf}
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: cc-by-4.0   # as the job list states it
+    fetched: >-
+      2 of 2 files by curl on tower, UTC 2026-11-25T23:41:16Z to 2026-11-25T23:41:18Z (_fetch_batch2.sh, curl's
+      default User-Agent); bytes and sha256 above measured on tower, copied from SOURCE_URLS.tsv on 2026-11-25 20:12
+      CST
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/CANDI1/ (SOURCE_URLS.tsv and SHA256SUMS there)
+    approved: "by the PI, 2026-11-25 16:51 CST: \"queubatch 3\" (the audit of 2026-11-25)"
+  - name: tower_oil1
+    what: >-
+      OIL1 - Chinese Oilfield Deep Petroleum MAGs (3,057 MAGs) (figshare:31337758, CC BY 4.0)
+    url: https://ndownloader.figshare.com/files/61896136
+    files:
+      - {file: "rename_bins.zip", bytes: 2793687427, sha256: b6fc51d477087e6e4e18804fafcc258359bbe617fceff725e744eb5d026e7af7, md5: 61c3ae230b6bde030d310aea9ab2879c}
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: CC BY 4.0   # as the job list states it
+    fetched: >-
+      1 of 1 files by curl on tower, UTC 2026-11-25T23:44:51Z to 2026-11-25T23:44:51Z (_fetch_batch2.sh, curl's
+      default User-Agent); bytes and sha256 above measured on tower, copied from SOURCE_URLS.tsv on 2026-11-25 20:12
+      CST
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/OIL1/ (SOURCE_URLS.tsv and SHA256SUMS there)
+    approved: "by the PI, 2026-11-25 16:51 CST: \"queubatch 3\" (the audit of 2026-11-25)"
+  - name: tower_cfmd1
+    what: >-
+      CFMD1 - cFMD Curated Food Metagenomic Data (Cell 2024) (zenodo:10891046, cc-by-4.0)
+    url: https://zenodo.org/api/records/13285428/files/{file}/content
+    files:
+      - {file: "cFMD_humann.tar.gz", bytes: 1418741688, sha256: bf17f90715abc342c35ac83b4a2f3ddee3a40e4708cb443f11d59067cb570df7, md5: 07df67dc175ae69d1be4fd89b0514a14}
+      - {file: "cFMD_mags.tar.gz", bytes: 9808151932, sha256: 3f5eb5c2783117d5f09ec0302f041b762170f1b38fa535b52bc62e7963ed809e, md5: 691e4e35c8b2ccf104ea5336dd6a5c9d}
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: cc-by-4.0   # as the job list states it
+    fetched: >-
+      2 of 2 files by curl on tower, UTC 2026-11-25T23:47:05Z to 2026-11-25T23:59:35Z (_fetch_batch2.sh, curl's
+      default User-Agent); bytes and sha256 above measured on tower, copied from SOURCE_URLS.tsv on 2026-11-25 20:12
+      CST
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/CFMD1/ (SOURCE_URLS.tsv and SHA256SUMS there)
+    approved: "by the PI, 2026-11-25 16:51 CST: \"queubatch 3\" (the audit of 2026-11-25)"
+  - name: tower_futm1
+    what: >-
+      CFMD1 - cFMD v2 / supplemental (zenodo:13285428, cc-by-4.0); FUTM1 - Futian Mangrove 7-Yr MAGs (3,404 spp, 82
+      phyla) (figshare:30883646, CC BY 4.0)
+    url: https://ndownloader.figshare.com/files/62219453
+    url_2: https://ndownloader.figshare.com/files/62219456
+    files:
+      - {file: "Dataset 1. Overview of 65 sediment samples in Futian Mangrove National Nature Reserve in Shenzhen, China.xlsx", bytes: 22590, sha256: b0f533834b7e5b21ad94a8128f6a44541fcb8b4df21557241ef0a148dd1089e1, md5: d533ab1ec674b324e48b8f47c7accffd}
+      - {file: "Dataset 2. Overview of 6,299 archaeal and bacterial MAGs.xlsx", bytes: 918239, sha256: c035f98ea046ad792d0602ce24a126d27614272d0fd9e2bdd78f9cf623195e09, md5: a23bbcb3997065d5854fae6981f2859a}
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: CC BY 4.0   # as the job list states it
+    fetched: >-
+      2 of 2 files by curl on tower, UTC 2026-11-25T23:59:36Z to 2026-11-25T23:59:38Z (_fetch_batch2.sh, curl's
+      default User-Agent); bytes and sha256 above measured on tower, copied from SOURCE_URLS.tsv on 2026-11-25 20:12
+      CST
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/FUTM1/ (SOURCE_URLS.tsv and SHA256SUMS there)
+    approved: "by the PI, 2026-11-25 16:51 CST: \"queubatch 3\" (the audit of 2026-11-25)"
+  - name: tower_gxm1
+    what: >-
+      GXM1 - Guangxi Mangrove Sediments MAGs (2,965 MAGs) (figshare:29320385, CC BY 4.0)
+    url: https://ndownloader.figshare.com/files/55385462
+    files:
+      - {file: "0MDM_drep99_rename.zip", bytes: 2224655817, sha256: 4b03d60486203840382dae55b55530c3d60d1779f4411d84e380e117623ec430, md5: 0f1835780141d070ee649472c1e5a487}
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: CC BY 4.0   # as the job list states it
+    fetched: >-
+      1 of 1 files by curl on tower, UTC 2026-11-26T00:01:50Z to 2026-11-26T00:01:50Z (_fetch_batch2.sh, curl's
+      default User-Agent); bytes and sha256 above measured on tower, copied from SOURCE_URLS.tsv on 2026-11-25 20:12
+      CST
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/GXM1/ (SOURCE_URLS.tsv and SHA256SUMS there)
+    approved: "by the PI, 2026-11-25 16:51 CST: \"queubatch 3\" (the audit of 2026-11-25)"
+  - name: tower_flhc1
+    what: >-
+      FLHC1 - Freshwater Lake metaHi-C MAGs + 33k Virome (zenodo:15856862, cc-by-4.0)
+    url: https://zenodo.org/api/records/15856862/files/{file}/content
+    files:
+      - {file: "HAGs_vHAGs_madorio-Jul25 freshwater.fasta", bytes: 32555050, sha256: 9ce3bb14bd249a0991e77e94042af586522071f88f98af920085afd36047a6a4, md5: 0284524f8f7235e1c74dbc9b8a5124a6}
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: cc-by-4.0   # as the job list states it
+    fetched: >-
+      1 of 1 files by curl on tower, UTC 2026-11-26T00:01:55Z to 2026-11-26T00:01:55Z (_fetch_batch2.sh, curl's
+      default User-Agent); bytes and sha256 above measured on tower, copied from SOURCE_URLS.tsv on 2026-11-25 20:12
+      CST
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/FLHC1/ (SOURCE_URLS.tsv and SHA256SUMS there)
+    approved: "by the PI, 2026-11-25 16:51 CST: \"queubatch 3\" (the audit of 2026-11-25)"
+  - name: tower_mos1
+    what: >-
+      MOS1 - MOSAiC Arctic Ocean & Sea-Ice MAGs (2,407 prok) (figshare:25746222, CC BY 4.0)
+    url: https://ndownloader.figshare.com/files/46078842
+    files:
+      - {file: "jgi_havoc_pilot_mags_zipped.zip", bytes: 5087895233, sha256: 7a0bb73507f4e6910f4b067dfb0d876b1c8a540b0a08ccec2ebfc777b2a5f25c, md5: 2d894ea769a112df51a3cb1bba2bb040}
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: CC BY 4.0   # as the job list states it
+    fetched: >-
+      1 of 1 files by curl on tower, UTC 2026-11-26T00:07:16Z to 2026-11-26T00:07:16Z (_fetch_batch2.sh, curl's
+      default User-Agent); bytes and sha256 above measured on tower, copied from SOURCE_URLS.tsv on 2026-11-25 20:12
+      CST
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/MOS1/ (SOURCE_URLS.tsv and SHA256SUMS there)
+    approved: "by the PI, 2026-11-25 16:51 CST: \"queubatch 3\" (the audit of 2026-11-25)"
+  - name: tower_maca1
+    what: >-
+      MACA1 - Macroalgal Epiphytic Bacterial Atlas (1,915 MAGs) (zenodo:21563086, cc-by-4.0)
+    url: https://zenodo.org/api/records/21563086/files/{file}/content
+    files:
+      - {file: "all.MAGs.tar.gz", bytes: 4808741144, sha256: 921a0034aa37383ba5bd211032171353751b66b5e6c0db4924874f84dfcaaa4e, md5: 2494ca0d2a1d32863b3f36653306116b}
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: cc-by-4.0   # as the job list states it
+    fetched: >-
+      1 of 1 files by curl on tower, UTC 2026-11-26T00:13:42Z to 2026-11-26T00:13:42Z (_fetch_batch2.sh, curl's
+      default User-Agent); bytes and sha256 above measured on tower, copied from SOURCE_URLS.tsv on 2026-11-25 20:12
+      CST
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/MACA1/ (SOURCE_URLS.tsv and SHA256SUMS there)
+    approved: "by the PI, 2026-11-25 16:51 CST: \"queubatch 3\" (the audit of 2026-11-25)"
+  - name: tower_nx2_csmc
+    what: >-
+      NX2_CSMC - CSMC Global Cold Seeps (3,164 spp) (figshare:22568107, CC BY 4.0)
+    url: https://ndownloader.figshare.com/files/41695503
+    url_2: https://ndownloader.figshare.com/files/41695500
+    url_3: https://ndownloader.figshare.com/files/41316489
+    url_4: https://ndownloader.figshare.com/files/40047202
+    files:
+      - {file: "codes.txt", bytes: 5508, sha256: bf36ee93b8e626478a624792444e92e4f1a0c239c8b0a2200a37873a591d37c2, md5: 1ca83d197540cb48cf914e2a39792235}
+      - {file: "tree_files.zip", bytes: 9907, sha256: 6dd090f2dacb4e4475be3c20d87d0b6558f01efdd573097fe2a3fb910487e839, md5: 77b58c0be2d28ee4297669e8b934c6b2}
+      - {file: "non-redundant_genes_annotations.tsv.gtz", bytes: 1733266167, sha256: c96e5f42326c7ad4cd90b4951032a1b4cd1b978e14b575db65d12f2f64e0f9f1, md5: 4b316335fab7669eb73480ad0b9fe996}
+      - {file: "non-redundant_genes.fa.gz", bytes: 16388225385, sha256: 894f1c976ddc9e98d367a008e482820ff2bf0a932ba3c28c9b22c1c374928482, md5: 426a1ae34b694b7341e19b376bf56b8b}
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: CC BY 4.0   # as the job list states it
+    fetched: >-
+      4 of 4 files by curl on tower, UTC 2026-11-26T00:13:43Z to 2026-11-26T00:31:08Z (_fetch_batch2.sh, curl's
+      default User-Agent); bytes and sha256 above measured on tower, copied from SOURCE_URLS.tsv on 2026-11-25 20:12
+      CST
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/NX2_CSMC/ (SOURCE_URLS.tsv and SHA256SUMS there)
+    approved: "by the PI, 2026-11-25 16:51 CST: \"queubatch 3\" (the audit of 2026-11-25)"
+  - name: tower_wwv1
+    what: >-
+      WWV1 - ASVC Global Activated Sludge Virome (85,114 vOTUs) (zenodo:7847962, cc-by-4.0); WWV1 - WVDB Ultra-Deep
+      Wastewater Virome (>21k genomes) (zenodo:20276352, cc-by-4.0)
+    url: https://zenodo.org/api/records/7847962/files/{file}/content
+    url_2: https://zenodo.org/api/records/20276352/files/{file}/content
+    files:
+      - {file: "mOTU_table.xlsx", bytes: 2683534, sha256: 863a4fba3b359779b0645079f031c3361331a1e1d5740ba32cbc0e82d15660e9, md5: efabb33ca5739f54cfe416162e34253d}
+      - {file: "vOTU_table.xlsx", bytes: 56217852, sha256: d6c85cc78561111077964deb774b7d78ee085f1268131337c5b04c2dd8920cb3, md5: 0e0d418bcc73beb1304b9935b53e556a}
+      - {file: "AS_vPCs.fa", bytes: 412048649, sha256: 4af7df7bc221989862a30226c8c265adeff5827647519edf549584141ebb8756, md5: 1bcb6378fdfe4ede4883258a79e5b5a9}
+      - {file: "AS_vOTUs.fa", bytes: 1043217624, sha256: 2796a9cd1a32d3cea1cd4b27ef37294458aa54d04e52c6ee9e019828dc51dfd0, md5: 8f2cef81074d62d691ccf2252053c373}
+      - {file: "AS_MAGs.fa", bytes: 12034337742, sha256: ce60d942ba23e4644e157854140148df299347ddb43114c91ef4a0ca35937387, md5: 0e997fb8754e16c596c220115c6f3204}
+      - {file: "RdRp_CAB_v1.faa", bytes: 929147, sha256: 06d1c30b76a4b50cb4f7a1d63768efbaac27e37af055dfdaba0b464a5a998b1e, md5: 5d29f3ad0770c46cec73b0ce54447e88}
+      - {file: "WVDB_v1.0_annotations.tsv", bytes: 10759902, sha256: 51afcec727364547c29757fdf7166c4be7e32ccfabc76f3bf823ce63473cab7f, md5: ff9ff5f3cc341af99a21301541f30c2d}
+      - {file: "RdRp_ABC_v1.faa", bytes: 82903713, sha256: 07bc5367ab8ef8018529ac5eefbc46f712164cbf2e7f9e7d27d4e04d6cb2c414, md5: a64991d6c97e684521d1d07f4a16d592}
+      - {file: "WVDB_v1.0.fasta", bytes: 98081755, sha256: d5f12a423dc058cb2bef928087fd77e4e58a5c57041d33d093bb8f5e47a155f9, md5: c2c6fe51c91065a40f88ca84c5749846}
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: cc-by-4.0   # as the job list states it
+    fetched: >-
+      9 of 9 files by curl on tower, UTC 2026-11-26T00:31:19Z to 2026-11-26T00:48:14Z (_fetch_batch2.sh, curl's
+      default User-Agent); bytes and sha256 above measured on tower, copied from SOURCE_URLS.tsv on 2026-11-25 20:12
+      CST
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/WWV1/ (SOURCE_URLS.tsv and SHA256SUMS there)
+    approved: "by the PI, 2026-11-25 16:51 CST: \"queubatch 3\" (the audit of 2026-11-25)"
+  - name: tower_soda1
+    what: >-
+      SODA1 - Global Soda Lake Biogeography (figshare:28152113, CC BY 4.0)
+    url: https://ndownloader.figshare.com/files/51521069
+    url_2: https://ftp.ncbi.nlm.nih.gov/genomes/all/{GCA_or_GCF}/{nnn}/{nnn}/{nnn}/{assembly_dir}/{assembly_dir}_genomic.fna.gz
+    files:
+      - {file: "Scripts_for_sequence_analysis.docx", bytes: 38806, sha256: a45d05f8823d1298003202cf17feebd7453dfd8f3a80856bda93cf2c2aa4f049, md5: 5adc1aba2e6a5dd0659c312f82228f87}
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: CC BY 4.0   # as the job list states it
+    fetched: >-
+      1 of 1 files by curl on tower, UTC 2026-11-26T00:48:16Z to 2026-11-26T00:48:16Z (_fetch_batch2.sh, curl's
+      default User-Agent); bytes and sha256 above measured on tower, copied from SOURCE_URLS.tsv on 2026-11-25 20:12
+      CST
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/SODA1/ (SOURCE_URLS.tsv and SHA256SUMS there)
+    note: >-
+      The second form is the NCBI FTP genome form of entry ncbi_ftp_genome; the 959 assemblies of PRJNA857294 are
+      listed in tower:/mnt/user/research-bulk/bio-box/sources_incoming/SODA1/MANIFEST_PRJNA857294.tsv (written
+      2026-11-25 20:05 CST, base_count sum 2366049887 bases, derived from the manifest's base_count column) and
+      fetched by _fetch_batch4_ncbi.sh into SODA1/assemblies/, licence column INSDC
+    approved: "by the PI, 2026-11-25 16:51 CST: \"queubatch 3\" (the audit of 2026-11-25)"
+  - name: tower_mfd_lr
+    what: >-
+      MFD_LR - Microflora Danica Long-Read MAGs (15,314 spp) (zenodo:14537680, cc-by-4.0)
+    url: https://zenodo.org/api/records/14537680/files/{file}/content
+    files:
+      - {file: "MFD-LR-drep.tar.gz", bytes: 20792044056, sha256: a2042bd89301a0bd2ca795e82da7f68191975194445b9b6fa2442cb614ee3871, md5: 93331d9f8a22068e536e957021b8d74e}
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: cc-by-4.0   # as the job list states it
+    fetched: >-
+      1 of 1 files by curl on tower, UTC 2026-11-26T01:16:00Z to 2026-11-26T01:16:00Z (_fetch_batch2.sh, curl's
+      default User-Agent); bytes and sha256 above measured on tower, copied from SOURCE_URLS.tsv on 2026-11-25 20:12
+      CST
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/MFD_LR/ (SOURCE_URLS.tsv and SHA256SUMS there)
+    approved: "by the PI, 2026-11-25 16:51 CST: \"queubatch 3\" (the audit of 2026-11-25)"
+  - name: tower_midas_lr
+    what: >-
+      MIDAS_LR - MiDAS Global Genome Catalog (12,047 WWTP spp) (zenodo:19066579, cc-by-4.0)
+    url: https://zenodo.org/api/records/19066579/files/{file}/content
+    files:
+      - {file: "midas_core_genera_hqmag_summary.tsv", bytes: 210487, sha256: 19f00a036ef1383f7e38cefc90309fedd772de931b68c4b2a1234a5b1ba2eb3b, md5: 9a33bb28201091b8751686c403dd77bd}
+      - {file: "midas_core_genera_ko_frequency_table.tsv", bytes: 527672584, sha256: 2f073a0d6aa6cc4679e2d7299f2b52b7253355a8db270441e02b103cda35283b, md5: 00db9559c714a2bc7d90b824ab14c91b}
+      - {file: "midas_core_genera_kegg_annotation.tsv", bytes: 1941822954, sha256: 217d89e6e1a1c4e951dc0c3bdf520e1213c6120012d7889245d95704165d587d, md5: e5adeca1b7784ac292769f343bfa4c62}
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: cc-by-4.0   # as the job list states it
+    fetched: >-
+      3 of 5 files by curl on tower, UTC 2026-11-26T01:16:02Z to 2026-11-26T01:41:55Z (_fetch_batch2.sh, curl's
+      default User-Agent); bytes and sha256 above measured on tower, copied from SOURCE_URLS.tsv on 2026-11-25 20:12
+      CST; not landed then: midas_core_genera_hqmag.tar.gz, midas_core_genera_hqmag_proteins.faa
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/MIDAS_LR/ (SOURCE_URLS.tsv and SHA256SUMS there)
+    note: >-
+      .midas_core_genera_hqmag.tar.gz.partial (7,353,286,656 bytes at 2026-11-25 20:11 CST, measured on tower with
+      find) is a download in progress and not a landed file; curl was running on it
+    approved: "by the PI, 2026-11-25 16:51 CST: \"queubatch 3\" (the audit of 2026-11-25)"
+  - name: tower_lr_arc
+    what: >-
+      LR_ARC - Arctic Tundra Permafrost HiFi MAGs (~500 MAGs) (figshare:32054802, CC BY 4.0)
+    url: https://ndownloader.figshare.com/files/69455682
+    url_2: https://ndownloader.figshare.com/files/69206863
+    url_3: https://ndownloader.figshare.com/files/63868983
+    url_4: https://ndownloader.figshare.com/files/63868986
+    url_5: https://ndownloader.figshare.com/files/63945057
+    url_6: https://ndownloader.figshare.com/files/63945525
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: CC BY 4.0   # as the job list states it
+    fetched: >-
+      nothing yet: 6 files named in _batch3.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
+      the fetch
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/LR_ARC/
+    approved: "by the PI, 2026-11-25 16:51 CST: \"queubatch 3\" (the audit of 2026-11-25); not fetched yet"
+  - name: tower_lr_revio
+    what: >-
+      LR_REVIO - PacBio Revio HiFi Sludge cMAGs (447 MAGs) (zenodo:23755631, cc-by-4.0)
+    url: https://zenodo.org/api/records/23755631/files/{file}/content
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: cc-by-4.0   # as the job list states it
+    fetched: >-
+      nothing yet: 2 files named in _batch3.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
+      the fetch
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/LR_REVIO/
+    approved: "by the PI, 2026-11-25 16:51 CST: \"queubatch 3\" (the audit of 2026-11-25); not fetched yet"
+  - name: tower_euk_y1000
+    what: >-
+      EUK_Y1000 - Y1000+ Budding Yeasts (1,154 genomes + GFF3, CC0) (figshare:22802147, CC0)
+    url: https://ndownloader.figshare.com/files/40534991
+    url_2: https://ndownloader.figshare.com/files/40535165
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: CC0   # as the job list states it
+    fetched: >-
+      nothing yet: 2 files named in _batch3.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
+      the fetch
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/EUK_Y1000/
+    approved: "by the PI, 2026-11-25 16:51 CST: \"queubatch 3\" (the audit of 2026-11-25); not fetched yet"
+  - name: tower_euk_star
+    what: >-
+      EUK_STAR - starbase Giant Fungal Starship Transposons (5,493) (zenodo:17533381, cc-by-4.0)
+    url: https://zenodo.org/api/records/17533381/files/{file}/content
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: cc-by-4.0   # as the job list states it
+    fetched: >-
+      nothing yet: 2 files named in _batch3.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
+      the fetch
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/EUK_STAR/
+    approved: "by the PI, 2026-11-25 16:51 CST: \"queubatch 3\" (the audit of 2026-11-25); not fetched yet"
+  - name: tower_rna_luca
+    what: >-
+      RNA_LUCA - LucaProt Global RNA Virome (161,979 spp) (figshare:26298802, CC BY 4.0)
+    url: https://ndownloader.figshare.com/files/47671063
+    url_2: https://ndownloader.figshare.com/files/47671078
+    url_3: https://ndownloader.figshare.com/files/47671075
+    url_4: https://ndownloader.figshare.com/files/47671066
+    url_5: https://ndownloader.figshare.com/files/47671054
+    url_6: https://ndownloader.figshare.com/files/47671090
+    url_7: https://ndownloader.figshare.com/files/47671048
+    url_8: https://ndownloader.figshare.com/files/47671069
+    url_9: https://ndownloader.figshare.com/files/47671081
+    url_10: https://ndownloader.figshare.com/files/47671057
+    url_11: https://ndownloader.figshare.com/files/47671060
+    url_12: https://ndownloader.figshare.com/files/47667739
+    url_13: https://ndownloader.figshare.com/files/47671072
+    url_14: https://ndownloader.figshare.com/files/47671099
+    url_15: https://ndownloader.figshare.com/files/47671093
+    url_16: https://ndownloader.figshare.com/files/47671084
+    url_17: https://ndownloader.figshare.com/files/47671096
+    url_18: https://ndownloader.figshare.com/files/47671102
+    url_19: https://ndownloader.figshare.com/files/47667745
+    url_20: https://ndownloader.figshare.com/files/47671105
+    url_21: https://ndownloader.figshare.com/files/47744479
+    url_22: https://ndownloader.figshare.com/files/47671111
+    url_23: https://ndownloader.figshare.com/files/47671108
+    url_24: https://ndownloader.figshare.com/files/47671114
+    url_25: https://ndownloader.figshare.com/files/47671120
+    url_26: https://ndownloader.figshare.com/files/47671123
+    url_27: https://ndownloader.figshare.com/files/48271999
+    url_28: https://ndownloader.figshare.com/files/47667757
+    url_29: https://ndownloader.figshare.com/files/47667760
+    url_30: https://ndownloader.figshare.com/files/52213730
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: CC BY 4.0   # as the job list states it
+    fetched: >-
+      nothing yet: 30 files named in _batch3.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
+      the fetch
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/RNA_LUCA/
+    approved: "by the PI, 2026-11-25 16:51 CST: \"queubatch 3\" (the audit of 2026-11-25); not fetched yet"
+  - name: tower_rna_rvmt
+    what: >-
+      RNA_RVMT - RVMT v3 RNA Virome (zenodo:7368133, mit-license)
+    url: https://zenodo.org/api/records/7368133/files/{file}/content
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: mit-license   # as the job list states it
+    fetched: >-
+      nothing yet: 1 files named in _batch3.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
+      the fetch
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/RNA_RVMT/
+    approved: "by the PI, 2026-11-25 16:51 CST: \"queubatch 3\" (the audit of 2026-11-25); not fetched yet"
+  - name: tower_rna_viroid
+    what: >-
+      RNA_VIROID - ViroidDB (zenodo:5202945, other-open); RNA_VIROID - Lee/Neri 2023 Viroid-like cccRNAs (11,378)
+      (zenodo:6859104, cc-by-4.0)
+    url: https://zenodo.org/api/records/5202946/files/Benjamin-Lee/viroiddb-2021-06-06.zip/content
+    url_2: https://zenodo.org/api/records/6859104/files/{file}/content
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: "other-open, cc-by-4.0"   # as the job lists state it, per file
+    fetched: >-
+      nothing yet: 6 files named in _batch3.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
+      the fetch
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/RNA_VIROID/
+    approved: "by the PI, 2026-11-25 16:51 CST: \"queubatch 3\" (the audit of 2026-11-25); not fetched yet"
+  - name: tower_sandpiper
+    what: >-
+      SANDPIPER - Sandpiper SRA SingleM Dark-Matter Index (zenodo:10547493, cc-by-4.0)
+    url: https://zenodo.org/api/records/21287531/files/{file}/content
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: cc-by-4.0   # as the job list states it
+    fetched: >-
+      nothing yet: 5 files named in _batch3.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
+      the fetch
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/SANDPIPER/
+    approved: "by the PI, 2026-11-25 16:51 CST: \"queubatch 3\" (the audit of 2026-11-25); not fetched yet"
+  - name: tower_gbr_mgd
+    what: >-
+      GBR_MGD - Great Barrier Reef MGD (5,283 prok MAGs) (zenodo:20503966, {})
+    url: https://zenodo.org/api/records/20503966/files/{file}/content
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: "{}"   # as the job list states it
+    fetched: >-
+      nothing yet: 1 files named in _batch3.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
+      the fetch
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/GBR_MGD/
+    note: >-
+      The job list's licence field is the literal {}: the record states none, and none is assumed
+    approved: "by the PI, 2026-11-25 16:51 CST: \"queubatch 3\" (the audit of 2026-11-25); not fetched yet"
+  - name: tower_arc1
+    what: >-
+      ARC1 - ArchaeaHQ v2.0 (25,584 curated archaea) (figshare:32266599, CC BY 4.0)
+    url: https://ndownloader.figshare.com/files/68890756
+    url_2: https://ndownloader.figshare.com/files/68738341
+    url_3: https://ndownloader.figshare.com/files/68738443
+    url_4: https://ndownloader.figshare.com/files/68738494
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: CC BY 4.0   # as the job list states it
+    fetched: >-
+      nothing yet: 4 files named in _batch3.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
+      the fetch
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/ARC1/
+    approved: "by the PI, 2026-11-25 16:51 CST: \"queubatch 3\" (the audit of 2026-11-25); not fetched yet"
+  - name: tower_avgd
+    what: >-
+      AVGD - Archaeal Viral Genome Database (Wei 2026 Microbiome, zenodo:16263068, cc-by-4.0)
+    url: https://zenodo.org/api/records/16263068/files/{file}/content
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: cc-by-4.0   # as the job list states it
+    fetched: >-
+      nothing yet: 3 files named in _batch4.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
+      the fetch
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/AVGD/
+    approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
+  - name: tower_rna_obl
+    what: >-
+      RNA_OBL - Obelisks (Zheludev 2024 Cell, Stanford SDR druid:wb363nt3637, CC BY 4.0)
+    url: https://stacks.stanford.edu/file/druid:wb363nt3637/{path}
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: CC BY 4.0   # as the job list states it
+    fetched: >-
+      nothing yet: 6 files named in _batch4.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
+      the fetch
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/RNA_OBL/
+    note: >-
+      {path} is a path of one or more segments
+    approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
+  - name: tower_rna_upvatlas
+    what: >-
+      RNA_UPVATLAS - UPVAtlas Urban & Peri-urban RNA Virome (54,945 RvOTUs, zenodo:17823213, cc-by-4.0)
+    url: https://zenodo.org/api/records/17823213/files/{file}/content
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: cc-by-4.0   # as the job list states it
+    fetched: >-
+      nothing yet: 1 files named in _batch4.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
+      the fetch
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/RNA_UPVATLAS/
+    approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
+  - name: tower_nx2_cave
+    what: >-
+      NX2_CAVE - Global Cave MAGs (1,979 spp reps, Li 2025 Sci Data, figshare:29554673, CC BY 4.0)
+    url: https://ndownloader.figshare.com/files/58496362
+    url_2: https://ndownloader.figshare.com/files/58496794
+    url_3: https://ndownloader.figshare.com/files/58496797
+    url_4: https://ndownloader.figshare.com/files/58496791
+    url_5: https://ndownloader.figshare.com/files/58496788
+    url_6: https://ndownloader.figshare.com/files/58496800
+    url_7: https://ndownloader.figshare.com/files/58496167
+    url_8: https://ndownloader.figshare.com/files/58496191
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: CC BY 4.0   # as the job list states it
+    fetched: >-
+      nothing yet: 8 files named in _batch4.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
+      the fetch
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/NX2_CAVE/
+    approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
+  - name: tower_dsv70
+    what: >-
+      DSV70 - Global Deep-Sea Hydrothermal Vents (7,422 MQ/HQ MAGs, EBI BioStudies S-BSST2227, CC0)
+    url: https://ftp.ebi.ac.uk/biostudies/fire/S-BSST/227/S-BSST2227/Files/{file}
+    checksum: no provider md5 (field -); our sha256 only, and the script's archive test
+    license: CC0   # as the job list states it
+    fetched: >-
+      nothing yet: 5 files named in _batch4.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
+      the fetch
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/DSV70/
+    approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
+  - name: tower_lr_compost
+    what: >-
+      LR_COMPOST - ONT Mature Compost (compost_mgx_2026.04, 5,598 MQ/HQ incl 1,353 circular cMAGs, AWS S3 open)
+    url: https://ont-open-data.s3.amazonaws.com/compost_mgx_2026.04/analysis/{file}
+    checksum: the provider's md5 for 2 of 4 files (checked before the file was kept); our sha256 for all
+    license: ONT-Open-Data   # as the job list states it
+    fetched: >-
+      nothing yet: 4 files named in _batch4.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
+      the fetch
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/LR_COMPOST/
+    approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
+  - name: tower_euk_veupath_tritryp
+    what: >-
+      EUK_VEUPATH - VEuPathDB Release 68 Intron-Poor Protists (TriTrypDB + MicrosporidiaDB + GiardiaDB, CC BY 4.0)
+    url: https://legacy.tritrypdb.org/common/downloads/Current_Release/{strain}/fasta/data/{file}
+    url_2: https://legacy.tritrypdb.org/common/downloads/Current_Release/{strain}/gff/data/{file}
+    checksum: no provider md5 (field -); our sha256 only, and the script's archive test
+    license: CC BY 4.0   # as the job list states it
+    fetched: >-
+      nothing yet: 157 files named in _batch4.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
+      the fetch
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/EUK_VEUPATH_TRITRYP/
+    approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
+  - name: tower_euk_veupath_microsporidia
+    what: >-
+      no description in the job list
+    url: https://legacy.microsporidiadb.org/common/downloads/Current_Release/{strain}/fasta/data/{file}
+    url_2: https://legacy.microsporidiadb.org/common/downloads/Current_Release/{strain}/gff/data/{file}
+    checksum: no provider md5 (field -); our sha256 only, and the script's archive test
+    license: CC BY 4.0   # as the job list states it
+    fetched: >-
+      nothing yet: 106 files named in _batch4.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
+      the fetch
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/EUK_VEUPATH_MICROSPORIDIA/
+    approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
+  - name: tower_euk_veupath_giardia
+    what: >-
+      no description in the job list
+    url: https://legacy.giardiadb.org/common/downloads/Current_Release/{strain}/fasta/data/{file}
+    url_2: https://legacy.giardiadb.org/common/downloads/Current_Release/{strain}/gff/data/{file}
+    checksum: no provider md5 (field -); our sha256 only, and the script's archive test
+    license: CC BY 4.0   # as the job list states it
+    fetched: >-
+      nothing yet: 26 files named in _batch4.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
+      the fetch
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/EUK_VEUPATH_GIARDIA/
+    approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
+  - name: tower_segc1
+    what: >-
+      SEGC1 - Standardized Extremophilic Genomic Catalogue (54,661 MQ/HQ MAGs, zenodo:15788452, cc-by-4.0)
+    url: https://zenodo.org/api/records/15788452/files/{file}/content
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: cc-by-4.0   # as the job list states it
+    fetched: >-
+      nothing yet: 2 files named in _batch4.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
+      the fetch
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/SEGC1/
+    approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
+  - name: tower_omd2
+    what: >-
+      OMD2 - Ocean Microbiomics Database v2 (Sunagawa Lab ETHZ, CC BY 4.0)
+    url: https://sunagawalab.ethz.ch/share/microbiomics/ocean/db/2.0/data/catalogs/{path}
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: CC BY 4.0   # as the job list states it
+    fetched: >-
+      nothing yet: 3 files named in _batch4.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
+      the fetch
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/OMD2/
+    note: >-
+      {path} is a path of one or more segments
+    approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
+  - name: tower_gv_polar_pitot
+    what: >-
+      GV_POLAR_PITOT - Pitot 2024 Arctic/Antarctic lakes GVMAGs (figshare:25000571, CC BY 4.0; skip redundant faa)
+    url: https://ndownloader.figshare.com/files/44053844
+    url_2: https://ndownloader.figshare.com/files/46079970
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: CC BY 4.0   # as the job list states it
+    fetched: >-
+      nothing yet: 2 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
+      the fetch
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_gv/GV_POLAR_PITOT/
+    approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
+  - name: tower_gv_polar_2026
+    what: >-
+      GV_POLAR_2026 - Polar Ecosystems 2026 GVMAGs (figshare:32316834, CC BY 4.0)
+    url: https://ndownloader.figshare.com/files/71316448
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: CC BY 4.0   # as the job list states it
+    fetched: >-
+      nothing yet: 1 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
+      the fetch
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_gv/GV_POLAR_2026/
+    approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
+  - name: tower_gv_polar_marine
+    what: >-
+      GV_POLAR_MARINE - Low-Temp Marine GVMAGs (figshare:26314543, CC BY 4.0; 98 genome .fa files, skip .faa &
+      scripts)
+    url: https://ndownloader.figshare.com/files/47726602
+    url_2: https://ndownloader.figshare.com/files/47726596
+    url_3: https://ndownloader.figshare.com/files/47726614
+    url_4: https://ndownloader.figshare.com/files/47726599
+    url_5: https://ndownloader.figshare.com/files/47726608
+    url_6: https://ndownloader.figshare.com/files/47726611
+    url_7: https://ndownloader.figshare.com/files/47726605
+    url_8: https://ndownloader.figshare.com/files/47726617
+    url_9: https://ndownloader.figshare.com/files/47726620
+    url_10: https://ndownloader.figshare.com/files/47726623
+    url_11: https://ndownloader.figshare.com/files/47726626
+    url_12: https://ndownloader.figshare.com/files/47726629
+    url_13: https://ndownloader.figshare.com/files/47726632
+    url_14: https://ndownloader.figshare.com/files/47726635
+    url_15: https://ndownloader.figshare.com/files/47726638
+    url_16: https://ndownloader.figshare.com/files/47726641
+    url_17: https://ndownloader.figshare.com/files/47726644
+    url_18: https://ndownloader.figshare.com/files/47726647
+    url_19: https://ndownloader.figshare.com/files/47726650
+    url_20: https://ndownloader.figshare.com/files/47726653
+    url_21: https://ndownloader.figshare.com/files/47726656
+    url_22: https://ndownloader.figshare.com/files/47726659
+    url_23: https://ndownloader.figshare.com/files/47726662
+    url_24: https://ndownloader.figshare.com/files/47726665
+    url_25: https://ndownloader.figshare.com/files/47726668
+    url_26: https://ndownloader.figshare.com/files/47726671
+    url_27: https://ndownloader.figshare.com/files/47726674
+    url_28: https://ndownloader.figshare.com/files/47726677
+    url_29: https://ndownloader.figshare.com/files/47726680
+    url_30: https://ndownloader.figshare.com/files/47726683
+    url_31: https://ndownloader.figshare.com/files/47726686
+    url_32: https://ndownloader.figshare.com/files/47726689
+    url_33: https://ndownloader.figshare.com/files/47726692
+    url_34: https://ndownloader.figshare.com/files/47726695
+    url_35: https://ndownloader.figshare.com/files/47726698
+    url_36: https://ndownloader.figshare.com/files/47726701
+    url_37: https://ndownloader.figshare.com/files/47726704
+    url_38: https://ndownloader.figshare.com/files/47726707
+    url_39: https://ndownloader.figshare.com/files/47726710
+    url_40: https://ndownloader.figshare.com/files/47726713
+    url_41: https://ndownloader.figshare.com/files/47726716
+    url_42: https://ndownloader.figshare.com/files/47726719
+    url_43: https://ndownloader.figshare.com/files/47726722
+    url_44: https://ndownloader.figshare.com/files/47726725
+    url_45: https://ndownloader.figshare.com/files/47726728
+    url_46: https://ndownloader.figshare.com/files/47726731
+    url_47: https://ndownloader.figshare.com/files/47726734
+    url_48: https://ndownloader.figshare.com/files/47726737
+    url_49: https://ndownloader.figshare.com/files/47726740
+    url_50: https://ndownloader.figshare.com/files/47726743
+    url_51: https://ndownloader.figshare.com/files/47726746
+    url_52: https://ndownloader.figshare.com/files/47726749
+    url_53: https://ndownloader.figshare.com/files/47726752
+    url_54: https://ndownloader.figshare.com/files/47726755
+    url_55: https://ndownloader.figshare.com/files/47726758
+    url_56: https://ndownloader.figshare.com/files/47726761
+    url_57: https://ndownloader.figshare.com/files/47726764
+    url_58: https://ndownloader.figshare.com/files/47726767
+    url_59: https://ndownloader.figshare.com/files/47726770
+    url_60: https://ndownloader.figshare.com/files/47726773
+    url_61: https://ndownloader.figshare.com/files/47726779
+    url_62: https://ndownloader.figshare.com/files/47726782
+    url_63: https://ndownloader.figshare.com/files/47726785
+    url_64: https://ndownloader.figshare.com/files/47726788
+    url_65: https://ndownloader.figshare.com/files/47726791
+    url_66: https://ndownloader.figshare.com/files/47726794
+    url_67: https://ndownloader.figshare.com/files/47726797
+    url_68: https://ndownloader.figshare.com/files/47726800
+    url_69: https://ndownloader.figshare.com/files/47726803
+    url_70: https://ndownloader.figshare.com/files/47726806
+    url_71: https://ndownloader.figshare.com/files/47726809
+    url_72: https://ndownloader.figshare.com/files/47726812
+    url_73: https://ndownloader.figshare.com/files/47726815
+    url_74: https://ndownloader.figshare.com/files/47726818
+    url_75: https://ndownloader.figshare.com/files/47726821
+    url_76: https://ndownloader.figshare.com/files/47726824
+    url_77: https://ndownloader.figshare.com/files/47726827
+    url_78: https://ndownloader.figshare.com/files/47726830
+    url_79: https://ndownloader.figshare.com/files/47726833
+    url_80: https://ndownloader.figshare.com/files/47726836
+    url_81: https://ndownloader.figshare.com/files/47726839
+    url_82: https://ndownloader.figshare.com/files/47726842
+    url_83: https://ndownloader.figshare.com/files/47726845
+    url_84: https://ndownloader.figshare.com/files/47726851
+    url_85: https://ndownloader.figshare.com/files/47726857
+    url_86: https://ndownloader.figshare.com/files/47726863
+    url_87: https://ndownloader.figshare.com/files/47726866
+    url_88: https://ndownloader.figshare.com/files/47726869
+    url_89: https://ndownloader.figshare.com/files/47726872
+    url_90: https://ndownloader.figshare.com/files/47726875
+    url_91: https://ndownloader.figshare.com/files/47726878
+    url_92: https://ndownloader.figshare.com/files/47726881
+    url_93: https://ndownloader.figshare.com/files/47726884
+    url_94: https://ndownloader.figshare.com/files/47726887
+    url_95: https://ndownloader.figshare.com/files/47726890
+    url_96: https://ndownloader.figshare.com/files/47726893
+    url_97: https://ndownloader.figshare.com/files/47726896
+    url_98: https://ndownloader.figshare.com/files/47727625
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: CC BY 4.0   # as the job list states it
+    fetched: >-
+      nothing yet: 98 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
+      the fetch
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_gv/GV_POLAR_MARINE/
+    approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
+  - name: tower_gv_polar_geve
+    what: >-
+      GV_POLAR_GEVE - Polar Microalgal GEVEs (figshare:29546846, CC BY 4.0; contigs zip + 9 confirmed .fna +
+      annotations, skip aln/nwk/faa/readcounts)
+    url: https://ndownloader.figshare.com/files/56190881
+    url_2: https://ndownloader.figshare.com/files/56190950
+    url_3: https://ndownloader.figshare.com/files/56190953
+    url_4: https://ndownloader.figshare.com/files/56190956
+    url_5: https://ndownloader.figshare.com/files/56190959
+    url_6: https://ndownloader.figshare.com/files/56190977
+    url_7: https://ndownloader.figshare.com/files/56190962
+    url_8: https://ndownloader.figshare.com/files/56190965
+    url_9: https://ndownloader.figshare.com/files/56190968
+    url_10: https://ndownloader.figshare.com/files/56190971
+    url_11: https://ndownloader.figshare.com/files/56193683
+    url_12: https://ndownloader.figshare.com/files/56193689
+    url_13: https://ndownloader.figshare.com/files/56191073
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: CC BY 4.0   # as the job list states it
+    fetched: >-
+      nothing yet: 13 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
+      the fetch
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_gv/GV_POLAR_GEVE/
+    approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
+  - name: tower_gv_gks
+    what: >-
+      GV_GKS - Alpine Lake Single-Cell GVMAGs (zenodo:22834836, cc-by-4.0)
+    url: https://zenodo.org/api/records/22834836/files/{file}/content
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: cc-by-4.0   # as the job list states it
+    fetched: >-
+      nothing yet: 1 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
+      the fetch
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_gv/GV_GKS/
+    approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
+  - name: tower_gv_wwtp
+    what: >-
+      GV_WWTP - Danish WWTP NCLDV/Virophage/PLV (zenodo:17735769, cc-by-4.0; skip 456MB protein clusters/trees)
+    url: https://zenodo.org/api/records/17735769/files/{file}/content
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: cc-by-4.0   # as the job list states it
+    fetched: >-
+      nothing yet: 2 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
+      the fetch
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_gv/GV_WWTP/
+    approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
+  - name: tower_gv_geve_euglena
+    what: >-
+      GV_GEVE_EUGLENA - Euglena GEVE annotations only (zenodo:15238723->16414468, cc-by-4.0; skipped 27.18GB raw
+      nanopore BAM)
+    url: https://zenodo.org/api/records/16414468/files/{file}/content
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: cc-by-4.0   # as the job list states it
+    fetched: >-
+      nothing yet: 1 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
+      the fetch
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_gv/GV_GEVE_EUGLENA/
+    approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
+  - name: tower_gsvc
+    what: >-
+      GSVC - Global Swine Gut Virome Catalog 224,572 MQ/HQ vOTUs (zenodo:22159188, cc-by-4.0; skipped 8.84GB host
+      CRISPR_MAGs_01..10)
+    url: https://zenodo.org/api/records/22159188/files/{file}/content
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: cc-by-4.0   # as the job list states it
+    fetched: >-
+      nothing yet: 2 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
+      the fetch
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_phages/GSVC/
+    approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
+  - name: tower_ghv
+    what: >-
+      GHV - Global Halophilic Virome 10,705 vOTUs (zenodo:21450953, cc-by-4.0)
+    url: https://zenodo.org/api/records/21450953/files/{file}/content
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: cc-by-4.0   # as the job list states it
+    fetched: >-
+      nothing yet: 1 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
+      the fetch
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_phages/GHV/
+    approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
+  - name: tower_cgvd
+    what: >-
+      CGVD - Chicken Gut Virome 39,380 vOTUs (zenodo:14684892, cc-by-4.0)
+    url: https://zenodo.org/api/records/14684892/files/{file}/content
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: cc-by-4.0   # as the job list states it
+    fetched: >-
+      nothing yet: 2 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
+      the fetch
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_phages/CGVD/
+    approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
+  - name: tower_tymeflies_v
+    what: >-
+      TYMEFLIES_V - Lake Mendota 20-Yr Freshwater vMAGs (figshare:24915750, CC BY 4.0)
+    url: https://ndownloader.figshare.com/files/43845801
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: CC BY 4.0   # as the job list states it
+    fetched: >-
+      nothing yet: 1 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
+      the fetch
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_phages/TYMEFLIES_V/
+    approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
+  - name: tower_bphage
+    what: >-
+      BPHAGE - Honeybee Gut Phageome supplementary tables only (zenodo:23266178, cc-by-4.0; no FASTA in deposit)
+    url: https://zenodo.org/api/records/23266178/files/{file}/content
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: cc-by-4.0   # as the job list states it
+    fetched: >-
+      nothing yet: 2 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
+      the fetch
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_phages/BPHAGE/
+    approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
+  - name: tower_hovd
+    what: >-
+      HOVD - Human Oral Virome Database (zenodo:17143670, cc-by-4.0; combined HOVD fasta + annotations, skip
+      duplicate OPD/OED fastas & faa)
+    url: https://zenodo.org/api/records/17143670/files/{file}/content
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: cc-by-4.0   # as the job list states it
+    fetched: >-
+      nothing yet: 4 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
+      the fetch
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_phages/HOVD/
+    approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
+  - name: tower_methanogen_v
+    what: >-
+      METHANOGEN_V - Methanogen Virus Compendium v2 (mendeley:10.17632/wdyjgcdgbm.2, CC BY 4.0, direct S3 via
+      Mendeley API)
+    url: https://data.mendeley.com/public-files/datasets/wdyjgcdgbm/files/{file_uuid}/file_downloaded
+    checksum: no provider md5 (field -); our sha256 only, and the script's archive test
+    license: CC BY 4.0   # as the job list states it
+    fetched: >-
+      nothing yet: 4 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
+      the fetch
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_phages/METHANOGEN_V/
+    approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
+  - name: tower_sym3
+    what: >-
+      SYM3 - SymGs / NeLLi2023 14,070 symbiont genomes (zenodo:20399071->20399072, cc-by-4.0; exact same
+      6,190,500,688B as NERSC symgs_fna.tar.gz, with MD5; skip redundant faa)
+    url: https://zenodo.org/api/records/20399072/files/{file}/content
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: cc-by-4.0   # as the job list states it
+    fetched: >-
+      nothing yet: 1 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
+      the fetch
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_proks/SYM3/
+    approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
+  - name: tower_ehi1
+    what: >-
+      EHI1 - Earth Hologenome Initiative DR1 17,666 MAGs (zenodo:16757580, cc-zero); EHI1 metadata - Earth
+      Hologenome Initiative DR1 metadata (zenodo:16784684, cc-zero)
+    url: https://zenodo.org/api/records/16757580/files/{file}/content
+    url_2: https://zenodo.org/api/records/16784684/files/earthhologenome/EHI_data_release_1-1.0.3.zip/content
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: cc-zero   # as the job list states it
+    fetched: >-
+      nothing yet: 3 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
+      the fetch
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_proks/EHI1/
+    approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
+  - name: tower_emerge
+    what: >-
+      EMERGE - Stordalen Mire MAGs v2.0.1 (zenodo:17468704, cc-by-4.0; all 36,419 MAGs in single tarball, species
+      reps not separately packaged; filter via metadata TSV)
+    url: https://zenodo.org/api/records/17468704/files/{file}/content
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: cc-by-4.0   # as the job list states it
+    fetched: >-
+      nothing yet: 2 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
+      the fetch
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_proks/EMERGE/
+    approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
+  - name: tower_asg2
+    what: >-
+      ASG2 (Zhang Nature 2025) - Deep-origin Asgardarchaeota (figshare:34064073, CC BY 4.0); ASG2 (Valentin-Alvarado
+      2024) - Asgard MGE/virus .fna genomes + annotations (zenodo:12617226, cc-by-4.0; skipped 63
+      aln/tree/alphafold/icloud files)
+    url: https://ndownloader.figshare.com/files/69639846
+    url_2: https://zenodo.org/api/records/12617226/files/{file}/content
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: "CC BY 4.0, cc-by-4.0"   # as the job lists state it, per file
+    fetched: >-
+      nothing yet: 23 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
+      the fetch
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_proks/ASG2/
+    approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
+  - name: tower_desert_qaidam
+    what: >-
+      DESERT_QAIDAM - Qaidam Basin Mars-analog 1,773 mMAGs + 2,060 vMAGs (zenodo:15743210, cc-by-4.0)
+    url: https://zenodo.org/api/records/15743210/files/{file}/content
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: cc-by-4.0   # as the job list states it
+    fetched: >-
+      nothing yet: 2 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
+      the fetch
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_proks/DESERT_QAIDAM/
+    approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
+  - name: tower_desert_mcmurdo
+    what: >-
+      DESERT_MCMURDO - Antarctic McMurdo cryptoendolith MAGs (zenodo:7313591, cc-by-4.0; skipped 2.44GB
+      MAGs_Annotation.rar)
+    url: https://zenodo.org/api/records/7313591/files/{file}/content
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: cc-by-4.0   # as the job list states it
+    fetched: >-
+      nothing yet: 3 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
+      the fetch
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_proks/DESERT_MCMURDO/
+    approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
+  - name: tower_desert_monash
+    what: >-
+      DESERT_MONASH - Monash 2,226 soil MAGs via api.figshare.com (figshare:24302833, CC BY 4.0; bridges.monash.edu
+      returned HTTP 202 WAF)
+    url: https://ndownloader.figshare.com/files/57783499
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: CC BY 4.0   # as the job list states it
+    fetched: >-
+      nothing yet: 1 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
+      the fetch
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_proks/DESERT_MONASH/
+    approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
+  - name: tower_code4_glmc
+    what: >-
+      CODE4_GLMC - Leafhopper 171-species MAGs (zenodo:20042172->21341769, cc-by-4.0; skipped 6.71GB
+      ORFs_repfilt.fasta & redundant annotation/alignment zips)
+    url: https://zenodo.org/api/records/21341769/files/{file}/content
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: cc-by-4.0   # as the job list states it
+    fetched: >-
+      nothing yet: 3 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
+      the fetch
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_proks/CODE4_GLMC/
+    approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
+  - name: tower_mbgg_tit
+    what: >-
+      MBGG_TIT - Great/Blue tit faecal MAGs (zenodo:13643296, cc-by-4.0)
+    url: https://zenodo.org/api/records/13643296/files/{file}/content
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: cc-by-4.0   # as the job list states it
+    fetched: >-
+      nothing yet: 2 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
+      the fetch
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_proks/MBGG_TIT/
+    approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
+  - name: tower_acido_spg
+    what: >-
+      ACIDO_SPG (Acidobacteriota) - Global Acidobacteriota MAGs (figshare:33269484, CC BY 4.0); ACIDO_SPG
+      (SpongeSymbionts) - paobrien/SpongeSymbionts supplemental archive (zenodo:13266492, cc-by-4.0); ACIDO_SPG
+      (Phyllospongia) - Phyllospongia foliascens bin table (zenodo:21135542, cc-by-4.0; metadata CSV only, no
+      FASTAs)
+    url: https://ndownloader.figshare.com/files/67605795
+    url_2: https://ndownloader.figshare.com/files/67605747
+    url_3: https://zenodo.org/api/records/13266492/files/paobrien/SpongeSymbionts-SpongeSymbionts.zip/content
+    url_4: https://zenodo.org/api/records/21135542/files/{file}/content
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: "CC BY 4.0, cc-by-4.0"   # as the job lists state it, per file
+    fetched: >-
+      nothing yet: 4 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
+      the fetch
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_proks/ACIDO_SPG/
+    approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
+  - name: tower_subsurf_wt29a
+    what: >-
+      SUBSURF_WT29A - Subsurface borehole WT-29A MQ MAGs (zenodo:22053915, cc-by-4.0)
+    url: https://zenodo.org/api/records/22053915/files/{file}/content
+    checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
+    license: cc-by-4.0   # as the job list states it
+    fetched: >-
+      nothing yet: 1 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
+      the fetch
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_proks/SUBSURF_WT29A/
+    approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
+  - name: tower_mgnify2
+    what: >-
+      MGNIFY2 - EMBL-EBI MGnify Genomes latest biome metadata manifests (10 biomes, open FTP; species_catalogue/ is
+      unpacked per-genome MGYG dirs, no bulk species-rep tarball)
+    url: https://ftp.ebi.ac.uk/pub/databases/metagenomics/mgnify_genomes/{biome}/{version}/genomes-all_metadata.tsv
+    checksum: no provider md5 (field -); our sha256 only, and the script's archive test
+    license: CC BY 4.0   # as the job list states it
+    fetched: >-
+      nothing yet: 10 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
+      the fetch
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_proks/MGNIFY2/
+    approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
+  - name: tower_atac1
+    what: >-
+      Atacama Desert MAGs (NCBI/ENA bioproject PRJEB60556): 47 assemblies named in MANIFEST_PRJEB60556.tsv on tower,
+      as FASTA by NCBI FTP path
+    url: https://ftp.ncbi.nlm.nih.gov/genomes/all/{GCA_or_GCF}/{nnn}/{nnn}/{nnn}/{assembly_dir}/{assembly_dir}_genomic.fna.gz
+    checksum: none from the provider; our sha256 only (SOURCE_URLS.tsv and SHA256SUMS in ATAC1/assemblies/ on tower)
+    license: INSDC   # the licence column _fetch_batch4_ncbi.sh writes for every file
+    fetched: >-
+      nothing yet: the manifest (47 assemblies, base_count sum 37894439 bases, derived from its base_count column)
+      was written 2026-11-25 20:05 CST and no assembly had landed at 20:12 CST; listed here before the fetch
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/ATAC1/assemblies/
+    note: >-
+      The manifest ATAC1/MANIFEST_PRJEB60556.tsv is the job list of _fetch_batch4_ncbi.sh (file
+      <accession>_genomic.fna.gz, URL in its last column); it is not in the five-column form of fetch_to_tower.sh
+      and has no md5
+    approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
+  - name: tower_plnt1
+    what: >-
+      plant-associated MAGs (bioproject PRJEB93989): 423 assemblies named in MANIFEST_PRJEB93989.tsv on tower, as
+      FASTA by NCBI FTP path
+    url: https://ftp.ncbi.nlm.nih.gov/genomes/all/{GCA_or_GCF}/{nnn}/{nnn}/{nnn}/{assembly_dir}/{assembly_dir}_genomic.fna.gz
+    checksum: none from the provider; our sha256 only (SOURCE_URLS.tsv and SHA256SUMS in PLNT1/assemblies/ on tower)
+    license: INSDC   # the licence column _fetch_batch4_ncbi.sh writes for every file
+    fetched: >-
+      nothing yet: the manifest (423 assemblies, base_count sum 1364663067 bases, derived from its base_count
+      column) was written 2026-11-25 20:05 CST and no assembly had landed at 20:12 CST; listed here before the fetch
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/PLNT1/assemblies/
+    note: >-
+      The manifest PLNT1/MANIFEST_PRJEB93989.tsv is the job list of _fetch_batch4_ncbi.sh (file
+      <accession>_genomic.fna.gz, URL in its last column); it is not in the five-column form of fetch_to_tower.sh
+      and has no md5
+    approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
+  - name: tower_ngom1
+    what: >-
+      bioproject PRJNA1171802: 1313 assemblies named in MANIFEST_PRJNA1171802.tsv on tower, as FASTA by NCBI FTP
+      path
+    url: https://ftp.ncbi.nlm.nih.gov/genomes/all/{GCA_or_GCF}/{nnn}/{nnn}/{nnn}/{assembly_dir}/{assembly_dir}_genomic.fna.gz
+    checksum: none from the provider; our sha256 only (SOURCE_URLS.tsv and SHA256SUMS in NGOM1/assemblies/ on tower)
+    license: INSDC   # the licence column _fetch_batch4_ncbi.sh writes for every file
+    fetched: >-
+      nothing yet: the manifest (1313 assemblies, base_count sum 2558619378 bases, derived from its base_count
+      column) was written 2026-11-25 20:05 CST and no assembly had landed at 20:12 CST; listed here before the fetch
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/NGOM1/assemblies/
+    note: >-
+      The manifest NGOM1/MANIFEST_PRJNA1171802.tsv is the job list of _fetch_batch4_ncbi.sh (file
+      <accession>_genomic.fna.gz, URL in its last column); it is not in the five-column form of fetch_to_tower.sh
+      and has no md5
+    approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
+  - name: tower_gfs1
+    what: >-
+      bioproject PRJNA781406: 3387 assemblies named in MANIFEST_PRJNA781406.tsv on tower, as FASTA by NCBI FTP path
+    url: https://ftp.ncbi.nlm.nih.gov/genomes/all/{GCA_or_GCF}/{nnn}/{nnn}/{nnn}/{assembly_dir}/{assembly_dir}_genomic.fna.gz
+    checksum: none from the provider; our sha256 only (SOURCE_URLS.tsv and SHA256SUMS in GFS1/assemblies/ on tower)
+    license: INSDC   # the licence column _fetch_batch4_ncbi.sh writes for every file
+    fetched: >-
+      nothing yet: the manifest (3387 assemblies, base_count sum 12011030043 bases, derived from its base_count
+      column) was written 2026-11-25 20:05 CST and no assembly had landed at 20:12 CST; listed here before the fetch
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/GFS1/assemblies/
+    note: >-
+      The manifest GFS1/MANIFEST_PRJNA781406.tsv is the job list of _fetch_batch4_ncbi.sh (file
+      <accession>_genomic.fna.gz, URL in its last column); it is not in the five-column form of fetch_to_tower.sh
+      and has no md5
+    approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
+  - name: tower_dtol1
+    what: >-
+      Darwin Tree of Life microbial assemblies (bioproject PRJEB43743): 5692 assemblies named in
+      MANIFEST_PRJEB43743.tsv on tower, as FASTA by NCBI FTP path
+    url: https://ftp.ncbi.nlm.nih.gov/genomes/all/{GCA_or_GCF}/{nnn}/{nnn}/{nnn}/{assembly_dir}/{assembly_dir}_genomic.fna.gz
+    checksum: none from the provider; our sha256 only (SOURCE_URLS.tsv and SHA256SUMS in DTOL1/assemblies/ on tower)
+    license: INSDC   # the licence column _fetch_batch4_ncbi.sh writes for every file
+    fetched: >-
+      nothing yet: the manifest (5692 assemblies, base_count sum 24073853426 bases, derived from its base_count
+      column) was written 2026-11-25 20:05 CST and no assembly had landed at 20:12 CST; listed here before the fetch
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/DTOL1/assemblies/
+    note: >-
+      The manifest DTOL1/MANIFEST_PRJEB43743.tsv is the job list of _fetch_batch4_ncbi.sh (file
+      <accession>_genomic.fna.gz, URL in its last column); it is not in the five-column form of fetch_to_tower.sh
+      and has no md5
+    approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
+
