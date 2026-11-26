@@ -43,6 +43,17 @@ manifests' `base_count` or the worker's `total_bp`. The 4.44 GB is an *estimate*
 | `18_later_rescue.tsv` | 4 (`DSV70_mag.tar.gz`), 3 (`y1000p_genome_files.zip`) | 2 | 4,731,016,231 bytes + about 4.44 GB | not run; **not before card R-13 is merged** |
 | `19_later_batch6.tsv` | 6, `_batch6.tsv` | 690 | 119,469,480,803 bytes | not run |
 | `20_later_licence_released.tsv` | 6 and 6b: the 25 jobs R-12 held on licence, released by DEC-80 (card R-14) | 25 | 34,603,814,116 bytes for 12 of 25 jobs; no record of size for 13 (about 23.0 GB by the workers' statements, *estimate*, for 7 of them) | not run; its `RMD1` line is `r26.11.6`; licence fields unchanged; `redistributable: false` (DEC-80 (3)) |
+| `21_later_batch7_GPB_PHAGE.tsv` | 7, `_batch7_cngb_urls.tsv`, `GPB_PHAGE` (CNGBdb CNP0004979), released by DEC-81 (5) (card R-15) | 104 | 6,518,982 bases in 102 assemblies; no byte size recorded | not run; `ftp://` (no https route); licence field `CNGBdb-open` as listed; `redistributable: false` (DEC-80 (3)) |
+| `22_later_batch7_EEMC1.tsv` | 7, `_batch7_cngb_urls.tsv`, `EEMC1` (CNGBdb CNP0007106), released by DEC-81 (5) (card R-15) | 75,085 | 181,337,158,637 bases in 75,082 assemblies; no byte size recorded (about 52 GB by the batch-7 worker, *estimate*) | not run; `ftp://`; **75,085 files: run with `--pause 0`, and after lists 01 to 21**; licence field `CNGBdb-CC-BY-4.0` as listed; `redistributable: false` |
+
+Lists 21 and 22 (card R-15) are batch 7, the two CNGBdb sets. `ftp.cngb.org` refuses https (port 443, measured
+2026-11-26), so their URLs are `ftp://`, which `fetch_to_tower.sh` takes only where the `sources.yaml` form a URL matches
+is itself `ftp://` (DEC-81 (5)); curl is then held to `ftp` (`--proto =ftp --proto-redir =ftp`). `GPB_PHAGE` (104
+files) runs first. `EEMC1` is 75,085 files, one FTP transfer each: run it with `--pause 0` (the default pause of 1 s
+alone would add about 21 h, *derived*: 75,085 s), and only after the lists of cards R-12 and R-14 (01 to 20) and list 21.
+Its 74,999 bins land in 256 directories `batch7_cngb/EEMC1/assemblies/<2 hex>/`, as the batch-7 list laid them out, each
+with its own `SHA256SUMS` and `SOURCE_URLS.tsv`. Its `--check` took 2.83 s on the laptop (*measured*) because the two
+batch-7 entries stand first in `sources.yaml`; with them last it had not ended after 33 min.
 
 The `EUK_Y1000` line of `18_later_rescue.tsv` must not run before card R-13 is merged. Until then the script removes a
 file whose md5 matched when its archive test fails, and that is how batch 3 lost this file. Run the rescue list only after
