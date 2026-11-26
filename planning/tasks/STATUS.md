@@ -152,6 +152,31 @@ holiday; ftp is fine, use it if needed; omd2: fetch away; bbsag20 fetch last, ys
   13:08; card C-79 is done on its branch (`MV2` 98,920 UViGs and 3.909 Gbp; `MVEUKV` 105,902 vOTUs and 1.257 Gbp;
   both mirrored to `tower`), pushed for `ci`, not merged.
 
+**W8. Signed 2026-11-26, about 13:55 CST (DEC-82;** the PI's words "yes to all", to the seven items of
+[`2026-11-26_dec77_review.md`](../measurements/2026-11-26_dec77_review.md)): the release train of `r26.11.4` may be
+launched with `hybrid-b1`. W3 (3) is replaced by this. Before the launch, in this order, when the 19 stages have
+their backups: (a) `release_train.sh rehearse` with `CLUSTER_METHOD=hybrid-b1` from a fresh mirror, passing, its
+output kept; (b) `release_train.sh --dry-run` showing the review's go lines (32 stages, none excluded, a cut with
+`part_cpu_min` 240.0 and `one_process_cpu_min_max` 20000.0 and no `parts`); (c) `df -B1G /tmp` against the review's
+§6.5 (scratch 230 to 280 GB above the 100 GB floor, about 113 GB of release files, a pack of about 210 to 230 GB,
+all *estimates* or *derived* there); if short, retiring `r26.11.2` goes to the PI first; (d) the launch without
+`--parts`, from a fresh `WORK`, at the defaults `T=18 J=2 CPUS=18 Q=40`. About 15 to 19 h of clustering. `cluster_uid`
+stays independent of the method (R2 item 1 is settled). Card R-16 corrects RUNBOOK's launch example.
+- Also since W7: the review note is merged (`42ce7bc`); card A-30 is done on its branch (`bc2eeaa`; 507 passed on
+  the pod; 28 new tests seen failing first; no existing test changed), read line by line by this session (the two
+  scripts' diff: every share rests on recorded equal facts and any doubt runs the full check; `after` always verifies
+  in full), pushed for `ci`. Its measured saving is 12.96 h for a wave of 18 stages, not the "up to about 20 h" put
+  to the PI (*derived* in its note: `after` stays in full and the first rehearsal of each kind still runs); the PI
+  was told. This session means to launch the 18 stages with it once it is merged, and told the PI so at about 13:40.
+- Card C-74 is done (`80111c8`): the index is on the pod at `/tmp/if2453/c74/index/`; its counts equal the
+  providers' (199,923 species; 346,233 genomes in 26 resources). Of the 130,960 unbuilt r226 genomes, 70,314 are
+  kept in r232, 73 replaced by a GTDB R232 representative and 60,573 dropped (*measured*, its note). Only four
+  resources carry INSDC accessions, so most "already in r232" tests need ANI. **This session's choice for card
+  C-75, the PI's to change:** the dropped genomes are still taken from r226 (they are on disk and new to the
+  catalog), each with its r232 status recorded. Card C-69 is done (`e62db99`): `EGV1`, 223 genomes, 3,301 contigs,
+  50,954,930 bp, none held by an earlier stage; on the pod and mirrored to `tower`. Cards C-79, C-69 and C-74 are
+  merged on `task/int-1126b` (695 passed, 3 skipped on the pod) and wait for its `ci` run.
+
 **W6. State at 12:25 CST, 2026-11-26** (this session was stopped by its usage limit from about 09:20 to 12:20; the
 build needed nothing meanwhile):
 - `wilkcomp02` (*measured*, 12:22, `find runs/stage=V2 -name 'domains-pfam-38.2.shard-*.json'`, `ls
