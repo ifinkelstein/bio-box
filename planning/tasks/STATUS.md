@@ -5,7 +5,7 @@ The running record of the cards in [`TASKS.md`](TASKS.md). Updated at every merg
 by an agent on its own branch `task/<ID>`, audited by the orchestrating session, and merged after its
 tests passed on the merged tree.
 
-## Audit and remediation, 2026-11-25 21:00 CST (current; supersedes the sections below where they differ)
+## Audit and remediation, 2026-11-26 00:10 CST (current; supersedes the sections below where they differ)
 
 Written by the auditing session (Claude) at the PI's words "review this project as an auditor ..." and "fix all these
 issues top to bottom". The Antigravity orchestrator of the section below is still working beside it. The findings are
@@ -21,7 +21,17 @@ tail -n 6 /tmp/if2453/stages/r26-11-4-wave.out; df -h /tmp"` and, on `tower`, th
   `r26-11-4-wave-3.service` was launched at 22:20:33 from the mirror `rel1125f`, before the `ci` run of that commit
   had ended; at 23:05 it was scanning `V2`'s Pfam shards at about 76 threads (*measured*, `systemctl --user
   list-units`, the logs' tails, `uptime`: load 98 with this session's test shards). Card B-74 was not read by the
-  audit. `/tmp` had 427 GiB free at 20:50. Each wave was a loop typed into the unit; after it, waves are launched with
+  audit. **Wave-3 stopped at 23:39:13 on the process guard** (`r50_watch.py` exit 3; `/tmp/if2453/stages/v2/driver.log`,
+  read at 00:02 on 2026-11-26): the first four Pfam scan shards of `V2` (`shard=0` to `3`, 4 threads each, started
+  about 22:27) had used 283.3, 282.8, 282.4 and 282.2 CPU-minutes, over 280, and were not finished; the plan had 72
+  shards estimated at 17,131.6 CPU-minutes, 237.9 a shard (*derived*), so they stood at 1.19 of the estimate or more.
+  **This session's tests probably contributed**: its whole-suite run of 8 shards was started at about 21:55 on an
+  idle pod, wave-3 was launched beside it at 22:20, and it and the targeted runs after it went on until about 23:35;
+  the account was over its cap of 80 threads for that time (load 98), and CPU time a residue rises when hardware
+  threads are shared (the same hour's `test_micro_replicons_runtime_within_budget` took 68 s of CPU against 41 s
+  measured quiet). Nothing is building now. It is a guard stop: the relaunch needs the PI's word on this record
+  (how the four shards are judged, and whether the scan is run again from its plan), not a general "resume".
+  `/tmp` had 432 GB free at 23:39. Each wave was a loop typed into the unit; after it, waves are launched with
   `scripts/stress/build_stage_pod/stage_wave.sh` (card R-07, RUNBOOK "A wave of stages"). The release train of
   `r26.11.4` is not launched: DEC-77 (5) needs the PI's review, and cards R-02, R-03 and R-05 change or test the
   clustering it would run.
@@ -46,7 +56,11 @@ together (`8d8f85e`) failed on exactly that test of card R-05. The whole suite o
 passed (776, 474, 387, 452, 662, 457; 16 skipped in all); shard 0 "1 failed, 469 passed, 4 skipped" (that R-05 test);
 shard 5 "1 failed, 505 passed, 4 skipped": `test_synthworld_intergenic.py::test_micro_replicons_runtime_within_budget`,
 a bound on CPU time (68.5 s against 56; 67.7 s again alone at 23:00) while wave-3 held about 76 threads; its code is
-unchanged since 2026-11-14 and no card of the audit touches it. It is to be run again on a quiet pod.
+unchanged since 2026-11-14 and no card of the audit touches it. It is to be run again on a quiet pod. After R-05b
+and card R-10 (a memory test of card C-48b that card B-74's new tests tipped over on Actions), the final merged tree
+passed its targeted run (*measured*, `wilkcomp02`, 2026-11-25 23:20 to 23:35: 462 passed in 772.09 s over the
+clustering, watch, R-02, B-74 and `tests/r0` files) and `ci` (`eb46785`, green), and was merged as `1783928`.
+**All cards of the audit are merged**: R-01 to R-08, R-05b and R-10; of R-03, the 13 tests DEC-78 settles are not.
 
 **R2. For the PI** (none of these is an agent's to decide; the audit note §5 has the evidence):
 0. **Decided on 2026-11-25, about 21:20 CST ("keep the code, change the DEC-77 wording"; row DEC-78): what
