@@ -5321,3 +5321,103 @@ sources:
       C60_TOPAZ is not named in the question the PI answered at 21:01 CST. No provider record of the licence was kept.
       Held for the PI by card R-11
     approved: "by the PI, 2026-11-25 21:01 CST: \"1. y, 2. decide based on novelty, maybe coral\", in answer to the orchestrator's question of 20:58 CST \"Queue a small detached Batch 6b on tower? Fixes the / filename crash caught on Batch 3's RNA_VIROID, pulls the rescued CANDI1 bulk DB (gandi-classifier-db.tar.gz), and pulls the newly found open NCBI/ENA BioProjects (O4-PROT/O4-WEIRD organelles ..., MARSUPIAL1, TERMITE1, NHP-GUT1, AMD-CPRV1, CAVE-AERO1, GBAT-RNA, RMD1 coral genomes)\" (the Antigravity transcript, steps 7461 and 7462). C60_TOPAZ is not named in that question"
+
+  # Card C-72, part 1 (DEC-79 (4), 2026-11-26): the five sources the PI approved. Each URL below is one exact file; no
+  # {file} form is used, so no other file or record of the same host is covered. Sizes and md5 are the providers' own,
+  # read 2026-11-26 (planning/measurements/2026-11-26_c72_part1_sources.md); `files_listed` holds them until the fetch,
+  # and `files` (with our sha256) is written after it. The job list is scripts/orchestrator/tower_jobs/2026-11-26_c72_part1.tsv.
+  - name: tower_gwv1
+    what: >-
+      GWV1 - Groundwater Virome Catalogue (GWVC), vOTU sequences and the tables that describe them (zenodo:11230969,
+      cc-by-4.0); not taken: the spacer, marker and CPR/DPANN genome files of the record
+    url: https://zenodo.org/api/records/11230969/files/GWVC.vOTUs.fna.gz/content
+    url_2: https://zenodo.org/api/records/11230969/files/GWVC.vOTUs.information.txt/content
+    url_3: https://zenodo.org/api/records/11230969/files/GWVC.vOTUs.virus-host.linkage.txt/content
+    files_listed:
+      - {file: "GWVC.vOTUs.virus-host.linkage.txt", bytes: 59543590, md5: 3e346e34ffedde104e16cde4b398eae6}
+      - {file: "GWVC.vOTUs.information.txt", bytes: 62086246, md5: 4878fa7168ad1078752a7dc01dc1487c}
+      - {file: "GWVC.vOTUs.fna.gz", bytes: 1166850604, md5: d249dd5821d411e195178bf1749c525a}
+    checksum: the provider's md5 for every file (in the job list; the fetcher compares it before the file is kept); our sha256 is taken after the fetch
+    license: cc-by-4.0   # as the Zenodo record states it
+    fetched: >-
+      nothing yet: 3 files named in 2026-11-26_c72_part1.tsv, listed here before the fetch (card C-72, part 1)
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/GWV1/
+    note: >-
+      CPR.DPANN.genomes.tar.gz (43,339,586 bytes) is not taken: the record's description does not say what the
+      archive holds (it points to 0README.txt, which was not read); DEC-79 (4) names it only if the description shows
+      nucleotide genomes
+    approved: "by the PI, 2026-11-26 about 08:03 CST: \"for each of the four decisions, go ahead with your recommendations\" (DEC-79 (4))"
+  - name: tower_sag3
+    what: >-
+      SAG3 - OMZ single-cell compendium, all single-cell assemblies (figshare:20459526) and its Table S1
+      (figshare:20481603), CC BY 4.0
+    url: https://ndownloader.figshare.com/files/37394083
+    url_2: https://ndownloader.figshare.com/files/40838783
+    files_listed:
+      - {file: "Table_S1_Metadata-template-Bio-Med-SAGdescriptor-OMZ_May_23_2023.xlsx", bytes: 4433905, md5: 004c2b180c199f4f39c463d888b33d6e}
+      - {file: "OMZ_Compendium_SAGs_Full.tar.gz", bytes: 747416178, md5: 49e76ad707b718cd4e804e43b6d0cb94}
+    checksum: the provider's md5 for every file (in the job list; the fetcher compares it before the file is kept); our sha256 is taken after the fetch
+    license: CC BY 4.0   # as the figshare articles state it
+    fetched: >-
+      nothing yet: 2 files named in 2026-11-26_c72_part1.tsv, listed here before the fetch (card C-72, part 1)
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/SAG3/
+    approved: "by the PI, 2026-11-26 about 08:03 CST: \"for each of the four decisions, go ahead with your recommendations\" (DEC-79 (4))"
+  - name: tower_wet1
+    what: >-
+      WET1 - GWM wetland microbiome catalogue, the dereplicated genomes and the MAG table (zenodo:20263536, cc-by-4.0);
+      not taken: genome sequences (all), gene sequences, functional annotations, taxonomic profiles, abundance, sample
+      and source tables
+    url: https://zenodo.org/api/records/20263536/files/MAG_meta.xlsx/content
+    url_2: https://zenodo.org/api/records/20263536/files/Dereplicated%20genomes.zip/content
+    files_listed:
+      - {file: "MAG_meta.xlsx", bytes: 806764, md5: 54b567ff549a0e926f54c798609d1657}
+      - {file: "Dereplicated genomes.zip", bytes: 3885785718, md5: c2c471cb64ee73a223bfcef33277fe6d}
+    checksum: the provider's md5 for every file (in the job list; the fetcher compares it before the file is kept); our sha256 is taken after the fetch
+    license: cc-by-4.0   # as the Zenodo record states it
+    fetched: >-
+      nothing yet: 2 files named in 2026-11-26_c72_part1.tsv, listed here before the fetch (card C-72, part 1)
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/WET1/
+    approved: "by the PI, 2026-11-26 about 08:03 CST: \"for each of the four decisions, go ahead with your recommendations\" (DEC-79 (4))"
+  - name: tower_globdb_r232_tables
+    what: >-
+      GlobDB r232 small tables: taxonomy, CheckM2, dataset list, dictionaries and the md5 list; not taken: the genome,
+      protein, gff and anvio archives and the taxonomic_profiling folder
+    url: https://fileshare.lisc.univie.ac.at/globdb/globdb_r232/globdb_r232_taxonomy.tsv.gz
+    url_2: https://fileshare.lisc.univie.ac.at/globdb/globdb_r232/globdb_r232_checkm2.tsv.gz
+    url_3: https://fileshare.lisc.univie.ac.at/globdb/globdb_r232/globdb_r232_dataset_list.tsv
+    url_4: https://fileshare.lisc.univie.ac.at/globdb/globdb_r232/globdb_r232_dictionaries.tar.gz
+    url_5: https://fileshare.lisc.univie.ac.at/globdb/globdb_r232/globdb_r232_md5sum.txt
+    files_listed:
+      - {file: "globdb_r232_md5sum.txt", bytes: 519}
+      - {file: "globdb_r232_dataset_list.tsv", bytes: 4358}
+      - {file: "globdb_r232_dictionaries.tar.gz", bytes: 3266383, md5: 9a493f06c4b41a7b6b63eff6a650a77d}
+      - {file: "globdb_r232_taxonomy.tsv.gz", bytes: 8071276, md5: 7dd4a6b2c3bc3c7727118b3f772f7a4e}
+      - {file: "globdb_r232_checkm2.tsv.gz", bytes: 12896811, md5: 61da09cb728e7fe4c5116de54e2f173f}
+    checksum: >-
+      the provider's md5 from globdb_r232_md5sum.txt for the three archives and tables it lists (in the job list; the
+      fetcher compares it before the file is kept); the md5 list and the dataset list have none; our sha256 is taken
+      after the fetch
+    license: CC BY-SA 4.0   # as globdb.org states it (as planning/measurements/2026-11-26_missed_diversity_sources.md section 2.1 quotes globdb.org, read 2026-11-26 by the survey of card C-72; this card did not read globdb.org again)
+    fetched: >-
+      nothing yet: 5 files named in 2026-11-26_c72_part1.tsv, listed here before the fetch (card C-72, part 1)
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/GLOBDB_R232_TABLES/
+    approved: "by the PI, 2026-11-26 about 08:03 CST: \"for each of the four decisions, go ahead with your recommendations\" (DEC-79 (4))"
+  - name: tower_gtdb_r232_meta
+    what: >-
+      GTDB release 232.0 genome metadata for bacteria and archaea, and the release's MD5SUM.txt
+    url: https://data.gtdb.aau.ecogenomic.org/releases/release232/232.0/bac120_metadata_r232.tsv.gz
+    url_2: https://data.gtdb.aau.ecogenomic.org/releases/release232/232.0/ar53_metadata_r232.tsv.gz
+    url_3: https://data.gtdb.aau.ecogenomic.org/releases/release232/232.0/MD5SUM.txt
+    files_listed:
+      - {file: "MD5SUM.txt", bytes: 3950}
+      - {file: "ar53_metadata_r232.tsv.gz", bytes: 7015869, md5: 0f51fe6f01b4ccbf0d9bab6c07df87af}
+      - {file: "bac120_metadata_r232.tsv.gz", bytes: 289043801, md5: 0ba4237077b65cfc5556e1d8be797485}
+    checksum: >-
+      the provider's md5 from the release's MD5SUM.txt for the two metadata files (in the job list; the fetcher
+      compares it before the file is kept); MD5SUM.txt lists its own md5, which cannot be checked, so the job list
+      gives it none; our sha256 is taken after the fetch
+    license: CC BY-SA 4.0   # as entry gtdb_metadata records it (GTDB's stated licence; not re-verified)
+    fetched: >-
+      nothing yet: 3 files named in 2026-11-26_c72_part1.tsv, listed here before the fetch (card C-72, part 1)
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/GTDB_R232_META/
+    approved: "by the PI, 2026-11-26 about 08:03 CST: \"for each of the four decisions, go ahead with your recommendations\" (DEC-79 (4))"

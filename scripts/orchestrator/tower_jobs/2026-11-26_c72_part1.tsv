@@ -1,0 +1,16 @@
+# Card C-72, part 1 (DEC-79 (4)): the five approved sources, smallest file first. Sizes and md5 read from the providers' records on 2026-11-26; see planning/measurements/2026-11-26_c72_part1_sources.md
+GLOBDB_R232_TABLES	globdb_r232_md5sum.txt	https://fileshare.lisc.univie.ac.at/globdb/globdb_r232/globdb_r232_md5sum.txt	-	CC BY-SA 4.0
+GTDB_R232_META	MD5SUM.txt	https://data.gtdb.aau.ecogenomic.org/releases/release232/232.0/MD5SUM.txt	-	CC BY-SA 4.0
+GLOBDB_R232_TABLES	globdb_r232_dataset_list.tsv	https://fileshare.lisc.univie.ac.at/globdb/globdb_r232/globdb_r232_dataset_list.tsv	-	CC BY-SA 4.0
+WET1	MAG_meta.xlsx	https://zenodo.org/api/records/20263536/files/MAG_meta.xlsx/content	54b567ff549a0e926f54c798609d1657	cc-by-4.0
+GLOBDB_R232_TABLES	globdb_r232_dictionaries.tar.gz	https://fileshare.lisc.univie.ac.at/globdb/globdb_r232/globdb_r232_dictionaries.tar.gz	9a493f06c4b41a7b6b63eff6a650a77d	CC BY-SA 4.0
+SAG3	Table_S1_Metadata-template-Bio-Med-SAGdescriptor-OMZ_May_23_2023.xlsx	https://ndownloader.figshare.com/files/40838783	004c2b180c199f4f39c463d888b33d6e	CC BY 4.0
+GTDB_R232_META	ar53_metadata_r232.tsv.gz	https://data.gtdb.aau.ecogenomic.org/releases/release232/232.0/ar53_metadata_r232.tsv.gz	0f51fe6f01b4ccbf0d9bab6c07df87af	CC BY-SA 4.0
+GLOBDB_R232_TABLES	globdb_r232_taxonomy.tsv.gz	https://fileshare.lisc.univie.ac.at/globdb/globdb_r232/globdb_r232_taxonomy.tsv.gz	7dd4a6b2c3bc3c7727118b3f772f7a4e	CC BY-SA 4.0
+GLOBDB_R232_TABLES	globdb_r232_checkm2.tsv.gz	https://fileshare.lisc.univie.ac.at/globdb/globdb_r232/globdb_r232_checkm2.tsv.gz	61da09cb728e7fe4c5116de54e2f173f	CC BY-SA 4.0
+GWV1	GWVC.vOTUs.virus-host.linkage.txt	https://zenodo.org/api/records/11230969/files/GWVC.vOTUs.virus-host.linkage.txt/content	3e346e34ffedde104e16cde4b398eae6	cc-by-4.0
+GWV1	GWVC.vOTUs.information.txt	https://zenodo.org/api/records/11230969/files/GWVC.vOTUs.information.txt/content	4878fa7168ad1078752a7dc01dc1487c	cc-by-4.0
+GTDB_R232_META	bac120_metadata_r232.tsv.gz	https://data.gtdb.aau.ecogenomic.org/releases/release232/232.0/bac120_metadata_r232.tsv.gz	0ba4237077b65cfc5556e1d8be797485	CC BY-SA 4.0
+SAG3	OMZ_Compendium_SAGs_Full.tar.gz	https://ndownloader.figshare.com/files/37394083	49e76ad707b718cd4e804e43b6d0cb94	CC BY 4.0
+GWV1	GWVC.vOTUs.fna.gz	https://zenodo.org/api/records/11230969/files/GWVC.vOTUs.fna.gz/content	d249dd5821d411e195178bf1749c525a	cc-by-4.0
+WET1	Dereplicated genomes.zip	https://zenodo.org/api/records/20263536/files/Dereplicated%20genomes.zip/content	c2c471cb64ee73a223bfcef33277fe6d	cc-by-4.0
