@@ -126,6 +126,11 @@ continue to work autonomously making reasonable decisions on pod to keep the wor
   night.
 - Launched at about 08:40 CST: card C-73 (the relay from `tower` to the pod; code and tests, no copy) and card C-79
   (`MV2` and `MVEUKV` from the MetaVR archive on `/stor`: at most 4 threads beside the build's 40).
+- **Decided 2026-11-26, about 08:41 CST (DEC-80; the PI's words "all personal use, no worries re license i
+  approve"):** a missing or unconfirmed licence no longer holds a fetch or a staging. Answers (1) and (2) above are
+  replaced by it: `SYM2` and the whole of `MIR1` are staged; the 25 jobs card R-12 held become a job list (card
+  R-14); `GBR_MGD` is free to be staged in `r26.11.6`; the MGnify catalogues are approved as sources for `r26.11.6`.
+  Entries still record the licence as a record states it or as not stated, with `redistributable: false`.
 
 **W3. Next, in order:**
 1. **Seen 08:31 CST:** the first two shard records of `V2` hold 226.9 and 228.7 CPU-minutes, 58.6 minutes of wall each
