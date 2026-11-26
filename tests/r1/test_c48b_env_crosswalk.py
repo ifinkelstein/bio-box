@@ -553,22 +553,35 @@ def test_bounded_rss_on_100x_synthetic_inputs(tmp_path):
             sid = f"SAMN{i:08d}" if i < 10_000 else f"SAMEA{i:08d}"
             fh.write(f"{sid}\t1\t0.0\t0.0\t['aquatic', 'aquatic:marine']\n")
 
-    # Run in isolated subprocess so peak RSS measures only the builder
+    # Run in isolated subprocess so peak RSS measures only the builder. The child's own peak is VmHWM of
+    # /proc/self/status (the high-water mark since its exec), as tests/r2/test_w39_panel_fixture.py reads it since card
+    # R-01: on Linux a child's `ru_maxrss` carries the peak of the pytest process it was started from, so it failed this
+    # bound on GitHub Actions once an earlier test had raised the suite's peak (575.82 MiB, run 45754246039; 2,893.64
+    # MiB on wilkcomp02 under a parent that had peaked at 3 GB, while the child's VmHWM was 440.45 MiB; measured, card
+    # R-10, 2026-11-25). `ru_maxrss` is used only where there is no /proc (macOS), and is printed beside VmHWM.
     probe = (
-        "import json, resource, sys, importlib.util; "
+        "import json, os, resource, sys, importlib.util; "
         f"spec = importlib.util.spec_from_file_location('c48b', {str(SCRIPT)!r}); "
         "m = importlib.util.module_from_spec(spec); sys.modules['c48b'] = m; spec.loader.exec_module(m); "
         f"res = m.build_crosswalk(gold_data={str(gold_dir / 'goldData.xlsx')!r}, "
         f"img_microbiomes={str(img_dir / 'img_m_microbiomes_72col.tsv.gz')!r}, "
         f"spire_dir={str(spire_dir)!r}, out_dir={str(out_dir)!r}); "
         "rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss; "
-        "rss_mb = (rss / (1024 * 1024)) if sys.platform == 'darwin' else (rss / 1024.0); "
-        "print(json.dumps({'peak_rss_mb': round(rss_mb, 2), 'summary': res}))"
+        "maxrss_mb = (rss / (1024 * 1024)) if sys.platform == 'darwin' else (rss / 1024.0); "
+        "st = '/proc/self/status'; "
+        "hwm_mb = (next(int(x.split()[1]) / 1024.0 for x in open(st) if x.startswith('VmHWM:')) "
+        "if os.path.exists(st) else None); "
+        "print(json.dumps({'hwm_mb': hwm_mb if hwm_mb is None else round(hwm_mb, 2), "
+        "'maxrss_mb': round(maxrss_mb, 2), 'summary': res}))"
     )
     env = dict(os.environ)
     env["OMP_NUM_THREADS"] = "1"
     proc = subprocess.run([sys.executable, "-I", "-c", probe], capture_output=True, text=True, env=env, check=True)
     payload = json.loads(proc.stdout.strip().splitlines()[-1])
-    assert payload["peak_rss_mb"] < 512.0, f"Peak RSS too high: {payload['peak_rss_mb']} MiB"
+    peak_mb = payload["hwm_mb"] if payload["hwm_mb"] is not None else payload["maxrss_mb"]
+    print(f"\nc48b 100x crosswalk in a child: VmHWM {payload['hwm_mb']} MiB, "
+          f"ru_maxrss {payload['maxrss_mb']} MiB (with its parent's peak)")
+    assert peak_mb < 512.0, (f"Peak RSS too high: {peak_mb} MiB (VmHWM {payload['hwm_mb']}, "
+                             f"ru_maxrss {payload['maxrss_mb']})")
     assert payload["summary"]["img_m_total_units"] == n_img
     assert payload["summary"]["img_m_novel_unrestricted_units"] == n_img - 10_000

@@ -13,25 +13,40 @@ in [`2026-11-25_audit.md`](../measurements/2026-11-25_audit.md); the cards are P
 
 **R0. What is running** (*measured*, 2026-11-25 20:50 CST; `ssh ... "systemctl --user is-active r26-11-4-wave-2.service;
 tail -n 6 /tmp/if2453/stages/r26-11-4-wave.out; df -h /tmp"` and, on `tower`, the tail of `_batch3_detached.log`):
-- `wilkcomp02`: `r26-11-4-wave-2.service` is active since 20:00:38, in `V2` mode `run`, from the mirror
-  `/tmp/if2453/ci/rel1125e` (card B-73 in it); the first wave stopped at 17:08:20 on `V2.ingest` (`LY-04`). `/tmp` has
-  427 GiB free. The wave is a loop typed into the unit; after it, waves are launched with
+- `wilkcomp02`: three launches of the wave so far, each stopped or restarted on `V2`. `r26-11-4-wave.service` stopped
+  at 17:08:20 on `V2.ingest` (`LY-04`; card B-73). `r26-11-4-wave-2.service` (20:00:38, mirror `rel1125e`) stopped at
+  21:41:26 on `V2.domains-pfam-38.2.plan`: DuckDB out of memory at its 244 MiB limit in
+  `domains._stage_uid_lengths` (`/tmp/if2453/stages/v2/logs/v2-2.log`; not a rate guard: `over_20pct []`). Card B-74
+  (`9b28770`, committed on `plan/task-cards` at 22:14 without a task branch) changed `src/biobox/l1/domains.py`, and
+  `r26-11-4-wave-3.service` was launched at 22:20:33 from the mirror `rel1125f`, before the `ci` run of that commit
+  had ended; at 23:05 it was scanning `V2`'s Pfam shards at about 76 threads (*measured*, `systemctl --user
+  list-units`, the logs' tails, `uptime`: load 98 with this session's test shards). Card B-74 was not read by the
+  audit. `/tmp` had 427 GiB free at 20:50. Each wave was a loop typed into the unit; after it, waves are launched with
   `scripts/stress/build_stage_pod/stage_wave.sh` (card R-07, RUNBOOK "A wave of stages"). The release train of
   `r26.11.4` is not launched: DEC-77 (5) needs the PI's review, and cards R-02, R-03 and R-05 change or test the
   clustering it would run.
 - `tower`: fetch batch 3 is running into `sources_incoming/` (142 GB there by `du -sh`); job lists for batches 4 and 5
   and their launch scripts are present. All URLs of the six job lists are now in `sources.yaml` (card R-08). The file
   name of one `RNA_VIROID` job in `_batch3.tsv` holds a slash and will fail.
-- GitHub Actions: `ci` failed on every push from `f5c644b` (2026-11-24 09:26 UTC) to `76bad80`, each time on the same
-  four tests (card R-01); the run of `0e85288`, which holds card B-73, failed on those four and no other.
+- GitHub Actions: `ci` failed on every push from `f5c644b` (2026-11-24 09:26 UTC) to `06850ce`, each time on the same
+  four tests (card R-01); the run of `0e85288`, which holds card B-73, failed on those four and no other. It was green
+  at `01e91cd` (2026-11-26 03:34 UTC, the merge of the first seven cards) and `4015cde`, and failed again at
+  `2ea134d` (card B-74's commit) on one memory test of card C-48b, repaired by card R-10.
 
 **R1. Cards of the audit** (rows in the merged table): R-01 (the four tests), R-04 (`release retire` reads its tars),
 R-05 (the watch's cap for a running cut), R-06 (four small defects), R-07 (`stage_wave.sh`), R-08 (`sources.yaml` and
 `fetch_to_tower.sh`) are merged together after one run of their tests on the merged tree (*measured*, `wilkcomp02`,
 2026-11-25: 952 passed in 637.65 s over the first five cards' files and `tests/r0`; 318 passed in 32.82 s over
 R-06's) and one `ci` run of the merged branch `task/R-int`. R-03 (an independent oracle for the hybrid methods) is
-merged as its 20 passing checks, with a finding the PI decided the same evening (R2 (0), DEC-78). R-02 (pruning that survives a kill, a format-1
-redo, the method in the records) follows.
+merged as its 20 passing checks, with a finding the PI decided the same evening (R2 (0), DEC-78). R-02 (pruning that
+survives a kill, a format-1 redo, the method in the ledger) is merged with R-05b, a follow-up it made necessary (the
+watch gives a cut under a format-1 plan no exemption, as the library now does): the first `ci` run of the two
+together (`8d8f85e`) failed on exactly that test of card R-05. The whole suite on the merged tree before R-05b
+(*measured*, `wilkcomp02`, 2026-11-25 22:00 to 23:10, `pod_pytest.sh R-int --shards 8`): shards 1, 2, 3, 4, 6, 7
+passed (776, 474, 387, 452, 662, 457; 16 skipped in all); shard 0 "1 failed, 469 passed, 4 skipped" (that R-05 test);
+shard 5 "1 failed, 505 passed, 4 skipped": `test_synthworld_intergenic.py::test_micro_replicons_runtime_within_budget`,
+a bound on CPU time (68.5 s against 56; 67.7 s again alone at 23:00) while wave-3 held about 76 threads; its code is
+unchanged since 2026-11-14 and no card of the audit touches it. It is to be run again on a quiet pod.
 
 **R2. For the PI** (none of these is an agent's to decide; the audit note §5 has the evidence):
 0. **Decided on 2026-11-25, about 21:20 CST ("keep the code, change the DEC-77 wording"; row DEC-78): what
@@ -61,6 +76,10 @@ redo, the method in the records) follows.
 7. `GUIDE.md`'s worked commands name `rN.3` and `r26.11.1`, which are archived (DEC-66).
 8. Card R-05's part (3) (the default of `train_est.py --cluster-method`, `hybrid-b1`, against `cascade` in the
    library) was withdrawn: it needs a test of card A-27 changed. `release_train.sh` always passes the method.
+9. A one-process `cluster.run()` writes no plan record (cards B-41, B-49), so for it the clustering method is in the
+   ledger only (card R-02); DEC-77 (2) names the plan and the ledger.
+10. Cards B-73 and B-74 each went from a stop of the wave to a relaunch within minutes, B-74 as one commit on
+    `plan/task-cards`; neither was read by an independent session before the build ran on it.
 
 **R3. Done outside a card, at the PI's word.** The orphan
 `/stor/work/Wilke/if2453/all-the-data/root_backups/root_rM2_20261114/.tmp.l1_and_records.tar.2921741` (9,838,919,680 B)
@@ -1252,7 +1271,7 @@ Last full suite on the integration branch before the C-11 merge: 1,053 passed, 1
 pinned image; 3 min 40 s wall for the slowest shard, against 13.5 min in one process). The skips
 need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the laptop (AGENTS.md §5.5).
 
-## Merged (209 rows counted one per card row as before, and measurements; F-02 has ten sessions in; C-48c has parts 2 and 3, and C-48e part 1, the inputs, in)
+## Merged (212 rows counted one per card row as before, and measurements; F-02 has ten sessions in; C-48c has parts 2 and 3, and C-48e part 1, the inputs, in)
 
 The count stood at 190 after C-38c. The twelve card rows and four note rows that follow were not written at their
 merges; the audit of 2026-11-25 wrote them from git and from the orchestrator's log
@@ -1261,6 +1280,9 @@ table's distinct card IDs are fewer (some cards have several rows).
 
 | Card | Merge | What it did | Audit notes |
 |---|---|---|---|
+| R-10 | `62d2694` | **The C-48b memory bound reads the child's own peak.** `tests/r1/test_c48b_env_crosswalk.py::test_bounded_rss_on_100x_synthetic_inputs` reads the child's `VmHWM` (`ru_maxrss` only without `/proc`); the 512 MiB bound is unchanged (`317bfd2`) | Opus agent (the R-01 agent) on `task/R-10`. Found when `ci` of `2ea134d` (card B-74's commit) failed on this test (`575.82 MiB`): B-74's new tests sort before it and raised the suite process's peak, which a child's `ru_maxrss` carries (card R-01). Reproduced on `wilkcomp02` under a parent that had held 3 GB: `Peak RSS too high: 2893.64 MiB`; after: 237 passed both ways (with `tests/r0`). *Measured* (`wilkcomp02`, 2026-11-25): the child's own peak is 443 MiB (about 14% under the bound). Shown able to fail (600 MiB added in the child: 830.56 MiB). Every other `ru_maxrss` site in `tests/` was read: none bounds a child's `ru_maxrss` (the table is in the agent's report; the `runstep.measured` helper does not carry the parent's peak: 75,235,328 B under a parent that had held 3 GB). The card listed eight files; one needed the change. |
+| R-05b | `11731e7` | **Follow-up to R-05 after R-02: a live cut under a format-1 plan gets no DEC-77 cap.** `r50_watch._live_cut_cap` returns the default cap when the plan's `format` is 1, as `l2.cluster.cut_createindex_estimate` now returns None for it; `test_format1_plan_work_dir_and_no_exemption` replaces the test that asserted the exemption (`5ca7589`) | Opus agent (the R-05 agent) on `task/R-05b`, branched from the integration branch. Found by the `ci` run of R-02 and R-05 together (`8d8f85e`: `assert None is not None`). Seen failing first: 4 of 60 (`assert 20000.0 == 280.0`). Agent's run on the merged tree: 509 passed in 354.08 s (the watch, train, R-02 and `tests/r0` files). No card was written before the work: it is a follow-up inside R-05, recorded here. |
+| R-02 | `8d8f85e` | **Clustering scratch pruning survives a kill, a format-1 plan can be redone, and the method is recorded.** `l2/cluster.py`: `clean_consumed` writes its `.pruned.json` entry (temporary name, rename) before it removes anything, and a later call for the same step finishes a recorded prune or prunes again what a redo wrote; `_cut_doc` writes the pre-B-71 cut record and keeps the pre-B-71 refusal for a plan of `PLAN_FORMAT` 1, and `cut_createindex_estimate` grants it no exemption; a clustering by a method other than `cascade` writes one more ledger row per level with the reason `method:<mode>` (`method_rows`, `ledger_method`; `run`, `finish` and `reuse`), a `cascade` ledger staying byte for byte what it was. `tests/r1/test_r02_cluster_prune_crash.py` (79 tests, 12 with MMseqs2) (`6c0d2e2`) | Opus agent on `task/R-02`, audited by the orchestrating session (the diff of `cluster.py` read in full; `stage.py` unchanged: its resume already calls `clean_consumed` for every call after `lost` and the redo). Seen failing first: 78 of 79 on the code before the card (`a target was removed and no prune is recorded`; `cluster.nr50.15.prefilter.cut: ['createindex_cpu_min']`). Agent's runs on `wilkcomp02`: 171 passed and the one test card R-01 repairs failed (its branch predates R-01); `test_cluster_split.py`, `test_cluster_reuse.py`, `tests/r0`: 254 passed; `test_build_stage.py`: 49 passed. `params_hash` and `cluster_uid` are unchanged. Open: a one-process `run()` writes no plan record, so there the method is in the ledger only (R2 (9)). |
 | R-03 | `e3230aa` | **An independent oracle for the hybrid clustering modes.** `tests/r2/test_r03_hybrid_oracle.py` (20 tests, MMseqs2 needed, skipped without it): NR50 of `hybrid-b1` equals `mmseqs cluster ... -s 2 --cluster-steps 2` and NR50 of `hybrid-a` the default `mmseqs cluster`, on the build's own `rep90`, cluster for cluster and call for call (19 and 23 calls); NR90 of every mode equals one `mmseqs linclust` call given the three flags of the code's decomposition; planted families are recovered; three inputs (the S0 fixture, a planted set, a near-threshold set, fixed seeds) | Opus agent on `task/R-03`, audited by the orchestrating session. **Finding, open item R2 (0)**: plain `mmseqs linclust` differs from the build in three flags; the 13 tests of that (`5811b41`, `tests/r2/test_r03_nr90_plain_linclust.py`) stay red on the branch, unmerged, for the PI. The card listed one file; the second was authorised by the orchestrating session. Shown able to fail: a one-step oracle gives 166 against 163 NR50 clusters on the near-threshold set and 15 against 19 calls. Limit: only the call checks tell two cascade steps from three. Agent's run on `wilkcomp02`: 20 passed in 150.44 s; on the merged tree with `tests/r0`: 244 passed in 148.45 s. |
 | R-08 | `a58b9ef` | **The fetches to `tower` of 2026-11-25 are listed in `sources.yaml`, and their script is in the tree.** 83 `tower_*` entries for the six job lists on `tower` (figshare files by exact URL, 209 lines; Zenodo by record), `scripts/orchestrator/fetch_to_tower.sh` (refuses, before any request, a URL that no `sources.yaml` entry covers; `--check`), `tests/r1/test_r08_fetch_to_tower.py`, `planning/measurements/2026-11-25_tower_sources_incoming.md` (`d600173`, `2ba0cc8`) | Sonnet agent on `task/R-08`, audited by the orchestrating session (the script and the entries read; the first commit's generic figshare form `files/{file_id}` matched every figshare file and was sent back). Seen failing first: the script absent (`exit 127`); then three unlisted figshare ids accepted (`assert 0 == 2`). *Measured* on `tower`, 2026-11-25 20:09 to 20:23: 119 files landed, 138,734,291,679 B, 36 directories; 690 jobs in six lists, all covered (`fetch_to_tower.sh --check`). Agent's run: 331 passed. Deviation: the test reads `sources.yaml` through `ROOT.joinpath` and skips in the image, which does not ship that file (`tests/r0/test_image_files.py` looks for the `ROOT / "..."` form). For the PI: the non-sequence files, the missing licences and seven hosts not approved by name (the note's §8). |
 | R-07 | `cce8fa0` | **The wave of stage builds is a script in the tree.** `scripts/stress/build_stage_pod/stage_wave.sh` (the stages in order through `stage_queue.sh`; stops at the first non-zero exit, a missing `DONE`, or the data root's `STOP`; `--resume-at STAGE --from-mode MODE`), `tests/r1/test_r07_stage_wave.py`, RUNBOOK "A wave of stages" (`8e2d24c`) | Sonnet agent on `task/R-07`, audited by the orchestrating session (the script read in full). Seen failing first: the script absent. Orchestrator's run on `wilkcomp02`: 475 passed in 105.75 s (its file, `test_stage_driver.py`, `tests/r0`). Not run on a real stage. |
