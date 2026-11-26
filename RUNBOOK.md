@@ -289,7 +289,8 @@ exactly), 3,096 zero-hit proteins, against 28.13 CPU-min *derived* from §3.8's 
 estimates the step from the stage's inputs and says so in one line, `<stage>.genecall: N genomes ...
 estimated at X CPU-minutes in one process`: every genome at the rate of the mode the code calls it in
 (with `--genecall-mode default`, policy p2: viruses gv-meta; plasmids, and prokaryote genomes under 100 kb, meta; other prokaryotes single;
-with `--genecall-mode gv-meta`, used on unbinned metagenome stages such as `LR1`.. and `SPX2`.. under DEC-71 so TAG/TGA-recoded jumbophage and CPR contigs are called with `pyrodigal-gv` meta models, every genome is called and priced as `gv-meta`, and `"genecall_mode": "gv-meta"` is recorded in `plan.json`, omitted on `default`) and the
+with `--genecall-mode gv-meta`, used on unbinned metagenome stages such as `LR1`.. and `SPX2`.. under DEC-71 so TAG/TGA-recoded jumbophage and CPR contigs are called with `pyrodigal-gv` meta models, every genome is called and priced as `gv-meta`, and `"genecall_mode": "gv-meta"` is recorded in `plan.json`, omitted on `default`;
+with `--genecall-mode gv-meta-c25`, card B-69, the same and, where the `pyrodigal-gv` meta models call a contig in code 4, a test of its Trp codon use decides between code 4 and code 25 of the CPR, `UGA` read as Gly: `CODE25_*` in `src/biobox/l1/genecall.py`; `LR1.conf` uses it) and the
 topology of each contig, per base the caller reads (a circular contig is read with up to 50 kb of its other
 end on each side), times the step's overhead, plus a process's own 15 s (rates and sources in section 10).
 A genome all of whose contigs another stage (or another genome of the stage) owns is not called; its skip is
@@ -791,7 +792,7 @@ What differs between stages is in `scripts/stress/build_stage_pod/stages/<STAGE>
 `#` comments: `STAGE`; `NOTE` (the measurement note each value comes from, one or more); `INPUTS` (the staged inputs
 directory); `SUM=<sha256> <file>` for `genomes.json`, `objects.json` and the FASTA objects, as the note recorded them;
 `DEPTH` (`called` or `annotated`); `LIBRARY=pfam 38.2 <cutoff>` (annotated only; the driver knows Pfam 38.2's HMM file
-and no other); `CRISPR=yes|no`; optionally `MIN_CONTIG_LEN`, `GENECALL_MODE=default|gv-meta` (card B-67, DEC-71: passes `--genecall-mode gv-meta` to `build-stage` and prices `estimate`/`rates` with `gv-meta` rates), `AFTER` (the stages this one waits for),
+and no other); `CRISPR=yes|no`; optionally `MIN_CONTIG_LEN`, `GENECALL_MODE=default|gv-meta|gv-meta-c25` (cards B-67 and B-69, DEC-71: passes `--genecall-mode <mode>` to `build-stage` and prices `estimate`/`rates` with `gv-meta` rates), `AFTER` (the stages this one waits for),
 `JUDGE=<ingest|genecall> <CPU-minutes> <note>` (a figure the note says that step's records are judged against, beside
 the code's own estimate, as the group `<step>.note`), `EXPECT=held_by <STAGE> <n> <note>` (the contigs of this stage
 that an earlier stage holds, as the note counted them: `estimate` stops when the root says otherwise) and
@@ -932,6 +933,22 @@ builds and verifies the search pack in parts (card W-35); runs `scripts/release_
 writes `$WORK/root_added.tsv` (size and sha256 of every file added to the root, for the `/stor/work`
 durable tar backup) and `$WORK/announcement.md`. It never deletes or moves anything of an earlier
 release.
+
+**The clustering method (DEC-77; cards B-71, B-72, A-27).** `release_train.sh` clusters with
+`CLUSTER_METHOD` (or `--cluster-method`), whose default in the train is `hybrid-b1`: linclust for NR90, then
+a two-step cascade (`-s 1,2`) for NR50. The other methods are `cascade` (the method of every release up to
+`r26.11.3`, and the default of `bio-box build-stage --cluster-method` and `bio-box release cluster plan`),
+`hybrid-a` and `linclust`. The method is in the plan (`PLAN_FORMAT = 2`, key `method`); a resumed train keeps
+the method of its first launch, and a release never reuses the clustering of a release made with another
+method. `--dry-run` prints the method with the estimate. With a hybrid method the finish is two steps
+(`cluster.finish.nr90`, `cluster.finish.nr50`), and intermediates of MMseqs2 that no later step reads are
+removed from the scratch as soon as the step after them is recorded (`clean_consumed`; the removals are
+listed in `<work dir>/.pruned.json`). The train's guards default to `TMP_MIN_GB=100`, `SCRATCH_MAX_GB=350`
+and `START_MIN_GB=250`. A `cluster_uid` is made from a cluster's members and the level's parameters and does
+not contain the method: a cluster whose members are the same keeps its `cluster_uid` across methods, and the
+share of clusters whose members change with the method is measured in
+`planning/measurements/2026-11-24_c38c_linclust_vs_cascade.md`. The first release train with a hybrid method
+(`r26.11.4`) is launched only after the PI's review of the three cards (DEC-77 (5)).
 
 ```bash
 systemd-run --user --unit=c46-driver-run --collect -p MemoryMax=4G -p MemorySwapMax=0 \

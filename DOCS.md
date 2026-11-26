@@ -17,7 +17,7 @@ Single entrypoint to every document in the repository. All documentation lives d
 
 | Path | What it holds |
 |---|---|
-| [`planning/DECISIONS.md`](planning/DECISIONS.md) | **Highest authority (`DEC-01`..`DEC-69`)**: append-only log of architectural, operational, storage, and source-scope decisions |
+| [`planning/DECISIONS.md`](planning/DECISIONS.md) | **Highest authority (`DEC-01`..`DEC-77`)**: append-only log of architectural, operational, storage, and source-scope decisions |
 | [`planning/CATALOG_GOAL.md`](planning/CATALOG_GOAL.md) | **Catalog roadmap & deferred-data register**: built stages, staged waves, reversible selection/filter registers, and queued viral, long-read, single-cell, integrative-MGE, niche, organellar, circular-RNA/Obelisk, and microbial-eukaryote sources |
 | [`sources.yaml`](sources.yaml) | Approved external data sources, URLs, licences, `redistributable` flags, and verified `sha256`/`md5` checksums |
 | [`refdb.yaml`](refdb.yaml), [`golden.yaml`](golden.yaml), [`golden.lock.yaml`](golden.lock.yaml) | Frozen reference libraries (Pfam 38.2, Rfam 15.1) and the 15-genome golden test set |
@@ -46,7 +46,8 @@ Single entrypoint to every document in the repository. All documentation lives d
 ## 4. Empirical Measurements, Stage Reports & Release Notes
 
 - **[`planning/measurements/README.md`](planning/measurements/README.md)** — topical index of every empirical benchmark, stage build report, and rolling release record, including:
-  - **Rolling releases**: [`r26.11.2`](planning/measurements/2026-11-21_release_r26.11.2.md) (`74.16 Gbp`, `11` stages, live `--release latest`), [`r26.11.1`](planning/measurements/2026-11-16_release_r26.11.1.md) (`59.88 Gbp`, `9` stages)
+  - **Rolling releases**: [`r26.11.3`](planning/measurements/2026-11-24_release_r26.11.3.md) (`119.90 Gbp`, `13` stages, live `--release latest`), [`r26.11.2`](planning/measurements/2026-11-21_release_r26.11.2.md) (`74.16 Gbp`, `11` stages, live beside it), [`r26.11.1`](planning/measurements/2026-11-16_release_r26.11.1.md) (`59.88 Gbp`, `9` stages, retired under `DEC-66` on 2026-11-25)
+  - **Audits**: [`2026-11-25_audit.md`](planning/measurements/2026-11-25_audit.md) (2026-11-22 to 25), [`2026-11-20_audit_of_1117_1120.md`](planning/measurements/2026-11-20_audit_of_1117_1120.md)
   - **Recent built stages**: [`SPX1`](planning/measurements/2026-11-23_stage_SPX1.md) (`35.69 Gbp` SPIRE metagenomes), [`G1`](planning/measurements/2026-11-23_stage_G1.md) (`10.04 Gbp` GlobDB archaea), [`V1`](planning/measurements/2026-11-20_stage_V1.md) (`5.18 Gbp` UHGV phages), [`C5`](planning/measurements/2026-11-20_stage_C5.md) (`9.11 Gbp` complete prokaryotes), [`PL1`](planning/measurements/2026-11-15_stage_PL1.md) (`5.92 Gbp` PLSDB), [`H1`](planning/measurements/2026-11-15_stage_H1.md) (`1.82 Gbp` huge phages)
   - **Storage & harvest inventories**: [`2026-11-20_tower_relay.md`](planning/measurements/2026-11-20_tower_relay.md), [`2026-11-18_jgi_harvest_inventory.md`](planning/measurements/2026-11-18_jgi_harvest_inventory.md)
 
