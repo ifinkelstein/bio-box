@@ -1,0 +1,15 @@
+# Card R-12 (2026-11-26): a job list for scripts/orchestrator/fetch_to_tower.sh, five tab-separated fields:
+# <name> <file> <url> <md5 or -> <licence>. Built from read-only copies of tower's lists of 2026-11-25; nothing
+# was fetched to build it. See scripts/orchestrator/tower_jobs/README.md and
+# planning/measurements/2026-11-26_tower_job_lists.md.
+# Release: none assigned by a decision row (after r26.11.6). Run order 18 of 19. Source: _batch4.tsv, _batch3.tsv.
+
+# DSV70 - the MAG archive of EBI BioStudies S-BSST2227 that failed in batch 4 (FAIL_CURL: curl 28 twice, then 56;
+#   _batch4_detached.log). No provider md5. About 4.44 GB by the batch-4 worker's statement (estimate).
+DSV70	DSV70_mag.tar.gz	https://ftp.ebi.ac.uk/biostudies/fire/S-BSST/227/S-BSST2227/Files/DSV70_mag.tar.gz	-	CC0
+
+# EUK_Y1000 - the Y1000+ genome zip (figshare 22802147) that batch 3 deleted after its md5 matched (FAIL_ZIP).
+#   4,731,016,231 bytes and md5 by the provider record (batch3_resolved.json).
+# DO NOT RUN THIS LINE BEFORE CARD R-13 IS MERGED: until then fetch_to_tower.sh removes a file whose archive test
+#   fails even when its md5 matched, which is what deleted it in batch 3.
+EUK_Y1000	y1000p_genome_files.zip	https://ndownloader.figshare.com/files/40535165	f3f5391df84c4133ba82fb45b0633652	CC0

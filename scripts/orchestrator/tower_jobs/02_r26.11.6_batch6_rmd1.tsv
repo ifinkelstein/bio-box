@@ -1,0 +1,22 @@
+# Card R-12 (2026-11-26): a job list for scripts/orchestrator/fetch_to_tower.sh, five tab-separated fields:
+# <name> <file> <url> <md5 or -> <licence>. Built from read-only copies of tower's lists of 2026-11-25; nothing
+# was fetched to build it. See scripts/orchestrator/tower_jobs/README.md and
+# planning/measurements/2026-11-26_tower_job_lists.md.
+# Release: r26.11.6. Run order 2 of 19. Source: _batch6.tsv.
+
+# batch6_symbionts/RMD1 - Tara Pacific Reef Microbiomics RMD1 summary/mOTU/BGC/supplementary tables (Zenodo metadata only; genomes unpacked on ETHZ/PRJEB47249) (zenodo:17844029, cc-by-4.0)
+#   14 job(s), 15,133,291 bytes by the provider record
+batch6_symbionts/RMD1	supplementary-table-9.xlsx	https://zenodo.org/api/records/17844029/files/supplementary-table-9.xlsx/content	2cc41cb73e72ec439a6046cd5287c7f3	cc-by-4.0
+batch6_symbionts/RMD1	supplementary-table-11.xlsx	https://zenodo.org/api/records/17844029/files/supplementary-table-11.xlsx/content	158179419e552cf28bcf86e7dbaa4c64	cc-by-4.0
+batch6_symbionts/RMD1	supplementary-table-1.xlsx	https://zenodo.org/api/records/17844029/files/supplementary-table-1.xlsx/content	4dc2a298b3fd108ea71afe2875fa4317	cc-by-4.0
+batch6_symbionts/RMD1	supplementary-table-4.xlsx	https://zenodo.org/api/records/17844029/files/supplementary-table-4.xlsx/content	3d07614e919c3e9bc2d1d38b697a9830	cc-by-4.0
+batch6_symbionts/RMD1	supplementary-table-12.xlsx	https://zenodo.org/api/records/17844029/files/supplementary-table-12.xlsx/content	d44ef58cb642d0be08d15707b5914ec1	cc-by-4.0
+batch6_symbionts/RMD1	supplementary-table-10.xlsx	https://zenodo.org/api/records/17844029/files/supplementary-table-10.xlsx/content	52aefb0b7016901edf91849704a9870e	cc-by-4.0
+batch6_symbionts/RMD1	supplementary-table-8.xlsx	https://zenodo.org/api/records/17844029/files/supplementary-table-8.xlsx/content	e0a2584fa7c3bc7a115e335029d03046	cc-by-4.0
+batch6_symbionts/RMD1	supplementary-table-6.xlsx	https://zenodo.org/api/records/17844029/files/supplementary-table-6.xlsx/content	008c66581e525c2bd803b229ac8163cb	cc-by-4.0
+batch6_symbionts/RMD1	supplementary-table-7.xlsx	https://zenodo.org/api/records/17844029/files/supplementary-table-7.xlsx/content	fc5cad61031608c46e32cf835602c097	cc-by-4.0
+batch6_symbionts/RMD1	RMD-motus-membership.tsv	https://zenodo.org/api/records/17844029/files/RMD-motus-membership.tsv/content	fe0daab8a63771553d038f22ecc3cd64	cc-by-4.0
+batch6_symbionts/RMD1	genomes-aggregated-summary.tsv	https://zenodo.org/api/records/17844029/files/genomes-aggregated-summary.tsv/content	7b8bbdaa5f0f8e838cfadf96269b786b	cc-by-4.0
+batch6_symbionts/RMD1	supplementary-table-2.xlsx	https://zenodo.org/api/records/17844029/files/supplementary-table-2.xlsx/content	33318005cbb55c6eeb98b6d47898a0c8	cc-by-4.0
+batch6_symbionts/RMD1	supplementary-table-3.xlsx	https://zenodo.org/api/records/17844029/files/supplementary-table-3.xlsx/content	46d0fc75bb97319b5f185a6827d69231	cc-by-4.0
+batch6_symbionts/RMD1	supplementary-table-5.xlsx	https://zenodo.org/api/records/17844029/files/supplementary-table-5.xlsx/content	1498cc3ac287d348629f1e980bfdb1bf	cc-by-4.0

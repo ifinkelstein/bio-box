@@ -1,0 +1,9 @@
+# Card R-12 (2026-11-26): a job list for scripts/orchestrator/fetch_to_tower.sh, five tab-separated fields:
+# <name> <file> <url> <md5 or -> <licence>. Built from read-only copies of tower's lists of 2026-11-25; nothing
+# was fetched to build it. See scripts/orchestrator/tower_jobs/README.md and
+# planning/measurements/2026-11-26_tower_job_lists.md.
+# Release: none assigned by a decision row (after r26.11.6). Run order 13 of 19. Source: batch6b_ncbi manifest.
+
+# AMD_CPRV1 - NCBI assemblies of PRJNA648034 (manifest(s) batch6b_ncbi/AMD_CPRV1/MANIFEST_AMD_CPRV1_*.tsv on tower, written 2026-11-25 21:24 to
+#   21:26 CST); 1 assemblies, 292,431,986 bases by the manifests' base_count; about 0.0848 GB gzip by the worker's estimate
+batch6b_ncbi/AMD_CPRV1/assemblies	GCA_016276955.3_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/016/276/955/GCA_016276955.3_ASM1627695v3/GCA_016276955.3_ASM1627695v3_genomic.fna.gz	-	INSDC

@@ -1,0 +1,43 @@
+# Card R-12 (2026-11-26): a job list for scripts/orchestrator/fetch_to_tower.sh, five tab-separated fields:
+# <name> <file> <url> <md5 or -> <licence>. Built from read-only copies of tower's lists of 2026-11-25; nothing
+# was fetched to build it. See scripts/orchestrator/tower_jobs/README.md and
+# planning/measurements/2026-11-26_tower_job_lists.md.
+# Release: none assigned by a decision row (after r26.11.6). Run order 11 of 19. Source: batch6b_ncbi manifest.
+
+# CODE4_ACTINO1 - NCBI assemblies of PRJNA1366607 (manifest(s) batch6b_ncbi/CODE4_ACTINO1/MANIFEST_CODE4_ACTINO1_*.tsv on tower, written 2026-11-25 21:24 to
+#   21:26 CST); 35 assemblies, 44,091,220 bases by the manifests' base_count; about 0.0128 GB gzip by the worker's estimate
+batch6b_ncbi/CODE4_ACTINO1/assemblies	GCA_056388515.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/056/388/515/GCA_056388515.1_ASM5638851v1/GCA_056388515.1_ASM5638851v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/CODE4_ACTINO1/assemblies	GCA_056388535.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/056/388/535/GCA_056388535.1_ASM5638853v1/GCA_056388535.1_ASM5638853v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/CODE4_ACTINO1/assemblies	GCA_056388555.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/056/388/555/GCA_056388555.1_ASM5638855v1/GCA_056388555.1_ASM5638855v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/CODE4_ACTINO1/assemblies	GCA_056388575.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/056/388/575/GCA_056388575.1_ASM5638857v1/GCA_056388575.1_ASM5638857v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/CODE4_ACTINO1/assemblies	GCA_056388595.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/056/388/595/GCA_056388595.1_ASM5638859v1/GCA_056388595.1_ASM5638859v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/CODE4_ACTINO1/assemblies	GCA_056388615.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/056/388/615/GCA_056388615.1_ASM5638861v1/GCA_056388615.1_ASM5638861v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/CODE4_ACTINO1/assemblies	GCA_056388635.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/056/388/635/GCA_056388635.1_ASM5638863v1/GCA_056388635.1_ASM5638863v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/CODE4_ACTINO1/assemblies	GCA_056388655.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/056/388/655/GCA_056388655.1_ASM5638865v1/GCA_056388655.1_ASM5638865v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/CODE4_ACTINO1/assemblies	GCA_056388675.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/056/388/675/GCA_056388675.1_ASM5638867v1/GCA_056388675.1_ASM5638867v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/CODE4_ACTINO1/assemblies	GCA_056388695.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/056/388/695/GCA_056388695.1_ASM5638869v1/GCA_056388695.1_ASM5638869v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/CODE4_ACTINO1/assemblies	GCA_056388715.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/056/388/715/GCA_056388715.1_ASM5638871v1/GCA_056388715.1_ASM5638871v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/CODE4_ACTINO1/assemblies	GCA_056388735.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/056/388/735/GCA_056388735.1_ASM5638873v1/GCA_056388735.1_ASM5638873v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/CODE4_ACTINO1/assemblies	GCA_056388755.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/056/388/755/GCA_056388755.1_ASM5638875v1/GCA_056388755.1_ASM5638875v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/CODE4_ACTINO1/assemblies	GCA_056388775.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/056/388/775/GCA_056388775.1_ASM5638877v1/GCA_056388775.1_ASM5638877v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/CODE4_ACTINO1/assemblies	GCA_056388795.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/056/388/795/GCA_056388795.1_ASM5638879v1/GCA_056388795.1_ASM5638879v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/CODE4_ACTINO1/assemblies	GCA_056388805.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/056/388/805/GCA_056388805.1_ASM5638880v1/GCA_056388805.1_ASM5638880v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/CODE4_ACTINO1/assemblies	GCA_056388835.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/056/388/835/GCA_056388835.1_ASM5638883v1/GCA_056388835.1_ASM5638883v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/CODE4_ACTINO1/assemblies	GCA_056388855.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/056/388/855/GCA_056388855.1_ASM5638885v1/GCA_056388855.1_ASM5638885v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/CODE4_ACTINO1/assemblies	GCA_056388875.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/056/388/875/GCA_056388875.1_ASM5638887v1/GCA_056388875.1_ASM5638887v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/CODE4_ACTINO1/assemblies	GCA_056388895.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/056/388/895/GCA_056388895.1_ASM5638889v1/GCA_056388895.1_ASM5638889v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/CODE4_ACTINO1/assemblies	GCA_056388915.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/056/388/915/GCA_056388915.1_ASM5638891v1/GCA_056388915.1_ASM5638891v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/CODE4_ACTINO1/assemblies	GCA_056388935.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/056/388/935/GCA_056388935.1_ASM5638893v1/GCA_056388935.1_ASM5638893v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/CODE4_ACTINO1/assemblies	GCA_056388955.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/056/388/955/GCA_056388955.1_ASM5638895v1/GCA_056388955.1_ASM5638895v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/CODE4_ACTINO1/assemblies	GCA_056388975.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/056/388/975/GCA_056388975.1_ASM5638897v1/GCA_056388975.1_ASM5638897v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/CODE4_ACTINO1/assemblies	GCA_056388995.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/056/388/995/GCA_056388995.1_ASM5638899v1/GCA_056388995.1_ASM5638899v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/CODE4_ACTINO1/assemblies	GCA_056389015.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/056/389/015/GCA_056389015.1_ASM5638901v1/GCA_056389015.1_ASM5638901v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/CODE4_ACTINO1/assemblies	GCA_056389035.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/056/389/035/GCA_056389035.1_ASM5638903v1/GCA_056389035.1_ASM5638903v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/CODE4_ACTINO1/assemblies	GCA_056389055.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/056/389/055/GCA_056389055.1_ASM5638905v1/GCA_056389055.1_ASM5638905v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/CODE4_ACTINO1/assemblies	GCA_056389075.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/056/389/075/GCA_056389075.1_ASM5638907v1/GCA_056389075.1_ASM5638907v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/CODE4_ACTINO1/assemblies	GCA_056389095.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/056/389/095/GCA_056389095.1_ASM5638909v1/GCA_056389095.1_ASM5638909v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/CODE4_ACTINO1/assemblies	GCA_056389115.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/056/389/115/GCA_056389115.1_ASM5638911v1/GCA_056389115.1_ASM5638911v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/CODE4_ACTINO1/assemblies	GCA_056389135.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/056/389/135/GCA_056389135.1_ASM5638913v1/GCA_056389135.1_ASM5638913v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/CODE4_ACTINO1/assemblies	GCA_056389155.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/056/389/155/GCA_056389155.1_ASM5638915v1/GCA_056389155.1_ASM5638915v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/CODE4_ACTINO1/assemblies	GCA_056389175.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/056/389/175/GCA_056389175.1_ASM5638917v1/GCA_056389175.1_ASM5638917v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/CODE4_ACTINO1/assemblies	GCA_056389195.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/056/389/195/GCA_056389195.1_ASM5638919v1/GCA_056389195.1_ASM5638919v1_genomic.fna.gz	-	INSDC
