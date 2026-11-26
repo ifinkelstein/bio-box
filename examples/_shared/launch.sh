@@ -72,8 +72,7 @@ search_mem_gb() {  # derive `search hmm --mem-gb` from MEM (2G headroom, min 1);
   elif [[ "$raw" =~ ^([0-9]+)[Tt]([Ii]?[Bb]?)?$ ]]; then
     gb=$((10#${BASH_REMATCH[1]} * 1024))
   else
-    echo 14
-    return
+    die "search_mem_gb: cannot parse MEM='$raw' (want an integer with G, GB, GiB, M or T; or set SEARCH_MEM_GB)"
   fi
   if [ "$gb" -gt 2 ]; then
     echo $((gb - 2))
