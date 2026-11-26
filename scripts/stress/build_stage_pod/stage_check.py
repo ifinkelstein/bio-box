@@ -15,11 +15,17 @@ What it asserts (each a line of `failed`, exit 1 when any):
    depth recorded (`stage.stage_incomplete`, the release train's own check).
 4. Contigs and genes, in DuckDB with a memory cap and spilling (a stage of millions of contigs is never held in
    Python): the contigs `genome_input` lists are exactly those the stage stores and those another stage holds
-   (DEC-26), none both, none held by two stages; the gene-call ledger's skips for another stage are exactly those
-   contigs with that stage's name, and its within-stage rows (`owned_by:<S>`, `owned_by:<S>/<genome_uid>`, card
-   C-47's correction: the owner's stage is compared as a whole name) are counted apart; every stored contig has gene
-   rows or a ledger row; no contig has gene rows that the stage does not store; with a least contig length, no
-   stored contig under it. New distinct proteins against every other stage's `protein_seq`.
+   (DEC-26), none both, none held by two stages. A stage stores a contig when its index holds the contig's default
+   variant; a row with `is_default_variant` false is another raw variant of a contig (same `contig_uid`, other
+   `raw_digest`: `store._write_tables`, data_layer_and_tests.md §2A.3), allowed for a contig this stage or another
+   stores and counted apart (card R-17). Every contig of the stage's index has exactly one default variant among all
+   stages, and no row of it repeats a `(contig_uid, raw_digest)` another stage's index holds (ingest writes only new
+   pairs); a non-default row whose `raw_digest` cannot be read fails. The gene-call ledger's skips for another
+   stage are exactly those contigs with that stage's name, and its within-stage rows (`owned_by:<S>`,
+   `owned_by:<S>/<genome_uid>`, card C-47's correction: the owner's stage is compared as a whole name) are counted
+   apart; every stored contig has gene rows or a ledger row; no contig has gene rows that the stage does not store;
+   with a least contig length, no contig of the index under it. New distinct proteins against every other stage's
+   `protein_seq`.
 5. With a library: the scan plan's proteins are the stage's distinct proteins and the proteins of contigs other
    stages own (card C-38h); the rows copied from other stages (card B-47b) equal theirs row for row, column for
    column; with --expect-copy (the rehearsal) at least one protein is copied. Without a library: no domain record.
@@ -259,20 +265,41 @@ def main() -> int:
     others = sorted(d.name.removeprefix("stage=") for d in base.glob("stage=*") if d.is_dir() and d.name != f"stage={st}")
     con.execute(f"CREATE TEMP TABLE gi AS SELECT contig_uid, genome_uid, kind, genetic_code, is_circular, "
                 f"assembly_quality FROM {src(gi_files, [('contig_uid', 'BLOB'), ('genome_uid', 'BLOB'), ('kind', 'VARCHAR'), ('genetic_code', 'INTEGER'), ('is_circular', 'BOOLEAN'), ('assembly_quality', 'VARCHAR')])}")
-    # every row of the stage's index, as c47_check.py's `owned` (the bases are its default variants' only); another
-    # stage's rows count only as default variants, as its `stored_by`
-    con.execute(f"CREATE TEMP TABLE ci_rows AS SELECT contig_uid, contig_len, is_default_variant FROM "
-                f"{src(ci_files, [('contig_uid', 'BLOB'), ('contig_len', 'BIGINT'), ('is_default_variant', 'BOOLEAN')])}")
-    con.execute("CREATE TEMP TABLE ci AS SELECT contig_uid, max(contig_len) AS contig_len FROM ci_rows "
+    no_rd: list[str] = []  # stages whose index files hold no raw_digest (only hand-built test roots; the schema has it)
+
+    def rd_col(ps, s) -> str:
+        if all("raw_digest" in pq.read_schema(p).names for p in ps):
+            return "raw_digest"
+        no_rd.append(s)
+        return "NULL::BLOB AS raw_digest"
+
+    # every row of the stage's index (card R-17): `ci_all` is every contig it has a row of (c47_check.py's `owned`,
+    # this check's `ci` before card R-17), `ci` the contigs it stores, those whose default variant it holds (the bases
+    # are those rows' only, as before); another stage's rows are read whole for the contigs of this stage, so that
+    # its default variants (`held`, as c47_check.py's `stored_by`) and its raw digests can be compared
+    con.execute("CREATE TEMP TABLE ci_rows AS " + (
+        f"SELECT contig_uid, {rd_col(ci_files, st)}, contig_len, is_default_variant FROM {rp(ci_files)}" if ci_files
+        else empty([("contig_uid", "BLOB"), ("raw_digest", "BLOB"), ("contig_len", "BIGINT"),
+                    ("is_default_variant", "BOOLEAN")])))
+    con.execute("CREATE TEMP TABLE ci_all AS SELECT contig_uid, max(contig_len) AS contig_len FROM ci_rows "
                 "GROUP BY contig_uid")
+    con.execute("CREATE TEMP TABLE ci AS SELECT contig_uid, max(contig_len) AS contig_len FROM ci_rows "
+                "GROUP BY contig_uid HAVING bool_or(is_default_variant)")
     parts = []
     for s in others:
         fs = files(root, s, "ingest", f"{INDEX_DIR}/stage={s}/")
         if fs:
-            parts.append(f"SELECT contig_uid, {q(s)} AS st FROM {rp(fs)} WHERE is_default_variant")
-    held_src = " UNION ALL ".join(parts) if parts else empty([("contig_uid", "BLOB"), ("st", "VARCHAR")])
-    con.execute(f"CREATE TEMP TABLE held AS SELECT contig_uid, min(st) AS st, count(DISTINCT st) AS m FROM ({held_src}) "
-                "SEMI JOIN (SELECT DISTINCT contig_uid FROM gi) USING (contig_uid) GROUP BY contig_uid")
+            parts.append(f"SELECT contig_uid, {rd_col(fs, s)}, is_default_variant, {q(s)} AS st FROM {rp(fs)}")
+    other_src = " UNION ALL ".join(parts) if parts else empty(
+        [("contig_uid", "BLOB"), ("raw_digest", "BLOB"), ("is_default_variant", "BOOLEAN"), ("st", "VARCHAR")])
+    con.execute(f"CREATE TEMP TABLE other_rows AS SELECT * FROM ({other_src}) SEMI JOIN "
+                "(SELECT contig_uid FROM gi UNION SELECT contig_uid FROM ci_rows) USING (contig_uid)")
+    con.execute("CREATE TEMP TABLE held AS SELECT contig_uid, min(st) AS st, count(DISTINCT st) AS m FROM other_rows "
+                "SEMI JOIN (SELECT DISTINCT contig_uid FROM gi) USING (contig_uid) WHERE is_default_variant "
+                "GROUP BY contig_uid")
+    # contigs of which the stage holds only non-default rows: variants of contigs another stage stores
+    con.execute("CREATE TEMP TABLE var AS SELECT contig_uid, count(*) AS n, sum(contig_len) AS bases FROM ci_rows "
+                "GROUP BY contig_uid HAVING NOT bool_or(is_default_variant)")
     led_files = files(root, st, "genecall", f"ledger/stage={st}/step=genecall/")
     con.execute(f"CREATE TEMP TABLE led AS SELECT object_key AS contig_uid, reason_code, "
                 f"{skip_kind_sql('reason_code', st)} AS kind FROM "
@@ -282,7 +309,18 @@ def main() -> int:
         "genome_input_rows": one("SELECT count(*) FROM gi"),
         "genomes": one("SELECT count(DISTINCT genome_uid) FROM gi"),
         "contigs": one("SELECT count(DISTINCT contig_uid) FROM gi"),
+        # `stored`: the contigs whose default variant the stage holds, the count the estimates use (stage.stage_contigs)
         "stored": one("SELECT count(*) FROM ci"),
+        "index_contigs": one("SELECT count(*) FROM ci_all"),
+        "index_rows": one("SELECT count(*) FROM ci_rows"),
+        "non_default_rows_of_stored_contigs": one(
+            "SELECT count(*) FROM ci_rows SEMI JOIN ci USING (contig_uid) WHERE NOT is_default_variant"),
+        "variants_of_contigs_held_by_other_stages": {
+            "contigs": one("SELECT count(*) FROM var SEMI JOIN held USING (contig_uid)"),
+            "rows": int(one("SELECT coalesce(sum(n), 0) FROM var SEMI JOIN held USING (contig_uid)")),
+            "bases": int(one("SELECT coalesce(sum(bases), 0) FROM var SEMI JOIN held USING (contig_uid)")),
+            "by_stage": dict(con.execute("SELECT h.st, count(*) FROM var JOIN held h USING (contig_uid) GROUP BY 1 "
+                                         "ORDER BY 1").fetchall())},
         "bases_stored": int(one("SELECT coalesce(sum(contig_len), 0) FROM ci_rows WHERE is_default_variant")),
         "held_by_other_stages": one("SELECT count(*) FROM held"),
         "held_by_stage": dict(con.execute("SELECT st, count(*) FROM held GROUP BY st ORDER BY st").fetchall()),
@@ -295,12 +333,22 @@ def main() -> int:
     }
     checks = {
         "contigs held by two other stages (DEC-26)": "SELECT count(*) FROM held WHERE m > 1",
+        # stored: a default-variant row of the stage (card R-17); a non-default row of a held contig is not storing it
         "contigs both stored by the stage and held by another": "SELECT count(*) FROM ci SEMI JOIN held USING (contig_uid)",
+        "contigs of the stage's index without exactly one default variant among all stages (DEC-26)":
+            "SELECT count(*) FROM (SELECT contig_uid, count(*) FILTER (WHERE is_default_variant) AS n FROM ci_rows "
+            "GROUP BY contig_uid) s LEFT JOIN (SELECT contig_uid, count(*) AS n FROM other_rows WHERE "
+            "is_default_variant GROUP BY contig_uid) o USING (contig_uid) WHERE s.n + coalesce(o.n, 0) <> 1",
+        # (contig_uid, raw_digest) is contig_index's key across stages: ingest writes only pairs no stage has
+        "rows of the stage's index whose (contig_uid, raw_digest) another stage's index holds":
+            "SELECT count(*) FROM ci_rows c SEMI JOIN other_rows o "
+            "ON o.contig_uid = c.contig_uid AND o.raw_digest = c.raw_digest",
         "genome_input contigs neither stored nor held":
             "SELECT count(*) FROM (SELECT DISTINCT contig_uid FROM gi) ANTI JOIN ci USING (contig_uid) "
             "ANTI JOIN held USING (contig_uid)",
+        # every contig of the index, a variant's included, as before card R-17
         "stored contigs not in genome_input":
-            "SELECT count(*) FROM ci ANTI JOIN (SELECT DISTINCT contig_uid FROM gi) g USING (contig_uid)",
+            "SELECT count(*) FROM ci_all ANTI JOIN (SELECT DISTINCT contig_uid FROM gi) g USING (contig_uid)",
         "ledger skips for another stage that differ from the stage holding the contig":
             # the whole reason string, `owned_by:<the holding stage>`, as c47_check.py compares it with `want`
             "SELECT count(*) FROM (SELECT contig_uid, reason_code FROM led WHERE kind = 'earlier') l "
@@ -308,12 +356,16 @@ def main() -> int:
     }
     if conf.min_contig_len is not None:
         checks[f"stored contigs under the least length {conf.min_contig_len}"] = \
-            f"SELECT count(*) FROM ci WHERE contig_len < {int(conf.min_contig_len)}"
+            f"SELECT count(*) FROM ci_all WHERE contig_len < {int(conf.min_contig_len)}"
     for what, sql in checks.items():
         n = one(sql)
         c[what] = n
         if n:
             failed.append(f"{what}: {n}")
+    n_nd = one("SELECT count(*) FROM ci_rows WHERE NOT is_default_variant")
+    if no_rd and n_nd:  # a variant's raw digest must be compared with every other stage's for its contig
+        failed.append(f"{n_nd} non-default rows in the stage's index, but the index files of {sorted(no_rd)} hold no "
+                      "raw_digest to compare them with")
     ing_led = files(root, st, "ingest", f"ledger/stage={st}/step=ingest/")
     if ing_led:
         c["ingest_ledger"] = {r[0]: {"rows": r[1], "bases_rejected": int(r[2] or 0)} for r in con.execute(
