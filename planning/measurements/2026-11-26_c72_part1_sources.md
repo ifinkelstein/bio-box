@@ -36,7 +36,7 @@ The second file's name has a space; the job list's file field holds it, and the 
 
 ## 4. GLOBDB_R232_TABLES: GlobDB r232 (https://fileshare.lisc.univie.ac.at/globdb/globdb_r232/)
 
-Directory index and `globdb_r232_md5sum.txt` read 2026-11-26. The index prints sizes in a column labelled KB that is not in KB (it prints `8071 KB` for a file of 8,071,276 bytes), so the bytes come from `Content-Length` of a HEAD request on each file (*measured*, same day). Licence: CC BY-SA 4.0 as the brief states globdb.org's statement; globdb.org was not read (it is not one of the allowed reads).
+Directory index and `globdb_r232_md5sum.txt` read 2026-11-26. The index prints sizes in a column labelled KB that is not in KB (it prints `8071 KB` for a file of 8,071,276 bytes), so the bytes come from `Content-Length` of a HEAD request on each file (*measured*, same day). Licence: CC BY-SA 4.0 as `planning/measurements/2026-11-26_missed_diversity_sources.md` section 2.1 quotes globdb.org (read 2026-11-26 by the survey of card C-72); this card did not read globdb.org again.
 
 | file | bytes | md5 (from the md5 list) |
 |---|---|---|
@@ -79,4 +79,4 @@ fetch_to_tower: 5 refusal(s); nothing was fetched
 
 ## Conflict with an existing test
 
-`tests/r1/test_r08_fetch_to_tower.py::test_the_tree_sources_yaml_parses_and_every_tower_entry_has_its_record` asserts that every `tower_` entry's `approved` starts with `by the PI, 2026-11-25 ` and that every item of `files` has a sha256. The five entries were approved on 2026-11-26, so the first assertion fails for `tower_gwv1`; the second is avoided by keeping the sizes and md5 under `files_listed` until the fetch gives a sha256. The test was not changed (AGENTS.md section 2); it needs a migration by a card that names it.
+`tests/r1/test_r08_fetch_to_tower.py::test_the_tree_sources_yaml_parses_and_every_tower_entry_has_its_record` asserts that every `tower_` entry's `approved` starts with `by the PI, 2026-11-25 ` and that every item of `files` has a sha256. The five entries were approved on 2026-11-26, so the first assertion fails for `tower_gwv1`; the second is avoided by keeping the sizes and md5 under `files_listed` until the fetch gives a sha256. The orchestrating session then named the test in this card's files for that one assertion: it now requires `by the PI, ` and a date `YYYY-MM-DD` and a space. Nothing else in the test changed.

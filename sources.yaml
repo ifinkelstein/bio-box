@@ -5397,7 +5397,7 @@ sources:
       the provider's md5 from globdb_r232_md5sum.txt for the three archives and tables it lists (in the job list; the
       fetcher compares it before the file is kept); the md5 list and the dataset list have none; our sha256 is taken
       after the fetch
-    license: CC BY-SA 4.0   # as globdb.org states it (the PI's brief of card C-72, part 1; globdb.org was not read)
+    license: CC BY-SA 4.0   # as globdb.org states it (as planning/measurements/2026-11-26_missed_diversity_sources.md section 2.1 quotes globdb.org, read 2026-11-26 by the survey of card C-72; this card did not read globdb.org again)
     fetched: >-
       nothing yet: 5 files named in 2026-11-26_c72_part1.tsv, listed here before the fetch (card C-72, part 1)
     stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/GLOBDB_R232_TABLES/
