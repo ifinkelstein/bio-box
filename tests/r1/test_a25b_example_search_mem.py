@@ -3,11 +3,17 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
 from biobox.search import runner
+
+# The sibling module, imported as the suite shares helpers (tests/r1/test_w29_run_file.py): its directory on the path,
+# not the repository root, which `uv run pytest` (GitHub Actions) does not put there (card R-01).
+sys.path.insert(0, str(Path(__file__).parent))
+import test_a20_train_post_manifest_resume as a20  # noqa: E402
 
 pytestmark = pytest.mark.covers("A-25", "E-11", "A-20")  # ring R1 by its directory (tests/conftest.py)
 
@@ -171,8 +177,6 @@ def test_rlimits_with_derived_62gb_vs_hardcoded_14gb_under_64g_cgroup():
 
 def test_release_train_resume_clears_incomplete_examples_dir_before_rerun(tmp_path):
     """When release_examples.sh fails leaving a non-empty $WORK/examples, resume must clear it before rerunning."""
-    from tests.r1 import test_a20_train_post_manifest_resume as a20
-
     w = a20.TrainWorld(tmp_path)
     # Stub release_examples.sh to create output on first (failing) run and refuse non-empty OUT on rerun,
     # mirroring the real `scripts/release_examples.sh` (`die "OUT $OUT is not empty"`).

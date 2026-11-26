@@ -37,6 +37,11 @@ from biobox.l0seq.inputs import GenomeInput
 from biobox.l0seq.store import SourceObject
 from biobox.l1 import genecall
 
+# The sibling module, imported as the suite shares helpers (tests/r1/test_w29_run_file.py): its directory on the path,
+# not the repository root, which `uv run pytest` (GitHub Actions) does not put there (card R-01).
+sys.path.insert(0, str(Path(__file__).parent))
+from test_stage_driver import World  # noqa: E402
+
 pytestmark = pytest.mark.covers("B-67")
 
 REPO = Path(__file__).resolve().parents[2]
@@ -424,8 +429,6 @@ def test_b67_stage_est_conf_before_and_rates(tmp_path: Path):
 def test_b67_stage_driver_passes_genecall_mode_flag(tmp_path: Path):
     """`stage_driver.sh` parses `GENECALL_MODE` from `conf.env`, appends `--genecall-mode gv-meta`
     only when set, and forwards it in `rehearse`."""
-    from tests.r1.test_stage_driver import World
-
     w_def = World(tmp_path / "w_def", stage="BM1", depth="called", library="", crispr="no")
     for m in ("estimate", "rehearse", "before", "run"):
         assert w_def.drive(m).returncode == 0
