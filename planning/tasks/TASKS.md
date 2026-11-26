@@ -2222,7 +2222,10 @@ Done 2026-11-25 (`STATUS.md` rows R-01, R-04, R-05, R-06, R-07, R-08; merged tog
 (`f68c911`), R-04 (`1553f4d`), R-05 (`c80969b`; its part (3), the default of `train_est.py --cluster-method`, was
 withdrawn by the orchestrating session because it needs a test of card A-27 changed, which the card does not list),
 R-06 (`a779fbd`, `1cdb5d9`; the function is `_resolve_library_path`), R-07 (`8e2d24c`), R-08 (`d600173`, `2ba0cc8`; six
-job lists, not four, were on `tower` by then).
+job lists, not four, were on `tower` by then). R-03 (`c97ec8e`, its 20 passing checks; the 13 tests against plain
+`mmseqs linclust`, `5811b41`, stay on branch `task/R-03` and are settled by DEC-78: the code stays). R-02 (`6c0d2e2`)
+and its follow-up R-05b (`5ca7589`: the watch gives no DEC-77 cap to a cut under a format-1 plan, as the library no
+longer does after R-02), merged together.
 
 ### R-01 Four tests fail on GitHub Actions since `f5c644b`
 **M** · Pod: yes (pytest only) · Depends: none · audit §2.1 (1)
