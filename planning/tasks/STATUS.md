@@ -17,7 +17,8 @@ tail -n 6 /tmp/if2453/stages/r26-11-4-wave.out; df -h /tmp"` and, on `tower`, th
   at 17:08:20 on `V2.ingest` (`LY-04`; card B-73). `r26-11-4-wave-2.service` (20:00:38, mirror `rel1125e`) stopped at
   21:41:26 on `V2.domains-pfam-38.2.plan`: DuckDB out of memory at its 244 MiB limit in
   `domains._stage_uid_lengths` (`/tmp/if2453/stages/v2/logs/v2-2.log`; not a rate guard: `over_20pct []`). Card B-74
-  (`9b28770`, committed on `plan/task-cards` at 22:14 without a task branch) changed `src/biobox/l1/domains.py`, and
+  (`9b28770` on branch `task/B-74`, taken into `plan/task-cards` at 22:14 by a fast-forward, so with no merge
+  commit) changed `src/biobox/l1/domains.py`, and
   `r26-11-4-wave-3.service` was launched at 22:20:33 from the mirror `rel1125f`, before the `ci` run of that commit
   had ended; at 23:05 it was scanning `V2`'s Pfam shards at about 76 threads (*measured*, `systemctl --user
   list-units`, the logs' tails, `uptime`: load 98 with this session's test shards). Card B-74 was not read by the
@@ -92,8 +93,8 @@ clustering, watch, R-02, B-74 and `tests/r0` files) and `ci` (`eb46785`, green),
    library) was withdrawn: it needs a test of card A-27 changed. `release_train.sh` always passes the method.
 9. A one-process `cluster.run()` writes no plan record (cards B-41, B-49), so for it the clustering method is in the
    ledger only (card R-02); DEC-77 (2) names the plan and the ledger.
-10. Cards B-73 and B-74 each went from a stop of the wave to a relaunch within minutes, B-74 as one commit on
-    `plan/task-cards`; neither was read by an independent session before the build ran on it.
+10. Cards B-73 and B-74 each went from a stop of the wave to a relaunch within minutes, B-74 by a fast-forward of
+    its branch; neither was read by an independent session before the build ran on it.
 
 **R3. Done outside a card, at the PI's word.** The orphan
 `/stor/work/Wilke/if2453/all-the-data/root_backups/root_rM2_20261114/.tmp.l1_and_records.tar.2921741` (9,838,919,680 B)
