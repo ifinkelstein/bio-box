@@ -111,7 +111,7 @@ _READ_ROWS = 16_384  # protein_seq rows per read while planning or reading a sha
 COMPARED = ("hmm_sha256", "cutoff", "z", "dom_z", "tools")
 Z_UNRECORDED = 1e8  # the Z of a plan that records none: Z_PROT and DOM_Z have been 1e8 since 74b3e05 (`git log -G`)
 FLUSH_PIECES = 1024  # the merge of a copying plan combines its row slices at least this often (`_merge_copies`)
-DUCK_MEMORY_LIMIT = "256MB"  # single-thread DuckDB cap when streaming shared-contig proteins (card C-38h, AGENTS §4.1)
+DUCK_MEMORY_LIMIT = "1GB"  # single-thread DuckDB cap when streaming shared-contig proteins (cards C-38h, B-74, AGENTS §4.1)
 
 
 def iter_hmms(path: Path):
@@ -428,6 +428,7 @@ def _sql_files(files: list[Path]) -> str:
 def _duck() -> Iterator[duckdb.DuckDBPyConnection]:
     scratch = Path(tempfile.mkdtemp(prefix="biobox-domains-"))
     con = duckdb.connect(config={"threads": 1, "memory_limit": DUCK_MEMORY_LIMIT,
+                                 "preserve_insertion_order": False,
                                  "temp_directory": str(scratch / "duckdb")})
     try:
         yield con
@@ -505,26 +506,54 @@ def _check_owned(root: Path, owned: dict, what: str) -> tuple[list[Path], list[t
     return gi, owners
 
 
+def _merge_uid_lengths(
+    a: Iterator[tuple[bytes, int]], b: Iterator[tuple[bytes, int]]
+) -> Iterator[tuple[bytes, int]]:
+    """2-way merge of strictly increasing `(protein_uid, length)` streams, taking `min(length)` on equal uids."""
+    ha = next(a, None)
+    hb = next(b, None)
+    while ha is not None and hb is not None:
+        ua, na = ha
+        ub, nb = hb
+        if ua < ub:
+            yield ua, int(na)
+            ha = next(a, None)
+        elif ub < ua:
+            yield ub, int(nb)
+            hb = next(b, None)
+        else:
+            yield ua, min(int(na), int(nb))
+            ha = next(a, None)
+            hb = next(b, None)
+    while ha is not None:
+        yield ha[0], int(ha[1])
+        ha = next(a, None)
+    while hb is not None:
+        yield hb[0], int(hb[1])
+        hb = next(b, None)
+
+
 def _stage_uid_lengths(root: Path, files: list[Path], owned: dict | None) -> Iterator[tuple[bytes, int]]:
     """Distinct `(protein_uid, length)` of `files` union the shared-contig proteins of `owned`, in strictly
-    increasing `protein_uid` order. Without `owned`, streams `_uid_lengths(files)` directly."""
+    increasing `protein_uid` order. Streams `files` directly in O(1) memory and queries DuckDB only over
+    `owned` (cards C-38h, B-74)."""
     if owned is None:
         yield from _uid_lengths(files)
         return
     gi, owners = _check_owned(root, owned, "the shard plan")
-    parts = []
-    if files:
-        parts.append(f"SELECT protein_uid, length FROM read_parquet({_sql_files(files)}, hive_partitioning = false)")
-    for fp, ps in owners:
-        parts.append(
-            f"SELECT ps.protein_uid, ps.length "
-            f"FROM read_parquet({_sql_files(ps)}, hive_partitioning = false) ps "
-            f"SEMI JOIN ("
-            f"  SELECT DISTINCT fp.protein_uid "
-            f"  FROM read_parquet({_sql_files(fp)}, hive_partitioning = false) fp "
-            f"  SEMI JOIN gi USING (contig_uid)"
-            f") u USING (protein_uid)"
-        )
+    if not owners:
+        yield from _uid_lengths(files)
+        return
+    parts = [
+        f"SELECT ps.protein_uid, ps.length "
+        f"FROM read_parquet({_sql_files(ps)}, hive_partitioning = false) ps "
+        f"SEMI JOIN ("
+        f"  SELECT DISTINCT fp.protein_uid "
+        f"  FROM read_parquet({_sql_files(fp)}, hive_partitioning = false) fp "
+        f"  SEMI JOIN gi USING (contig_uid)"
+        f") u USING (protein_uid)"
+        for fp, ps in owners
+    ]
     sql = (f"WITH gi AS (SELECT DISTINCT contig_uid FROM read_parquet({_sql_files(gi)}, hive_partitioning = false)) "
            f"SELECT protein_uid, min(length)::BIGINT AS length "
            f"FROM ({' UNION ALL '.join(parts)}) "
@@ -532,9 +561,15 @@ def _stage_uid_lengths(root: Path, files: list[Path], owned: dict | None) -> Ite
     with _duck() as con:
         reader = con.sql(sql).to_arrow_reader(_READ_ROWS)
         try:
-            for b in reader:
-                for u, n in zip(b.column(0).to_pylist(), b.column(1).to_pylist()):
-                    yield bytes(u), int(n)
+            def _owned_rows() -> Iterator[tuple[bytes, int]]:
+                for b in reader:
+                    for u, n in zip(b.column(0).to_pylist(), b.column(1).to_pylist()):
+                        yield bytes(u), int(n)
+
+            if not files:
+                yield from _owned_rows()
+                return
+            yield from _merge_uid_lengths(_uid_lengths(files), _owned_rows())
         finally:
             reader.close()
 
@@ -707,61 +742,13 @@ def sources(root: Path, stage: str, library: str, library_version: str, hmm_sha2
     return srcs, passed
 
 
-def _measured_uids(root: Path, src: dict, lo: bytes | None = None, hi: bytes | None = None) -> Iterator[bytes]:
-    """The proteins source `src` measured, in strictly increasing uid order (within [lo, hi] when given, reading only
-    the row groups that meet it): for a stage, every protein of the protein_seq files its plan lists plus any
-    shared-contig proteins in its `owned` block (card C-38h); for a round, every protein of its `round_coverage` files
-    (card C-38f §3.6). Card B-47c: inferred proteins are measured nowhere and must be left out here."""
-    if "coverage_files" in src:
-        last = None
-        for path in _checked(root, src["coverage_files"], f"the plan of {_src_id(src)}"):
-            pf = pq.ParquetFile(path)
-            col = pf.schema_arrow.get_field_index("protein_uid")
-            for g in range(pf.metadata.num_row_groups):
-                if lo is not None:
-                    st = pf.metadata.row_group(g).column(col).statistics
-                    if st is not None and st.has_min_max and (bytes(st.max) < lo or bytes(st.min) > hi):
-                        continue
-                for u in pf.read_row_group(g, columns=["protein_uid"]).column(0).to_pylist():
-                    if lo is not None and not lo <= u <= hi:
-                        continue
-                    if last is not None and u <= last:
-                        raise RuntimeError(f"{path}: round_coverage rows are not in strictly increasing protein_uid order")
-                    last = u
-                    yield u
-        return
-    if "owned" in src:
-        own_files = _checked(root, src["protein_files"], f"the plan of {_src_id(src)}")
-        gi, owners = _check_owned(root, src["owned"], f"the plan of {_src_id(src)}")
-        filt = "" if lo is None else " WHERE protein_uid >= $lo AND protein_uid <= $hi"
-        ps_filt = "" if lo is None else " WHERE ps.protein_uid >= $lo AND ps.protein_uid <= $hi"
-        parts = []
-        if own_files:
-            parts.append(f"SELECT protein_uid FROM read_parquet({_sql_files(own_files)}, hive_partitioning = false){filt}")
-        for fp, ps in owners:
-            parts.append(
-                f"SELECT ps.protein_uid "
-                f"FROM read_parquet({_sql_files(ps)}, hive_partitioning = false) ps "
-                f"SEMI JOIN ("
-                f"  SELECT DISTINCT fp.protein_uid "
-                f"  FROM read_parquet({_sql_files(fp)}, hive_partitioning = false) fp "
-                f"  SEMI JOIN gi USING (contig_uid)"
-                f") u USING (protein_uid){ps_filt}"
-            )
-        sql = (f"WITH gi AS (SELECT DISTINCT contig_uid FROM read_parquet({_sql_files(gi)}, hive_partitioning = false)) "
-               f"SELECT DISTINCT protein_uid FROM ({' UNION ALL '.join(parts)}) ORDER BY protein_uid")
-        params = None if lo is None else {"lo": lo, "hi": hi}
-        with _duck() as con:
-            reader = con.sql(sql, params=params).to_arrow_reader(_READ_ROWS)
-            try:
-                for b in reader:
-                    for u in b.column(0).to_pylist():
-                        yield bytes(u)
-            finally:
-                reader.close()
-        return
+def _protein_file_uids(
+    paths: list[Path], lo: bytes | None = None, hi: bytes | None = None, *, label: str = "protein_seq"
+) -> Iterator[bytes]:
+    """Stream sorted `protein_uid`s from `paths` in O(1) memory (within `[lo, hi]` when given, skipping
+    row groups whose min/max statistics are disjoint from `[lo, hi]`)."""
     last = None
-    for path in _checked(root, src["protein_files"], f"the plan of {src['stage']}"):
+    for path in paths:
         pf = pq.ParquetFile(path)
         col = pf.schema_arrow.get_field_index("protein_uid")
         for g in range(pf.metadata.num_row_groups):
@@ -773,9 +760,82 @@ def _measured_uids(root: Path, src: dict, lo: bytes | None = None, hi: bytes | N
                 if lo is not None and not lo <= u <= hi:
                     continue
                 if last is not None and u <= last:
-                    raise RuntimeError(f"{path}: protein_seq rows are not in strictly increasing protein_uid order")
+                    raise RuntimeError(f"{path}: {label} rows are not in strictly increasing protein_uid order")
                 last = u
                 yield u
+
+
+def _merge_uids(a: Iterator[bytes], b: Iterator[bytes]) -> Iterator[bytes]:
+    """2-way merge of strictly increasing `protein_uid` streams, deduplicating equal uids."""
+    ha = next(a, None)
+    hb = next(b, None)
+    while ha is not None and hb is not None:
+        if ha < hb:
+            yield ha
+            ha = next(a, None)
+        elif hb < ha:
+            yield hb
+            hb = next(b, None)
+        else:
+            yield ha
+            ha = next(a, None)
+            hb = next(b, None)
+    while ha is not None:
+        yield ha
+        ha = next(a, None)
+    while hb is not None:
+        yield hb
+        hb = next(b, None)
+
+
+def _measured_uids(root: Path, src: dict, lo: bytes | None = None, hi: bytes | None = None) -> Iterator[bytes]:
+    """The proteins source `src` measured, in strictly increasing uid order (within [lo, hi] when given, reading only
+    the row groups that meet it): for a stage, every protein of the protein_seq files its plan lists plus any
+    shared-contig proteins in its `owned` block (cards C-38h, B-74); for a round, every protein of its
+    `round_coverage` files (card C-38f §3.6). Card B-47c: inferred proteins are measured nowhere and must be left
+    out here."""
+    if "coverage_files" in src:
+        yield from _protein_file_uids(
+            _checked(root, src["coverage_files"], f"the plan of {_src_id(src)}"),
+            lo, hi, label="round_coverage",
+        )
+        return
+    if "owned" in src:
+        own_files = _checked(root, src["protein_files"], f"the plan of {_src_id(src)}")
+        gi, owners = _check_owned(root, src["owned"], f"the plan of {_src_id(src)}")
+        if not owners:
+            yield from _protein_file_uids(own_files, lo, hi)
+            return
+        ps_filt = "" if lo is None else " WHERE ps.protein_uid >= $lo AND ps.protein_uid <= $hi"
+        parts = [
+            f"SELECT ps.protein_uid "
+            f"FROM read_parquet({_sql_files(ps)}, hive_partitioning = false) ps "
+            f"SEMI JOIN ("
+            f"  SELECT DISTINCT fp.protein_uid "
+            f"  FROM read_parquet({_sql_files(fp)}, hive_partitioning = false) fp "
+            f"  SEMI JOIN gi USING (contig_uid)"
+            f") u USING (protein_uid){ps_filt}"
+            for fp, ps in owners
+        ]
+        sql = (f"WITH gi AS (SELECT DISTINCT contig_uid FROM read_parquet({_sql_files(gi)}, hive_partitioning = false)) "
+               f"SELECT DISTINCT protein_uid FROM ({' UNION ALL '.join(parts)}) ORDER BY protein_uid")
+        params = None if lo is None else {"lo": lo, "hi": hi}
+        with _duck() as con:
+            reader = con.sql(sql, params=params).to_arrow_reader(_READ_ROWS)
+            try:
+                def _owned_uids() -> Iterator[bytes]:
+                    for b in reader:
+                        for u in b.column(0).to_pylist():
+                            yield bytes(u)
+
+                if not own_files:
+                    yield from _owned_uids()
+                    return
+                yield from _merge_uids(_protein_file_uids(own_files, lo, hi), _owned_uids())
+            finally:
+                reader.close()
+        return
+    yield from _protein_file_uids(_checked(root, src["protein_files"], f"the plan of {src['stage']}"), lo, hi)
 
 
 def _measured_rows(t: pa.Table) -> pa.Table:
