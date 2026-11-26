@@ -129,6 +129,46 @@ def test_resolve_library_refdb_orders_versions_numerically(tmp_path):
     assert panel._resolve_library_path("pfam", None, None, [base]).name == "pfam-38.10.hmm"
 
 
+def _refdb_dirs(tmp_path: Path, versions: list[str], fname: str = "Pfam-A.hmm.gz") -> Path:
+    base = tmp_path / "refdb"
+    for v in versions:
+        (base / "pfam" / v).mkdir(parents=True)
+        (base / "pfam" / v / fname).write_text("x")
+    return base
+
+
+def test_refdb_version_in_directory_name_numeric(tmp_path):
+    base = _refdb_dirs(tmp_path, ["38.2", "38.3", "38.10"])
+    got = panel._resolve_library_path("pfam", None, None, [base])
+    assert got.parent.name == "38.10"
+
+
+def test_refdb_version_in_directory_name_two_versions(tmp_path):
+    base = _refdb_dirs(tmp_path, ["38.2", "38.3"])
+    got = panel._resolve_library_path("pfam", None, None, [base])
+    assert got.parent.name == "38.3"
+
+
+def test_refdb_file_name_version_wins_over_directory_order(tmp_path):
+    base = tmp_path / "refdb"
+    (base / "pfam" / "a").mkdir(parents=True)
+    (base / "pfam" / "z").mkdir(parents=True)
+    (base / "pfam" / "a" / "pfam-38.10.hmm").write_text("x")
+    (base / "pfam" / "z" / "pfam-38.2.hmm").write_text("x")
+    assert panel._resolve_library_path("pfam", None, None, [base]).name == "pfam-38.10.hmm"
+
+
+def test_refdb_unversioned_last_in_sorted_order_as_before(tmp_path):
+    base = _refdb_dirs(tmp_path, ["alpha", "beta"])
+    got = panel._resolve_library_path("pfam", None, None, [base])
+    assert got.parent.name == "beta"
+
+
+def test_pack_unversioned_last_in_sorted_order_as_before(tmp_path):
+    pack = _pack(tmp_path, ["pfam-aaa.hmm.gz", "pfam-bbb.hmm.gz"])
+    assert panel._resolve_library_path("pfam", pack, None, []).name == "pfam-bbb.hmm.gz"
+
+
 def test_resolve_library_single_unversioned_and_missing(tmp_path):
     pack = _pack(tmp_path, ["ncbifam.hmm.gz"])
     assert panel._resolve_library_path("ncbifam", pack, None, []).name == "ncbifam.hmm.gz"

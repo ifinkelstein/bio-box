@@ -258,18 +258,31 @@ def _split_lib_spec(spec: str) -> tuple[str, str, list[str] | None]:
 
 
 _VERSION_TAIL = re.compile(r"-(\d+(?:\.\d+)*)$")
+_DOTTED = re.compile(r"\d+(?:\.\d+)*$")
 
 
-def _version_key(path: Path) -> tuple:
-    """Sort key of a library file: its trailing `-<dotted version>` as integers (38.10 is newer than 38.2). A name
-    without a parseable version sorts before every versioned one, so it never wins over one; ties go by name."""
+def _version_key(path: Path, stop: Path | None = None) -> tuple:
+    """Sort key of a library file: the trailing `-<dotted version>` of its name as integers (38.10 is newer than
+    38.2), else the nearest ancestor directory below `stop` whose whole name is a dotted version (the refdb layout
+    `pfam/38.2/Pfam-A.hmm.gz`). A file with neither sorts before every versioned one, so it never wins over one."""
     stem = path.name
     for ext in (".gz", ".tgz", ".tar", ".hmm"):
         stem = stem.removesuffix(ext)
     m = _VERSION_TAIL.search(stem)
-    if m is None:
-        return (0, (), path.name)
-    return (1, tuple(int(x) for x in m.group(1).split(".")), path.name)
+    if m is not None:
+        return (1, tuple(int(x) for x in m.group(1).split(".")))
+    if stop is not None:
+        for anc in path.parents:
+            if anc == stop or stop not in anc.parents:
+                break
+            if _DOTTED.fullmatch(anc.name):
+                return (1, tuple(int(x) for x in anc.name.split(".")))
+    return (0, ())
+
+
+def _newest(paths: list[Path], stop: Path | None = None) -> Path:
+    """The path with the highest version key; among equal keys the last in sorted path order (as before R-06)."""
+    return sorted(sorted(paths), key=lambda p: _version_key(p, stop))[-1]
 
 
 def _resolve_library_path(lib: str, pack_dir: Path | None, root: Path | None, refdb_dirs: Iterable[Path]) -> Path:
@@ -283,7 +296,7 @@ def _resolve_library_path(lib: str, pack_dir: Path | None, root: Path | None, re
                 if stem == lib or stem.startswith(f"{lib}-"):
                     candidates.append(p)
     if candidates:
-        return max(candidates, key=_version_key)
+        return _newest(candidates)
     search_bases = list(refdb_dirs)
     if root is not None:
         search_bases.append(Path(root) / "l0" / "refdb")
@@ -293,7 +306,7 @@ def _resolve_library_path(lib: str, pack_dir: Path | None, root: Path | None, re
             for ext in ("*.hmm", "*.hmm.gz", "*.tgz", "*.tar.gz"):
                 found = sorted(d.rglob(ext))
                 if found:
-                    return max(found, key=_version_key)
+                    return _newest(found, d)
     raise PanelError(f"library {lib!r} not found in pack models or refdb directories")
 
 
