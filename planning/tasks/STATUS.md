@@ -95,7 +95,16 @@ established discipline as you keep going".
    the number of physical cores, would be a card and the PI's decision (DEC-74).
 3. The release train of `r26.11.4` is not launched: DEC-77 (5) needs the PI's review of cards B-71, B-72 and A-27,
    which now includes R-02, R-03 and R-05.
-4. For the PI, from card C-72 (the note's §5 has the table before and after): (a) the revised `r26.11.5`: keep
+4. **Decided 2026-11-26, about 08:03 CST (DEC-79; the PI's words "for each of the four decisions, go ahead with your
+   recommendations"):** (a) the revised `r26.11.5` below is the plan; (b) it does not stream the GlobDB r232 genome
+   archive, whose first cut is planned with `r26.11.6`; (c) `G` tranches after `G-RARE1..3` are cut from r232, and
+   dedups run against GTDB R232 and GlobDB r232; (d) five sources are approved for listing and fetching (`GWV1`,
+   `SAG3` with its table, `WET1`, the small tables of GlobDB r232, the two metadata tables of GTDB R232); the MGnify
+   catalogues are not, their READMEs stating no licence. The recommendations for (b) to (d) were this session's and
+   were stated to the PI with the row, so he may still change them. The row took the number card A-28 had named for
+   its own pending decision; that card now names no number. Next for it: the `sources.yaml` entries (after card
+   R-11's merge, which edits the same file), a job list through `fetch_to_tower.sh`, and the record. What was put to
+   the PI, from card C-72 (the note's §5 has the table before and after): (a) the revised `r26.11.5`: keep
    `G-RARE1..3`, `MV2` + `MV-EUKV`, `KAV-HIFI` + `INPHARED-2604`, `LR2` + `SAG1` + `NX1`; take in what is staged or
    landed and the handoff's order left out (`GV1`, `EGV1`, `ECE2`, `MIR1`, `ASG1`, `SAG2`, `DPN1`, `SYM2`, `LRP1`,
    `MIR2`, `MGE4`) and three new one-file sources (`GWV1` groundwater virome, `SAG3` oxygen-minimum-zone single cells,
