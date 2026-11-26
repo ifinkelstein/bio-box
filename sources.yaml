@@ -1870,13 +1870,13 @@ sources:
   # Three batches were fetched on 2026-11-25 by curl on tower before these entries existed (AGENTS.md section 8 and DEC-50
   # ask for the entry first); batches 4 and 5, and the rest of batch 3, were queued but not fetched when the entries were
   # written (2026-11-25 20:12 CST), and say so under `fetched`. The URL forms below are the ones the job lists on tower
-  # use; scripts/orchestrator/fetch_to_tower.sh refuses any other URL. {file} and {strain} are one path segment, {path} one
+  # use (a figshare file is listed by its exact URL, as elsewhere in this file); scripts/orchestrator/fetch_to_tower.sh refuses any other URL. {file} and {strain} are one path segment, {path} one
   # or more. `files` lists what had landed (bytes and sha256 measured on tower, md5 = the provider's, checked before the file
   # was kept); `license` is the job list's own text, a literal {} where the record gave none. Nothing was deleted.
   - name: tower_egv1
     what: >-
       Egovirales genomes (ITEM_08_Egovirales_Genomes.zip, figshare); the job list gives no description
-    url: https://ndownloader.figshare.com/files/{file_id}
+    url: https://ndownloader.figshare.com/files/66974843
     files:
       - {file: "ITEM_08_Egovirales_Genomes.zip", bytes: 24753281, sha256: 1eac3b0438c1d020034cb3339fd122273c2968f27131d44b071abd2bbc579f55, md5: 1288ed17163e96afe6332523ff9ac94b}
     checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
@@ -1885,9 +1885,6 @@ sources:
       1 of 1 files by curl on tower, UTC 2026-11-25T21:54:54Z to 2026-11-25T21:54:54Z (_fetch_one.sh, -A curl);
       bytes and sha256 above measured on tower, copied from SOURCE_URLS.tsv on 2026-11-25 20:12 CST
     stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/EGV1/ (SOURCE_URLS.tsv and SHA256SUMS there)
-    note: >-
-      The figshare form cannot name the article, so it allows any figshare file id; the files taken are those of the
-      job list
     approved: "by the PI, 2026-11-25 15:47 CST: \"stage the nucleotides ... on tower\" (the audit of 2026-11-25)"
   - name: tower_ece2
     what: >-
@@ -1937,7 +1934,16 @@ sources:
     what: >-
       Mirusviricota and related giant-virus files from figshare (medvedeva2025, gaia2023, bellas2023 file names);
       the job list gives no description
-    url: https://ndownloader.figshare.com/files/{file_id}
+    url: https://ndownloader.figshare.com/files/54652007
+    url_2: https://ndownloader.figshare.com/files/54826010
+    url_3: https://ndownloader.figshare.com/files/36228657
+    url_4: https://ndownloader.figshare.com/files/36228654
+    url_5: https://ndownloader.figshare.com/files/39542833
+    url_6: https://ndownloader.figshare.com/files/39542977
+    url_7: https://ndownloader.figshare.com/files/39543070
+    url_8: https://ndownloader.figshare.com/files/39543211
+    url_9: https://ndownloader.figshare.com/files/39543214
+    url_10: https://ndownloader.figshare.com/files/39543781
     files:
       - {file: "medvedeva2025_01_Genomes.zip", bytes: 103802995, sha256: 3a25bdcf1e6fdcc8b77d3311cb2beac709c5b2eed077d02bd85ee3c81b440583, md5: 1a8199783f7705c549296f149ad2c86f}
       - {file: "medvedeva2025_Supplemental_Tables.zip", bytes: 171531061, sha256: 1395f1b36420c6f9497ea70ef7d50d1cfe82cb02c06bc03c4594bf3c04552194, md5: 9550ebb49371dd96a63815bc120d85ee}
@@ -1955,9 +1961,6 @@ sources:
       10 of 10 files by curl on tower, UTC 2026-11-25T21:56:12Z to 2026-11-25T21:56:55Z (_fetch_one.sh, -A curl);
       bytes and sha256 above measured on tower, copied from SOURCE_URLS.tsv on 2026-11-25 20:12 CST
     stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/MIR1/ (SOURCE_URLS.tsv and SHA256SUMS there)
-    note: >-
-      The figshare form cannot name the article, so it allows any figshare file id; the files taken are those of the
-      job list
     approved: "by the PI, 2026-11-25 15:47 CST: \"stage the nucleotides ... on tower\" (the audit of 2026-11-25)"
   - name: tower_gsv1
     what: >-
@@ -1977,7 +1980,7 @@ sources:
   - name: tower_asg1
     what: >-
       Data.zip from figshare file 60829597; the job list gives no description and the archive was not opened
-    url: https://ndownloader.figshare.com/files/{file_id}
+    url: https://ndownloader.figshare.com/files/60829597
     files:
       - {file: "Data.zip", bytes: 4961607078, sha256: a6b0eb73a82963b91c3e073ea4fdc29c15832dcf669f2f6a2b5fba2bd218ff56, md5: bdcf212083b851812133c7cef5d2cd07}
     checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
@@ -1986,9 +1989,6 @@ sources:
       1 of 1 files by curl on tower, UTC 2026-11-25T22:03:11Z to 2026-11-25T22:03:11Z (_fetch_one.sh, -A curl);
       bytes and sha256 above measured on tower, copied from SOURCE_URLS.tsv on 2026-11-25 20:12 CST
     stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/ASG1/ (SOURCE_URLS.tsv and SHA256SUMS there)
-    note: >-
-      The figshare form cannot name the article, so it allows any figshare file id; the files taken are those of the
-      job list
     approved: "by the PI, 2026-11-25 15:47 CST: \"stage the nucleotides ... on tower\" (the audit of 2026-11-25)"
   - name: tower_et1
     what: >-
@@ -2024,7 +2024,8 @@ sources:
   - name: tower_o3_fungal
     what: >-
       Item 4 (O3_FUNGAL - Sarhan 2025/2026 2,695 circular fungal mitogenomes; 131 MB)
-    url: https://ndownloader.figshare.com/files/{file_id}
+    url: https://ndownloader.figshare.com/files/57603328
+    url_2: https://ndownloader.figshare.com/files/57603334
     files:
       - {file: "All_fungal_mitochondrial_genomes_accessions.tsv", bytes: 869651, sha256: b6fb1dfbf84d7438e9312587cd19f61c3909b96acd04d1414865cc0b5366c56b, md5: 0646b303a2ec104701382ddc2e8cd2d2}
       - {file: "Assembled_fungal_mitochondrial_genomes.fasta", bytes: 136853604, sha256: 75509f65fe8a2647f9209868a21aac4024e7ff55aa834aa902ce850e5e36865a, md5: 201793fb64fe9f4fe1c049863f255b21}
@@ -2035,9 +2036,6 @@ sources:
       default User-Agent); bytes and sha256 above measured on tower, copied from SOURCE_URLS.tsv on 2026-11-25 20:12
       CST
     stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/O3_FUNGAL/ (SOURCE_URLS.tsv and SHA256SUMS there)
-    note: >-
-      The figshare form cannot name the article, so it allows any figshare file id; the files taken are those of the
-      job list
     approved: "by the PI, 2026-11-25 15:47 CST: \"stage the nucleotides ... on tower\" (the audit of 2026-11-25)"
   - name: tower_lrp1
     what: >-
@@ -2057,7 +2055,12 @@ sources:
     what: >-
       Item 6 (DSV1 - GCVD Coral Virus DB + Langwig 2024 Hydrothermal Vent Viruses; 454 MB); DSV1 - DSVv1 Deep
       Subsurface Virome (10,422 vOTUs) (figshare:34745214, CC BY 4.0)
-    url: https://ndownloader.figshare.com/files/{file_id}
+    url: https://ndownloader.figshare.com/files/43971075
+    url_2: https://ndownloader.figshare.com/files/47650567
+    url_3: https://ndownloader.figshare.com/files/70484649
+    url_4: https://ndownloader.figshare.com/files/70484646
+    url_5: https://ndownloader.figshare.com/files/70484652
+    url_6: https://ndownloader.figshare.com/files/70484676
     files:
       - {file: "CHOP_DB.fasta.gz", bytes: 88759104, sha256: 19f9bedc27891e0516bdcdad997c12eaa754d2f37954e4f0f03c25a18df484db, md5: e333a33bcad43e24a6f11fa158eaa8ae}
       - {file: "49962_VentViruses.fna", bytes: 387593220, sha256: 799f626a49feed1cb8f34223703f3359a01b5642ca9ad5ac6bce83d591dfe6e4, md5: b0b5dc8fe322d0613f961149b7980369}
@@ -2072,15 +2075,12 @@ sources:
       default User-Agent); bytes and sha256 above measured on tower, copied from SOURCE_URLS.tsv on 2026-11-25 20:12
       CST
     stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/DSV1/ (SOURCE_URLS.tsv and SHA256SUMS there)
-    note: >-
-      The figshare form cannot name the article, so it allows any figshare file id; the files taken are those of the
-      job list
     approved: "by the PI, 2026-11-25 15:47 CST: \"stage the nucleotides ... on tower\" (the audit of 2026-11-25)"
   - name: tower_mir2
     what: >-
       Item 3 (MIR2 - Bulzu 2025 cryptophyte PLVs + Bellas 2026 PLV Framework; 1.05 GiB)
     url: https://zenodo.org/api/records/14540677/files/{file}/content
-    url_2: https://ndownloader.figshare.com/files/{file_id}
+    url_2: https://ndownloader.figshare.com/files/65710359
     files:
       - {file: "README.txt", bytes: 1238, sha256: 7746f36d1a84a2f0ec0c71f0ea7595e5384aceaddc1821cd786f4bdd9a22dd0a, md5: fdc29ba25d8358501fa959a91b818174}
       - {file: "genomes_polinton_virophages.zip", bytes: 8293636, sha256: 5b24231f9ec9188bf69c74e58e9fbba82064df4191c77e9c20dc21268bd3f179, md5: b4f6220c1ef765e60c0863b4e45f1232}
@@ -2094,9 +2094,6 @@ sources:
       default User-Agent); bytes and sha256 above measured on tower, copied from SOURCE_URLS.tsv on 2026-11-25 20:12
       CST
     stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/MIR2/ (SOURCE_URLS.tsv and SHA256SUMS there)
-    note: >-
-      The figshare form cannot name the article, so it allows any figshare file id; the files taken are those of the
-      job list
     approved: "by the PI, 2026-11-25 15:47 CST: \"stage the nucleotides ... on tower\" (the audit of 2026-11-25)"
   - name: tower_sym2
     what: >-
@@ -2157,7 +2154,7 @@ sources:
       Item 7 (TSV1 - GSAPD + UK Peatland + TPLV; 3.24 GiB; gsv_atlas already staged in GSV1/)
     url: https://zenodo.org/api/records/19510112/files/{file}/content
     url_2: https://zenodo.org/api/records/21773290/files/{file}/content
-    url_3: https://ndownloader.figshare.com/files/{file_id}
+    url_3: https://ndownloader.figshare.com/files/51500924
     files:
       - {file: "Soil_activate_prophage.fasta.gz", bytes: 228837359, sha256: 4441312fb36db03b1fe84dd838b11654eb5cbaf150d3a4b0e2af990f31cb1f8b, md5: 64dcfaa8537d483c67d63eb04d5ebed8}
       - {file: "Soil_dormant_prophage.fasta.gz", bytes: 324160680, sha256: f121cbf7e7fb5f88cc6e7c095474cf29e73560c5876f01f0b727768927617f20, md5: c026ab83002e0dd2bca790f199b11254}
@@ -2171,14 +2168,11 @@ sources:
       default User-Agent); bytes and sha256 above measured on tower, copied from SOURCE_URLS.tsv on 2026-11-25 20:12
       CST
     stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/TSV1/ (SOURCE_URLS.tsv and SHA256SUMS there)
-    note: >-
-      The figshare form cannot name the article, so it allows any figshare file id; the files taken are those of the
-      job list
     approved: "by the PI, 2026-11-25 15:47 CST: \"stage the nucleotides ... on tower\" (the audit of 2026-11-25)"
   - name: tower_sag2
     what: >-
       Item 10 (SAG2 - GORG-Dark SAGs; 2.30 GiB)
-    url: https://ndownloader.figshare.com/files/{file_id}
+    url: https://ndownloader.figshare.com/files/54602522
     files:
       - {file: "GORG-Dark_SAGs.zip", bytes: 2471331739, sha256: 69c567f45ec5a9a814feb5ee2f0ea0d34eed8f39bf77761f02c5fb146c417c51, md5: 780173f01b6cc923c5709978966eb6a5}
     checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
@@ -2188,9 +2182,6 @@ sources:
       default User-Agent); bytes and sha256 above measured on tower, copied from SOURCE_URLS.tsv on 2026-11-25 20:12
       CST
     stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/SAG2/ (SOURCE_URLS.tsv and SHA256SUMS there)
-    note: >-
-      The figshare form cannot name the article, so it allows any figshare file id; the files taken are those of the
-      job list
     approved: "by the PI, 2026-11-25 15:47 CST: \"stage the nucleotides ... on tower\" (the audit of 2026-11-25)"
   - name: tower_rv1
     what: >-
@@ -2212,7 +2203,9 @@ sources:
   - name: tower_ghm1_vhm1
     what: >-
       Item 9 (GHM1_VHM1 - Global Hot Spring Microbiomes & Virome; 12.67 GiB)
-    url: https://ndownloader.figshare.com/files/{file_id}
+    url: https://ndownloader.figshare.com/files/71721769
+    url_2: https://ndownloader.figshare.com/files/71689698
+    url_3: https://ndownloader.figshare.com/files/71703284
     files:
       - {file: "README.txt", bytes: 699, sha256: b7219415e54a76fa3f8dafd2bdefdd2f87631ac0be5d325d2ffb5e808a407ea8, md5: b6dee57562c7beec74340af368c13eaa}
       - {file: "ALL-MAG-summary.xlsx", bytes: 4457472, sha256: ccc02bca8f1a45d68e4af2d8577904ae1d59effc017c3c51b26cb067e95ec3c2, md5: 213ea494882438d4e64be1138c32082c}
@@ -2224,9 +2217,6 @@ sources:
       default User-Agent); bytes and sha256 above measured on tower, copied from SOURCE_URLS.tsv on 2026-11-25 20:12
       CST
     stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/GHM1_VHM1/ (SOURCE_URLS.tsv and SHA256SUMS there)
-    note: >-
-      The figshare form cannot name the article, so it allows any figshare file id; the files taken are those of the
-      job list
     approved: "by the PI, 2026-11-25 15:47 CST: \"stage the nucleotides ... on tower\" (the audit of 2026-11-25)"
   - name: tower_candi1
     what: >-
@@ -2246,7 +2236,7 @@ sources:
   - name: tower_oil1
     what: >-
       OIL1 - Chinese Oilfield Deep Petroleum MAGs (3,057 MAGs) (figshare:31337758, CC BY 4.0)
-    url: https://ndownloader.figshare.com/files/{file_id}
+    url: https://ndownloader.figshare.com/files/61896136
     files:
       - {file: "rename_bins.zip", bytes: 2793687427, sha256: b6fc51d477087e6e4e18804fafcc258359bbe617fceff725e744eb5d026e7af7, md5: 61c3ae230b6bde030d310aea9ab2879c}
     checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
@@ -2256,9 +2246,6 @@ sources:
       default User-Agent); bytes and sha256 above measured on tower, copied from SOURCE_URLS.tsv on 2026-11-25 20:12
       CST
     stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/OIL1/ (SOURCE_URLS.tsv and SHA256SUMS there)
-    note: >-
-      The figshare form cannot name the article, so it allows any figshare file id; the files taken are those of the
-      job list
     approved: "by the PI, 2026-11-25 16:51 CST: \"queubatch 3\" (the audit of 2026-11-25)"
   - name: tower_cfmd1
     what: >-
@@ -2279,7 +2266,8 @@ sources:
     what: >-
       CFMD1 - cFMD v2 / supplemental (zenodo:13285428, cc-by-4.0); FUTM1 - Futian Mangrove 7-Yr MAGs (3,404 spp, 82
       phyla) (figshare:30883646, CC BY 4.0)
-    url: https://ndownloader.figshare.com/files/{file_id}
+    url: https://ndownloader.figshare.com/files/62219453
+    url_2: https://ndownloader.figshare.com/files/62219456
     files:
       - {file: "Dataset 1. Overview of 65 sediment samples in Futian Mangrove National Nature Reserve in Shenzhen, China.xlsx", bytes: 22590, sha256: b0f533834b7e5b21ad94a8128f6a44541fcb8b4df21557241ef0a148dd1089e1, md5: d533ab1ec674b324e48b8f47c7accffd}
       - {file: "Dataset 2. Overview of 6,299 archaeal and bacterial MAGs.xlsx", bytes: 918239, sha256: c035f98ea046ad792d0602ce24a126d27614272d0fd9e2bdd78f9cf623195e09, md5: a23bbcb3997065d5854fae6981f2859a}
@@ -2290,14 +2278,11 @@ sources:
       default User-Agent); bytes and sha256 above measured on tower, copied from SOURCE_URLS.tsv on 2026-11-25 20:12
       CST
     stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/FUTM1/ (SOURCE_URLS.tsv and SHA256SUMS there)
-    note: >-
-      The figshare form cannot name the article, so it allows any figshare file id; the files taken are those of the
-      job list
     approved: "by the PI, 2026-11-25 16:51 CST: \"queubatch 3\" (the audit of 2026-11-25)"
   - name: tower_gxm1
     what: >-
       GXM1 - Guangxi Mangrove Sediments MAGs (2,965 MAGs) (figshare:29320385, CC BY 4.0)
-    url: https://ndownloader.figshare.com/files/{file_id}
+    url: https://ndownloader.figshare.com/files/55385462
     files:
       - {file: "0MDM_drep99_rename.zip", bytes: 2224655817, sha256: 4b03d60486203840382dae55b55530c3d60d1779f4411d84e380e117623ec430, md5: 0f1835780141d070ee649472c1e5a487}
     checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
@@ -2307,9 +2292,6 @@ sources:
       default User-Agent); bytes and sha256 above measured on tower, copied from SOURCE_URLS.tsv on 2026-11-25 20:12
       CST
     stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/GXM1/ (SOURCE_URLS.tsv and SHA256SUMS there)
-    note: >-
-      The figshare form cannot name the article, so it allows any figshare file id; the files taken are those of the
-      job list
     approved: "by the PI, 2026-11-25 16:51 CST: \"queubatch 3\" (the audit of 2026-11-25)"
   - name: tower_flhc1
     what: >-
@@ -2328,7 +2310,7 @@ sources:
   - name: tower_mos1
     what: >-
       MOS1 - MOSAiC Arctic Ocean & Sea-Ice MAGs (2,407 prok) (figshare:25746222, CC BY 4.0)
-    url: https://ndownloader.figshare.com/files/{file_id}
+    url: https://ndownloader.figshare.com/files/46078842
     files:
       - {file: "jgi_havoc_pilot_mags_zipped.zip", bytes: 5087895233, sha256: 7a0bb73507f4e6910f4b067dfb0d876b1c8a540b0a08ccec2ebfc777b2a5f25c, md5: 2d894ea769a112df51a3cb1bba2bb040}
     checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
@@ -2338,9 +2320,6 @@ sources:
       default User-Agent); bytes and sha256 above measured on tower, copied from SOURCE_URLS.tsv on 2026-11-25 20:12
       CST
     stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/MOS1/ (SOURCE_URLS.tsv and SHA256SUMS there)
-    note: >-
-      The figshare form cannot name the article, so it allows any figshare file id; the files taken are those of the
-      job list
     approved: "by the PI, 2026-11-25 16:51 CST: \"queubatch 3\" (the audit of 2026-11-25)"
   - name: tower_maca1
     what: >-
@@ -2359,7 +2338,10 @@ sources:
   - name: tower_nx2_csmc
     what: >-
       NX2_CSMC - CSMC Global Cold Seeps (3,164 spp) (figshare:22568107, CC BY 4.0)
-    url: https://ndownloader.figshare.com/files/{file_id}
+    url: https://ndownloader.figshare.com/files/41695503
+    url_2: https://ndownloader.figshare.com/files/41695500
+    url_3: https://ndownloader.figshare.com/files/41316489
+    url_4: https://ndownloader.figshare.com/files/40047202
     files:
       - {file: "codes.txt", bytes: 5508, sha256: bf36ee93b8e626478a624792444e92e4f1a0c239c8b0a2200a37873a591d37c2, md5: 1ca83d197540cb48cf914e2a39792235}
       - {file: "tree_files.zip", bytes: 9907, sha256: 6dd090f2dacb4e4475be3c20d87d0b6558f01efdd573097fe2a3fb910487e839, md5: 77b58c0be2d28ee4297669e8b934c6b2}
@@ -2372,9 +2354,6 @@ sources:
       default User-Agent); bytes and sha256 above measured on tower, copied from SOURCE_URLS.tsv on 2026-11-25 20:12
       CST
     stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/NX2_CSMC/ (SOURCE_URLS.tsv and SHA256SUMS there)
-    note: >-
-      The figshare form cannot name the article, so it allows any figshare file id; the files taken are those of the
-      job list
     approved: "by the PI, 2026-11-25 16:51 CST: \"queubatch 3\" (the audit of 2026-11-25)"
   - name: tower_wwv1
     what: >-
@@ -2403,7 +2382,7 @@ sources:
   - name: tower_soda1
     what: >-
       SODA1 - Global Soda Lake Biogeography (figshare:28152113, CC BY 4.0)
-    url: https://ndownloader.figshare.com/files/{file_id}
+    url: https://ndownloader.figshare.com/files/51521069
     url_2: https://ftp.ncbi.nlm.nih.gov/genomes/all/{GCA_or_GCF}/{nnn}/{nnn}/{nnn}/{assembly_dir}/{assembly_dir}_genomic.fna.gz
     files:
       - {file: "Scripts_for_sequence_analysis.docx", bytes: 38806, sha256: a45d05f8823d1298003202cf17feebd7453dfd8f3a80856bda93cf2c2aa4f049, md5: 5adc1aba2e6a5dd0659c312f82228f87}
@@ -2415,12 +2394,10 @@ sources:
       CST
     stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/SODA1/ (SOURCE_URLS.tsv and SHA256SUMS there)
     note: >-
-      The figshare form cannot name the article, so it allows any figshare file id; the files taken are those of the
-      job list; The second form is the NCBI FTP genome form of entry ncbi_ftp_genome; the 959 assemblies of
-      PRJNA857294 are listed in
-      tower:/mnt/user/research-bulk/bio-box/sources_incoming/SODA1/MANIFEST_PRJNA857294.tsv (written 2026-11-25
-      20:05 CST, base_count sum 2366049887 bases, derived from the manifest's base_count column) and fetched by
-      _fetch_batch4_ncbi.sh into SODA1/assemblies/, licence column INSDC
+      The second form is the NCBI FTP genome form of entry ncbi_ftp_genome; the 959 assemblies of PRJNA857294 are
+      listed in tower:/mnt/user/research-bulk/bio-box/sources_incoming/SODA1/MANIFEST_PRJNA857294.tsv (written
+      2026-11-25 20:05 CST, base_count sum 2366049887 bases, derived from the manifest's base_count column) and
+      fetched by _fetch_batch4_ncbi.sh into SODA1/assemblies/, licence column INSDC
     approved: "by the PI, 2026-11-25 16:51 CST: \"queubatch 3\" (the audit of 2026-11-25)"
   - name: tower_mfd_lr
     what: >-
@@ -2458,16 +2435,18 @@ sources:
   - name: tower_lr_arc
     what: >-
       LR_ARC - Arctic Tundra Permafrost HiFi MAGs (~500 MAGs) (figshare:32054802, CC BY 4.0)
-    url: https://ndownloader.figshare.com/files/{file_id}
+    url: https://ndownloader.figshare.com/files/69455682
+    url_2: https://ndownloader.figshare.com/files/69206863
+    url_3: https://ndownloader.figshare.com/files/63868983
+    url_4: https://ndownloader.figshare.com/files/63868986
+    url_5: https://ndownloader.figshare.com/files/63945057
+    url_6: https://ndownloader.figshare.com/files/63945525
     checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
     license: CC BY 4.0   # as the job list states it
     fetched: >-
       nothing yet: 6 files named in _batch3.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
       the fetch
     stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/LR_ARC/
-    note: >-
-      The figshare form cannot name the article, so it allows any figshare file id; the files taken are those of the
-      job list
     approved: "by the PI, 2026-11-25 16:51 CST: \"queubatch 3\" (the audit of 2026-11-25); not fetched yet"
   - name: tower_lr_revio
     what: >-
@@ -2483,16 +2462,14 @@ sources:
   - name: tower_euk_y1000
     what: >-
       EUK_Y1000 - Y1000+ Budding Yeasts (1,154 genomes + GFF3, CC0) (figshare:22802147, CC0)
-    url: https://ndownloader.figshare.com/files/{file_id}
+    url: https://ndownloader.figshare.com/files/40534991
+    url_2: https://ndownloader.figshare.com/files/40535165
     checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
     license: CC0   # as the job list states it
     fetched: >-
       nothing yet: 2 files named in _batch3.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
       the fetch
     stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/EUK_Y1000/
-    note: >-
-      The figshare form cannot name the article, so it allows any figshare file id; the files taken are those of the
-      job list
     approved: "by the PI, 2026-11-25 16:51 CST: \"queubatch 3\" (the audit of 2026-11-25); not fetched yet"
   - name: tower_euk_star
     what: >-
@@ -2508,16 +2485,42 @@ sources:
   - name: tower_rna_luca
     what: >-
       RNA_LUCA - LucaProt Global RNA Virome (161,979 spp) (figshare:26298802, CC BY 4.0)
-    url: https://ndownloader.figshare.com/files/{file_id}
+    url: https://ndownloader.figshare.com/files/47671063
+    url_2: https://ndownloader.figshare.com/files/47671078
+    url_3: https://ndownloader.figshare.com/files/47671075
+    url_4: https://ndownloader.figshare.com/files/47671066
+    url_5: https://ndownloader.figshare.com/files/47671054
+    url_6: https://ndownloader.figshare.com/files/47671090
+    url_7: https://ndownloader.figshare.com/files/47671048
+    url_8: https://ndownloader.figshare.com/files/47671069
+    url_9: https://ndownloader.figshare.com/files/47671081
+    url_10: https://ndownloader.figshare.com/files/47671057
+    url_11: https://ndownloader.figshare.com/files/47671060
+    url_12: https://ndownloader.figshare.com/files/47667739
+    url_13: https://ndownloader.figshare.com/files/47671072
+    url_14: https://ndownloader.figshare.com/files/47671099
+    url_15: https://ndownloader.figshare.com/files/47671093
+    url_16: https://ndownloader.figshare.com/files/47671084
+    url_17: https://ndownloader.figshare.com/files/47671096
+    url_18: https://ndownloader.figshare.com/files/47671102
+    url_19: https://ndownloader.figshare.com/files/47667745
+    url_20: https://ndownloader.figshare.com/files/47671105
+    url_21: https://ndownloader.figshare.com/files/47744479
+    url_22: https://ndownloader.figshare.com/files/47671111
+    url_23: https://ndownloader.figshare.com/files/47671108
+    url_24: https://ndownloader.figshare.com/files/47671114
+    url_25: https://ndownloader.figshare.com/files/47671120
+    url_26: https://ndownloader.figshare.com/files/47671123
+    url_27: https://ndownloader.figshare.com/files/48271999
+    url_28: https://ndownloader.figshare.com/files/47667757
+    url_29: https://ndownloader.figshare.com/files/47667760
+    url_30: https://ndownloader.figshare.com/files/52213730
     checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
     license: CC BY 4.0   # as the job list states it
     fetched: >-
       nothing yet: 30 files named in _batch3.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
       the fetch
     stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/RNA_LUCA/
-    note: >-
-      The figshare form cannot name the article, so it allows any figshare file id; the files taken are those of the
-      job list
     approved: "by the PI, 2026-11-25 16:51 CST: \"queubatch 3\" (the audit of 2026-11-25); not fetched yet"
   - name: tower_rna_rvmt
     what: >-
@@ -2570,16 +2573,16 @@ sources:
   - name: tower_arc1
     what: >-
       ARC1 - ArchaeaHQ v2.0 (25,584 curated archaea) (figshare:32266599, CC BY 4.0)
-    url: https://ndownloader.figshare.com/files/{file_id}
+    url: https://ndownloader.figshare.com/files/68890756
+    url_2: https://ndownloader.figshare.com/files/68738341
+    url_3: https://ndownloader.figshare.com/files/68738443
+    url_4: https://ndownloader.figshare.com/files/68738494
     checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
     license: CC BY 4.0   # as the job list states it
     fetched: >-
       nothing yet: 4 files named in _batch3.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
       the fetch
     stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/ARC1/
-    note: >-
-      The figshare form cannot name the article, so it allows any figshare file id; the files taken are those of the
-      job list
     approved: "by the PI, 2026-11-25 16:51 CST: \"queubatch 3\" (the audit of 2026-11-25); not fetched yet"
   - name: tower_avgd
     what: >-
@@ -2619,16 +2622,20 @@ sources:
   - name: tower_nx2_cave
     what: >-
       NX2_CAVE - Global Cave MAGs (1,979 spp reps, Li 2025 Sci Data, figshare:29554673, CC BY 4.0)
-    url: https://ndownloader.figshare.com/files/{file_id}
+    url: https://ndownloader.figshare.com/files/58496362
+    url_2: https://ndownloader.figshare.com/files/58496794
+    url_3: https://ndownloader.figshare.com/files/58496797
+    url_4: https://ndownloader.figshare.com/files/58496791
+    url_5: https://ndownloader.figshare.com/files/58496788
+    url_6: https://ndownloader.figshare.com/files/58496800
+    url_7: https://ndownloader.figshare.com/files/58496167
+    url_8: https://ndownloader.figshare.com/files/58496191
     checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
     license: CC BY 4.0   # as the job list states it
     fetched: >-
       nothing yet: 8 files named in _batch4.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
       the fetch
     stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/NX2_CAVE/
-    note: >-
-      The figshare form cannot name the article, so it allows any figshare file id; the files taken are those of the
-      job list
     approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
   - name: tower_dsv70
     what: >-
@@ -2715,60 +2722,158 @@ sources:
   - name: tower_gv_polar_pitot
     what: >-
       GV_POLAR_PITOT - Pitot 2024 Arctic/Antarctic lakes GVMAGs (figshare:25000571, CC BY 4.0; skip redundant faa)
-    url: https://ndownloader.figshare.com/files/{file_id}
+    url: https://ndownloader.figshare.com/files/44053844
+    url_2: https://ndownloader.figshare.com/files/46079970
     checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
     license: CC BY 4.0   # as the job list states it
     fetched: >-
       nothing yet: 2 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
       the fetch
     stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_gv/GV_POLAR_PITOT/
-    note: >-
-      The figshare form cannot name the article, so it allows any figshare file id; the files taken are those of the
-      job list
     approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
   - name: tower_gv_polar_2026
     what: >-
       GV_POLAR_2026 - Polar Ecosystems 2026 GVMAGs (figshare:32316834, CC BY 4.0)
-    url: https://ndownloader.figshare.com/files/{file_id}
+    url: https://ndownloader.figshare.com/files/71316448
     checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
     license: CC BY 4.0   # as the job list states it
     fetched: >-
       nothing yet: 1 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
       the fetch
     stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_gv/GV_POLAR_2026/
-    note: >-
-      The figshare form cannot name the article, so it allows any figshare file id; the files taken are those of the
-      job list
     approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
   - name: tower_gv_polar_marine
     what: >-
       GV_POLAR_MARINE - Low-Temp Marine GVMAGs (figshare:26314543, CC BY 4.0; 98 genome .fa files, skip .faa &
       scripts)
-    url: https://ndownloader.figshare.com/files/{file_id}
+    url: https://ndownloader.figshare.com/files/47726602
+    url_2: https://ndownloader.figshare.com/files/47726596
+    url_3: https://ndownloader.figshare.com/files/47726614
+    url_4: https://ndownloader.figshare.com/files/47726599
+    url_5: https://ndownloader.figshare.com/files/47726608
+    url_6: https://ndownloader.figshare.com/files/47726611
+    url_7: https://ndownloader.figshare.com/files/47726605
+    url_8: https://ndownloader.figshare.com/files/47726617
+    url_9: https://ndownloader.figshare.com/files/47726620
+    url_10: https://ndownloader.figshare.com/files/47726623
+    url_11: https://ndownloader.figshare.com/files/47726626
+    url_12: https://ndownloader.figshare.com/files/47726629
+    url_13: https://ndownloader.figshare.com/files/47726632
+    url_14: https://ndownloader.figshare.com/files/47726635
+    url_15: https://ndownloader.figshare.com/files/47726638
+    url_16: https://ndownloader.figshare.com/files/47726641
+    url_17: https://ndownloader.figshare.com/files/47726644
+    url_18: https://ndownloader.figshare.com/files/47726647
+    url_19: https://ndownloader.figshare.com/files/47726650
+    url_20: https://ndownloader.figshare.com/files/47726653
+    url_21: https://ndownloader.figshare.com/files/47726656
+    url_22: https://ndownloader.figshare.com/files/47726659
+    url_23: https://ndownloader.figshare.com/files/47726662
+    url_24: https://ndownloader.figshare.com/files/47726665
+    url_25: https://ndownloader.figshare.com/files/47726668
+    url_26: https://ndownloader.figshare.com/files/47726671
+    url_27: https://ndownloader.figshare.com/files/47726674
+    url_28: https://ndownloader.figshare.com/files/47726677
+    url_29: https://ndownloader.figshare.com/files/47726680
+    url_30: https://ndownloader.figshare.com/files/47726683
+    url_31: https://ndownloader.figshare.com/files/47726686
+    url_32: https://ndownloader.figshare.com/files/47726689
+    url_33: https://ndownloader.figshare.com/files/47726692
+    url_34: https://ndownloader.figshare.com/files/47726695
+    url_35: https://ndownloader.figshare.com/files/47726698
+    url_36: https://ndownloader.figshare.com/files/47726701
+    url_37: https://ndownloader.figshare.com/files/47726704
+    url_38: https://ndownloader.figshare.com/files/47726707
+    url_39: https://ndownloader.figshare.com/files/47726710
+    url_40: https://ndownloader.figshare.com/files/47726713
+    url_41: https://ndownloader.figshare.com/files/47726716
+    url_42: https://ndownloader.figshare.com/files/47726719
+    url_43: https://ndownloader.figshare.com/files/47726722
+    url_44: https://ndownloader.figshare.com/files/47726725
+    url_45: https://ndownloader.figshare.com/files/47726728
+    url_46: https://ndownloader.figshare.com/files/47726731
+    url_47: https://ndownloader.figshare.com/files/47726734
+    url_48: https://ndownloader.figshare.com/files/47726737
+    url_49: https://ndownloader.figshare.com/files/47726740
+    url_50: https://ndownloader.figshare.com/files/47726743
+    url_51: https://ndownloader.figshare.com/files/47726746
+    url_52: https://ndownloader.figshare.com/files/47726749
+    url_53: https://ndownloader.figshare.com/files/47726752
+    url_54: https://ndownloader.figshare.com/files/47726755
+    url_55: https://ndownloader.figshare.com/files/47726758
+    url_56: https://ndownloader.figshare.com/files/47726761
+    url_57: https://ndownloader.figshare.com/files/47726764
+    url_58: https://ndownloader.figshare.com/files/47726767
+    url_59: https://ndownloader.figshare.com/files/47726770
+    url_60: https://ndownloader.figshare.com/files/47726773
+    url_61: https://ndownloader.figshare.com/files/47726779
+    url_62: https://ndownloader.figshare.com/files/47726782
+    url_63: https://ndownloader.figshare.com/files/47726785
+    url_64: https://ndownloader.figshare.com/files/47726788
+    url_65: https://ndownloader.figshare.com/files/47726791
+    url_66: https://ndownloader.figshare.com/files/47726794
+    url_67: https://ndownloader.figshare.com/files/47726797
+    url_68: https://ndownloader.figshare.com/files/47726800
+    url_69: https://ndownloader.figshare.com/files/47726803
+    url_70: https://ndownloader.figshare.com/files/47726806
+    url_71: https://ndownloader.figshare.com/files/47726809
+    url_72: https://ndownloader.figshare.com/files/47726812
+    url_73: https://ndownloader.figshare.com/files/47726815
+    url_74: https://ndownloader.figshare.com/files/47726818
+    url_75: https://ndownloader.figshare.com/files/47726821
+    url_76: https://ndownloader.figshare.com/files/47726824
+    url_77: https://ndownloader.figshare.com/files/47726827
+    url_78: https://ndownloader.figshare.com/files/47726830
+    url_79: https://ndownloader.figshare.com/files/47726833
+    url_80: https://ndownloader.figshare.com/files/47726836
+    url_81: https://ndownloader.figshare.com/files/47726839
+    url_82: https://ndownloader.figshare.com/files/47726842
+    url_83: https://ndownloader.figshare.com/files/47726845
+    url_84: https://ndownloader.figshare.com/files/47726851
+    url_85: https://ndownloader.figshare.com/files/47726857
+    url_86: https://ndownloader.figshare.com/files/47726863
+    url_87: https://ndownloader.figshare.com/files/47726866
+    url_88: https://ndownloader.figshare.com/files/47726869
+    url_89: https://ndownloader.figshare.com/files/47726872
+    url_90: https://ndownloader.figshare.com/files/47726875
+    url_91: https://ndownloader.figshare.com/files/47726878
+    url_92: https://ndownloader.figshare.com/files/47726881
+    url_93: https://ndownloader.figshare.com/files/47726884
+    url_94: https://ndownloader.figshare.com/files/47726887
+    url_95: https://ndownloader.figshare.com/files/47726890
+    url_96: https://ndownloader.figshare.com/files/47726893
+    url_97: https://ndownloader.figshare.com/files/47726896
+    url_98: https://ndownloader.figshare.com/files/47727625
     checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
     license: CC BY 4.0   # as the job list states it
     fetched: >-
       nothing yet: 98 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
       the fetch
     stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_gv/GV_POLAR_MARINE/
-    note: >-
-      The figshare form cannot name the article, so it allows any figshare file id; the files taken are those of the
-      job list
     approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
   - name: tower_gv_polar_geve
     what: >-
       GV_POLAR_GEVE - Polar Microalgal GEVEs (figshare:29546846, CC BY 4.0; contigs zip + 9 confirmed .fna +
       annotations, skip aln/nwk/faa/readcounts)
-    url: https://ndownloader.figshare.com/files/{file_id}
+    url: https://ndownloader.figshare.com/files/56190881
+    url_2: https://ndownloader.figshare.com/files/56190950
+    url_3: https://ndownloader.figshare.com/files/56190953
+    url_4: https://ndownloader.figshare.com/files/56190956
+    url_5: https://ndownloader.figshare.com/files/56190959
+    url_6: https://ndownloader.figshare.com/files/56190977
+    url_7: https://ndownloader.figshare.com/files/56190962
+    url_8: https://ndownloader.figshare.com/files/56190965
+    url_9: https://ndownloader.figshare.com/files/56190968
+    url_10: https://ndownloader.figshare.com/files/56190971
+    url_11: https://ndownloader.figshare.com/files/56193683
+    url_12: https://ndownloader.figshare.com/files/56193689
+    url_13: https://ndownloader.figshare.com/files/56191073
     checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
     license: CC BY 4.0   # as the job list states it
     fetched: >-
       nothing yet: 13 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
       the fetch
     stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_gv/GV_POLAR_GEVE/
-    note: >-
-      The figshare form cannot name the article, so it allows any figshare file id; the files taken are those of the
-      job list
     approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
   - name: tower_gv_gks
     what: >-
@@ -2841,16 +2946,13 @@ sources:
   - name: tower_tymeflies_v
     what: >-
       TYMEFLIES_V - Lake Mendota 20-Yr Freshwater vMAGs (figshare:24915750, CC BY 4.0)
-    url: https://ndownloader.figshare.com/files/{file_id}
+    url: https://ndownloader.figshare.com/files/43845801
     checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
     license: CC BY 4.0   # as the job list states it
     fetched: >-
       nothing yet: 1 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
       the fetch
     stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_phages/TYMEFLIES_V/
-    note: >-
-      The figshare form cannot name the article, so it allows any figshare file id; the files taken are those of the
-      job list
     approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
   - name: tower_bphage
     what: >-
@@ -2929,7 +3031,7 @@ sources:
       ASG2 (Zhang Nature 2025) - Deep-origin Asgardarchaeota (figshare:34064073, CC BY 4.0); ASG2 (Valentin-Alvarado
       2024) - Asgard MGE/virus .fna genomes + annotations (zenodo:12617226, cc-by-4.0; skipped 63
       aln/tree/alphafold/icloud files)
-    url: https://ndownloader.figshare.com/files/{file_id}
+    url: https://ndownloader.figshare.com/files/69639846
     url_2: https://zenodo.org/api/records/12617226/files/{file}/content
     checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
     license: "CC BY 4.0, cc-by-4.0"   # as the job lists state it, per file
@@ -2937,9 +3039,6 @@ sources:
       nothing yet: 23 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
       the fetch
     stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_proks/ASG2/
-    note: >-
-      The figshare form cannot name the article, so it allows any figshare file id; the files taken are those of the
-      job list
     approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
   - name: tower_desert_qaidam
     what: >-
@@ -2968,16 +3067,13 @@ sources:
     what: >-
       DESERT_MONASH - Monash 2,226 soil MAGs via api.figshare.com (figshare:24302833, CC BY 4.0; bridges.monash.edu
       returned HTTP 202 WAF)
-    url: https://ndownloader.figshare.com/files/{file_id}
+    url: https://ndownloader.figshare.com/files/57783499
     checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
     license: CC BY 4.0   # as the job list states it
     fetched: >-
       nothing yet: 1 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
       the fetch
     stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_proks/DESERT_MONASH/
-    note: >-
-      The figshare form cannot name the article, so it allows any figshare file id; the files taken are those of the
-      job list
     approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
   - name: tower_code4_glmc
     what: >-
@@ -3008,18 +3104,16 @@ sources:
       (SpongeSymbionts) - paobrien/SpongeSymbionts supplemental archive (zenodo:13266492, cc-by-4.0); ACIDO_SPG
       (Phyllospongia) - Phyllospongia foliascens bin table (zenodo:21135542, cc-by-4.0; metadata CSV only, no
       FASTAs)
-    url: https://ndownloader.figshare.com/files/{file_id}
-    url_2: https://zenodo.org/api/records/13266492/files/paobrien/SpongeSymbionts-SpongeSymbionts.zip/content
-    url_3: https://zenodo.org/api/records/21135542/files/{file}/content
+    url: https://ndownloader.figshare.com/files/67605795
+    url_2: https://ndownloader.figshare.com/files/67605747
+    url_3: https://zenodo.org/api/records/13266492/files/paobrien/SpongeSymbionts-SpongeSymbionts.zip/content
+    url_4: https://zenodo.org/api/records/21135542/files/{file}/content
     checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
     license: "CC BY 4.0, cc-by-4.0"   # as the job lists state it, per file
     fetched: >-
       nothing yet: 4 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
       the fetch
     stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_proks/ACIDO_SPG/
-    note: >-
-      The figshare form cannot name the article, so it allows any figshare file id; the files taken are those of the
-      job list
     approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
   - name: tower_subsurf_wt29a
     what: >-

@@ -53,9 +53,11 @@ section 8). Every `tower_*` entry in `sources.yaml` carries one of the three quo
 (`{file}`, `{strain}` one path segment, `{path}` more), the files that landed with bytes, our sha256 and the provider's md5, the licence as the job
 list states it, `fetched` with what had and had not landed at 20:12 CST, `stored` and `approved`.
 
-The URL forms are as narrow as the lists allow: a Zenodo form names its record, a literal URL is kept where the list holds one file. A figshare file
-id cannot be tied to its article by the URL (`https://ndownloader.figshare.com/files/{file_id}`), so those forms allow any figshare file; this is the only
-loose class.
+The URL forms are as narrow as the lists allow: a Zenodo form names its record, and every figshare file is listed by its exact URL (209 `url`/`url_N` lines of the
+form `https://ndownloader.figshare.com/files/<id>`, one per figshare file of the job lists), as the entries of this file did before this card. No form leaves a figshare file id
+open; a figshare id no job list names is refused (tests `test_a_figshare_file_no_job_list_names_is_refused` and `test_no_url_form_of_the_tree_leaves_a_figshare_file_id_open`).
+The first version of this card used one `{file_id}` form for all of figshare; the orchestrator's review removed it. The Zenodo forms still allow any file of a listed record
+(`{file}`), the VEuPathDB forms any strain and file of a listed host, and `{path}` forms any path under a listed directory.
 
 ## 4. Per source
 
@@ -170,7 +172,7 @@ file name. `_fetch_batch2.sh` as run would have failed this job (it runs `curl -
 `Benjamin-Lee/`, so `FAIL_CURL`; the loop continues). The check above ran on a copy in which the file name is `viroiddb-2021-06-06.zip`; the URL of that
 job is covered. A list given to `fetch_to_tower.sh` must not contain such a name (the whole run is refused before any request); the job needs another
 file name in the list on `tower`. The test `test_every_source_of_the_2026_11_25_job_lists_is_covered_by_the_trees_sources_yaml` repeats the match
-for one real URL per source and per URL form (92 URLs), against the tree's `sources.yaml`.
+for one real URL per source and per URL form (92 URLs), against the tree's `sources.yaml`; the counts above were re-run on 2026-11-25 after the figshare change and are unchanged (690 and 11,821).
 
 ## 6. Differences between the scripts as run and `fetch_to_tower.sh`
 
@@ -231,5 +233,6 @@ Queued in the job lists (by name): `RNA_LUCA` (30 files, nearly all artefacts of
   `GBR_MGD` (one 5,283-MAG tarball, queued) has the licence field `{}` in `_batch3.tsv`: the record states none. `RNA_VIROID` carries `other-open` for one file.
   `LR_COMPOST` carries `ONT-Open-Data` and `SYM2` `open-public-NERSC`, which are access terms, not licences.
 - Any licence is the list's text, not checked against the record by this card (AGENTS.md section 8: nothing was fetched).
+- The `RNA_VIROID` job `Benjamin-Lee/viroiddb-2021-06-06.zip` in `_batch3.tsv` (line 103) has a `/` in its file name: it will fail in the running batch (`FAIL_CURL`) and needs a new file name in the list on `tower` before `fetch_to_tower.sh` can read that list.
 - Nothing on `tower` was deleted, moved or re-hashed; whether the non-sequence files of section 8 should stay is the PI's decision.
 - The check in section 5 passes for every queued URL, but a pass says the URL form is listed, not that the PI approved the host (section 2).

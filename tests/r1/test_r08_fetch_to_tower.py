@@ -602,8 +602,52 @@ def test_the_tree_sources_yaml_parses_and_every_tower_entry_has_its_record():
         for f in e.get("files", []):
             assert re.fullmatch(r"[0-9a-f]{64}", f["sha256"]) and isinstance(f["bytes"], int) and f["bytes"] > 0, (e["name"], f)
             assert "md5" not in f or re.fullmatch(r"[0-9a-f]{32}", f["md5"]), (e["name"], f)
+    for e in doc["sources"]:
+        for k, v in e.items():
+            if k == "url" or k.startswith("url_"):
+                assert not re.search(r"ndownloader\.figshare\.com/files/\{", str(v)), (e["name"], k, v)
     gsv = next(e for e in doc["sources"] if e["name"] == "gsv_atlas")
     assert "8ff20350e9986f2a99efccf4ae7fb5ccd7f18d8899635a4e816fb6b2ad987df0" in gsv["fetched_tower"]
     gsv_tower = next(e for e in tower if e["name"] == "tower_gsv1")
     assert gsv_tower["files"][0]["sha256"] == "8ff20350e9986f2a99efccf4ae7fb5ccd7f18d8899635a4e816fb6b2ad987df0"
     assert next(e for e in tower if e["name"] == "tower_gbr_mgd")["license"] == "{}"
+
+
+FIGSHARE_LISTED = [  # one listed file of three different entries (tower_egv1, tower_mir1, tower_asg1)
+    "https://ndownloader.figshare.com/files/66974843",
+    "https://ndownloader.figshare.com/files/54652007",
+    "https://ndownloader.figshare.com/files/60829597",
+]
+
+
+def check_real(w: dict, url: str) -> subprocess.CompletedProcess:
+    rows = [("S1", "f.bin", url, "-", "x")]
+    return subprocess.run(["bash", str(SCRIPT), "--check", "--sources", str(real_sources()), str(jobs(w, rows))],
+                          env=w["env"], capture_output=True, text=True, timeout=120)
+
+
+@pytest.mark.parametrize("url", ["https://ndownloader.figshare.com/files/1", "https://ndownloader.figshare.com/files/66974844",
+                                 "https://ndownloader.figshare.com/files/6697484"])
+def test_a_figshare_file_no_job_list_names_is_refused(world, url):
+    r = check_real(world, url)
+    assert r.returncode == 2, r.stdout + r.stderr
+    assert "not covered" in r.stderr
+
+
+@pytest.mark.parametrize("url", FIGSHARE_LISTED)
+def test_a_figshare_file_a_job_list_names_is_accepted(world, url):
+    r = check_real(world, url)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "match tower_" in r.stdout
+
+
+def test_no_url_form_of_the_tree_leaves_a_figshare_file_id_open():
+    yaml = pytest.importorskip("yaml")
+    doc = yaml.safe_load(real_sources().read_text())
+    bad = []
+    for e in doc["sources"]:
+        for k, v in e.items():
+            if k == "url" or k.startswith("url_"):
+                if re.match(r"https?://ndownloader\.figshare\.com/files/(\{[^}]*\}|[^0-9/]*)$", str(v)):
+                    bad.append((e["name"], k, v))
+    assert not bad, bad
