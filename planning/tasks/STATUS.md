@@ -104,10 +104,35 @@ continue to work autonomously making reasonable decisions on pod to keep the wor
 - Card C-72, part 1 (DEC-79 (4)): the `sources.yaml` entries of the five approved sources and their job list, on
   branch `task/C-72-1` from `task/R-11`; the fetch runs on `tower` with `fetch_to_tower.sh` after its merge.
 
+**W5. `r26.11.5` staging, 2026-11-26** (the PI's words of about 08:15 CST: "continue autonomously; report every 2 hr"):
+- The plan is merged (`67024e6`): [`2026-11-26_r26_11_5_staging_plan.md`](../measurements/2026-11-26_r26_11_5_staging_plan.md),
+  one record per member of DEC-79 (1), and cards C-73 to C-81 and A-29 in `TASKS.md` after card C-72 (written by an
+  Opus agent on `task/A-29-plan`, `34fc33f`, from listings only; the cards for the two launched first, C-73 and C-79,
+  and the rules common to all were read by this session; the note was not read line by line). The staging cards put
+  large files on `/stor/scratch`, write confs as templates, and leave `/tmp/if2453/s2/inputs/` and
+  `tests/r1/test_stage_driver.py` to card A-29, which runs when `r26.11.4` is verified.
+- The plan put eight questions to the PI. Under his word to keep the work moving, this session answered them as
+  follows; **each is the orchestrating session's choice and the PI's to change**: (1) for `EGV1`, `ECE2`, `ASG1` and
+  the Medvedeva part of `MIR1` the licences recorded in the notes of cards C-69 and C-70 count as the record; the
+  Bellas part of `MIR1` enters only if its card reads a licence on the listed record. (2) `SYM2`, with no licence in
+  any record, is not staged and moves to `r26.11.6` unless the PI reads one. (3) `LR2` is one stage in
+  `gv-meta-c25`. (4) `MVEUKV` and `ASG1` are `annotated`; `DPN1` is `annotated` up to about 1.5 Gbp new, else
+  `called`. (5) DEC-79 (3) in `r26.11.5` means checks against R232 and r232 by accession (no r232 genome is
+  fetched), ANI checks against r226, and the r232 cut of `r26.11.6` deduplicated against `r26.11.5`. (6) Stage names
+  without a hyphen: `GRARE1..3`, `MVEUKV`, `KAVHIFI`, `INPH2604`. (7) Files move from `tower` to the pod by the relay
+  of card C-73 once it is merged: they are public source files on the PI's two hosts, and DEC-60 (3)'s condition
+  concerned the first copies to `tower`. (8) Friday 2026-11-27 is taken as an ordinary weekday (40 threads from 08:00
+  to 20:00) unless the PI says his word of today covers it, so staging compute beside the build runs today and at
+  night.
+- Launched at about 08:40 CST: card C-73 (the relay from `tower` to the pod; code and tests, no copy) and card C-79
+  (`MV2` and `MVEUKV` from the MetaVR archive on `/stor`: at most 4 threads beside the build's 40).
+
 **W3. Next, in order:**
-1. Look at the first ten shard records (due about 08:35 CST: 61 minutes of wall each on the earlier stages); they
-   should hold 216 to 255 CPU-minutes each. The scan is 72 shards, about 7.3 h of wall (*derived*: 72 / 10 × 61 min),
-   then the merge, the second CRISPR producer, and the modes `after`, `check` and `backup`.
+1. **Seen 08:31 CST:** the first two shard records of `V2` hold 226.9 and 228.7 CPU-minutes, 58.6 minutes of wall each
+   (*measured*, `wilkcomp02`, 2026-11-26, the script of W1 over `runs/stage=V2/domains-*.shard-*.json`), against
+   more than 283 unfinished at 20 shards at once: the reading of W1 holds. The scan is 72 shards, about 7.0 h of wall
+   (*derived*: 72 / 10 × 58.6 min), so it ends at about 14:35 CST; then the merge, the second CRISPR producer, and
+   the modes `after`, `check` and `backup`.
 2. The other 18 stages (`PL2`, `PL3`, `CG1`, `MGE1`, `SAT1`, `ECE1`, `O1`, `O2`, `LPL1`, `SYM1`, `LRV1`, `LGRT1`,
    `MGE2`, `MV1`, `V3`, `LR1`, `GART1`, `GART2`, the order of the confs' `AFTER=` lines) are launched as a wave of
    their own when `V2` has its `backup/DONE` and card R-11 has read their inputs, with `SCAN_JOBS=10` and no change of
@@ -1506,7 +1531,7 @@ Last full suite on the integration branch before the C-11 merge: 1,053 passed, 1
 pinned image; 3 min 40 s wall for the slowest shard, against 13.5 min in one process). The skips
 need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the laptop (AGENTS.md §5.5).
 
-## Merged (213 rows counted one per card row as before, and measurements; F-02 has ten sessions in; C-48c has parts 2 and 3, and C-48e part 1, the inputs, in)
+## Merged (214 rows counted one per card row as before, and measurements; F-02 has ten sessions in; C-48c has parts 2 and 3, and C-48e part 1, the inputs, in)
 
 The count stood at 190 after C-38c. The twelve card rows and four note rows that follow were not written at their
 merges; the audit of 2026-11-25 wrote them from git and from the orchestrator's log
@@ -1515,6 +1540,7 @@ table's distinct card IDs are fewer (some cards have several rows).
 
 | Card | Merge | What it did | Audit notes |
 |---|---|---|---|
+| A-29 (plan) | `67024e6` | **The staging plan of `r26.11.5` and its cards.** `planning/measurements/2026-11-26_r26_11_5_staging_plan.md` (per member of DEC-79 (1): where its bytes are, what is staged and what remains, its catches, depth and gene-call mode, a cost estimate, what it waits for; the chain; how the sets on `tower` reach the pod; the disk budget; the risks) and cards C-73 to C-81 and A-29 after card C-72, with one dated line each in cards C-69 and C-70 (`34fc33f`). No code, no conf, no data moved | Opus agent on `task/A-29-plan`, from listings on the pod and `tower` only (08:15 to 08:27 CST). Read by the orchestrating session: the common rules, cards C-73 and C-79, and the agent's report; the rest of the note and cards are read as each card is launched. Its eight questions are answered in W5. Its findings to carry: changing `GV1.conf`'s `AFTER=` needs three tests of `test_stage_driver.py` migrated (card A-29 says so); `LR2` must not get `MIN_CONTIG_LEN=5000`; `sources.yaml` has no entry for INPHARED 7Apr2026; `MGE4`, `SYM2`, `MIR2`, `ASG1` and `DPN1` may hold other content than their names say (judged from file names and sizes; each card reads the archive before staging) |
 | C-72 (survey) | `da13d2a` | **Sources the surveys of 2026-11-25 missed, and a proposed `r26.11.5`.** `planning/measurements/2026-11-26_missed_diversity_sources.md` (a record per candidate, two rankings, a merged grab order, what was looked for and not found, the roadmap before and after), card C-72 after C-71, dated lines in cards C-69, C-70 and C-71, three rows in `CATALOG_GOAL.md` §4.3 (`653bb74`). No data fetched, `sources.yaml` untouched. The staging parts of the card are not started | Opus agent on `task/C-72`, read-only (web search and the providers' record pages, two `ls` on `tower`), audited by the orchestrating session: the note, the card and the three rows read in full; the GlobDB r232 directory index and dataset list and GTDB R232's release notes were read again through a separate fetch and agree with the note (genome archive 292,068,313 K; the 26 resources' counts, whose twelve new ones sum to 46,920; 901,341 genomes in 199,923 species clusters). Not checked again: the Zenodo and figshare records, the MGnify indexes, the papers' counts. The note uses a fourth label, *published* (the provider's own statement), beside the three of AGENTS §6, as cards C-69 to C-71 already do. No test reads the three files (`grep -rl` over `tests`: comments only), so none was run. The revised `r26.11.5` is a proposal for the PI (W3 (4)) |
 | R-10 | `62d2694` | **The C-48b memory bound reads the child's own peak.** `tests/r1/test_c48b_env_crosswalk.py::test_bounded_rss_on_100x_synthetic_inputs` reads the child's `VmHWM` (`ru_maxrss` only without `/proc`); the 512 MiB bound is unchanged (`317bfd2`) | Opus agent (the R-01 agent) on `task/R-10`. Found when `ci` of `2ea134d` (card B-74's commit) failed on this test (`575.82 MiB`): B-74's new tests sort before it and raised the suite process's peak, which a child's `ru_maxrss` carries (card R-01). Reproduced on `wilkcomp02` under a parent that had held 3 GB: `Peak RSS too high: 2893.64 MiB`; after: 237 passed both ways (with `tests/r0`). *Measured* (`wilkcomp02`, 2026-11-25): the child's own peak is 443 MiB (about 14% under the bound). Shown able to fail (600 MiB added in the child: 830.56 MiB). Every other `ru_maxrss` site in `tests/` was read: none bounds a child's `ru_maxrss` (the table is in the agent's report; the `runstep.measured` helper does not carry the parent's peak: 75,235,328 B under a parent that had held 3 GB). The card listed eight files; one needed the change. |
 | R-05b | `11731e7` | **Follow-up to R-05 after R-02: a live cut under a format-1 plan gets no DEC-77 cap.** `r50_watch._live_cut_cap` returns the default cap when the plan's `format` is 1, as `l2.cluster.cut_createindex_estimate` now returns None for it; `test_format1_plan_work_dir_and_no_exemption` replaces the test that asserted the exemption (`5ca7589`) | Opus agent (the R-05 agent) on `task/R-05b`, branched from the integration branch. Found by the `ci` run of R-02 and R-05 together (`8d8f85e`: `assert None is not None`). Seen failing first: 4 of 60 (`assert 20000.0 == 280.0`). Agent's run on the merged tree: 509 passed in 354.08 s (the watch, train, R-02 and `tests/r0` files). No card was written before the work: it is a follow-up inside R-05, recorded here. |
