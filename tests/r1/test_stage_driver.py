@@ -2286,3 +2286,254 @@ def test_the_quota_is_looked_at_within_one_poll_of_the_hour_changing(tmp_path):
     hours = _lines(tmp_path / "hours", "07", "07", "08")
     _ok(w.drive("run", FAKE_ACTIVE_FILE=str(active), FAKE_QUOTAS=quotas, FAKE_HOURS=hours))
     assert "systemctl --user set-property --runtime zz1-1 CPUQuota=3800%" in w.calls()
+
+
+# ==============================================================================================================
+# Card A-30 (DEC-81 (3)): the stages of one wave share their rehearsal and their release verification. A share is
+# taken only from recorded facts that are equal (the conf's kind, the code's sha256, the image and its digest, the
+# profile, the tree, the wave; the root's listing, the other stages' sha256, the manifests' sha256), is logged with
+# what was shared from where, and any single difference, a missing marker or STAGE_SHARE=0 runs the full check. A stage
+# alone (no STAGE_WAVE) behaves as before.
+
+A30 = pytest.mark.covers("A-30")
+RELEASES = ["r26.11.1", "rA", "rB"]
+
+
+def _a30_world(tmp_path: Path, **kw) -> World:
+    """A World whose tree has the code a rehearsal runs (src/ and the fixture), so that its sha256 can be taken."""
+    w = World(tmp_path, **kw)
+    (w.tree / "src" / "biobox").mkdir(parents=True)
+    (w.tree / "src" / "biobox" / "x.py").write_text("X = 1\n")
+    (w.tree / "tests" / "fixtures" / "micro_s0").mkdir(parents=True)
+    (w.tree / "tests" / "fixtures" / "micro_s0" / "f.txt").write_text("fixture\n")
+    return w
+
+
+def _second(w: World, stage: str = "ZZ2", **kw) -> Path:
+    """Another stage of the same root and inputs: its conf, and its directory."""
+    sums = {n: hashlib.sha256((w.inputs / n).read_bytes()).hexdigest() for n in ("genomes.json", "objects.json", "x.fna")}
+    w.write_conf(stage, conf_text(stage, w.inputs, sums, **kw))
+    return w.pod / "stages" / stage.lower()
+
+
+def _mark_as(w: World, stage: str, *modes: str) -> None:
+    for m in modes:
+        d = w.pod / "stages" / stage.lower() / m
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "DONE").write_text(w.conf_sha(stage) + "\n")
+
+
+def _log_of(w: World, stage: str) -> str:
+    p = w.pod / "stages" / stage.lower() / "driver.log"
+    return p.read_text() if p.exists() else ""
+
+
+def _keep_mtime(p: Path, data: bytes) -> None:
+    """New content of the same size, with the file's mtime put back: only a hash can see the change."""
+    st = p.stat()
+    assert len(data) == st.st_size
+    p.write_bytes(data)
+    os.utime(p, ns=(st.st_atime_ns, st.st_mtime_ns))
+
+
+# (2) the rehearsal
+
+@A30
+def test_a30_a_rehearsal_is_taken_from_an_earlier_stage_of_the_wave_under_full_equality_and_logged(tmp_path):
+    w = _a30_world(tmp_path)
+    c2 = _second(w, "ZZ2")
+    c3 = _second(w, "ZZ3")
+    _ok(w.drive("rehearse", STAGE_WAVE="wa30"), w, "a30-rehearse-source")
+    done1 = (w.c / "rehearse" / "DONE").read_text().splitlines()
+    assert done1[0] == w.conf_sha() and done1[1] == "rehearsal=full" and done1[2] == "stage=ZZ1", done1
+    w.log.write_text("")
+    _ok(w.drive("rehearse", stage="ZZ2", STAGE_WAVE="wa30"))
+    assert "pod_run" not in w.calls() and "stage_est.py fixture" not in w.calls(), "nothing is rehearsed again"
+    done2 = (c2 / "rehearse" / "DONE").read_text().splitlines()
+    assert done2[0] == w.conf_sha("ZZ2"), "the marker is made for the taking stage's own conf"
+    assert done2[1].startswith("rehearsal=shared from stage ZZ1 ") and done2[2] == "stage=ZZ2", done2
+    assert done2[3:] == done1[3:], "the facts it was taken on are those of the source"
+    facts = dict(ln.split("=", 1) for ln in done2[3:])
+    assert {"wave", "tree", "code", "image", "digest", "profile", "kind"} <= set(facts)
+    assert facts["wave"] == "wa30" and re.fullmatch(r"[0-9a-f]{64}", facts["code"])
+    assert "DEPTH=annotated" in facts["kind"] and "LIBCUT=gathering" in facts["kind"] and "CRISPR=yes" in facts["kind"]
+    log2 = _log_of(w, "ZZ2")
+    assert "rehearse: SHARED from stage ZZ1" in log2 and facts["code"] in log2, "the log says what, from where, on what"
+    # a shared marker is never a source: a third stage takes it from the stage that rehearsed
+    _ok(w.drive("rehearse", stage="ZZ3", STAGE_WAVE="wa30"))
+    done3 = (c3 / "rehearse" / "DONE").read_text().splitlines()
+    assert done3[1].startswith("rehearsal=shared from stage ZZ1 "), done3
+    # run takes the shared marker as it takes any other made for its conf
+    _mark_as(w, "ZZ2", "estimate", "before")
+    _ok(w.drive("run", stage="ZZ2", STAGE_WAVE="wa30"))
+    assert (c2 / "run" / "DONE").exists()
+
+
+@A30
+@pytest.mark.parametrize("change", ["minlen", "crispr", "depth", "genecall", "libcut", "code", "image", "profile",
+                                    "wave", "tree", "switch", "nowave", "source-gone"])
+def test_a30_each_single_difference_runs_the_full_rehearsal(tmp_path, change):
+    import shutil
+
+    w = _a30_world(tmp_path)
+    kw = {"minlen": {"minlen": 5000}, "crispr": {"crispr": "no"}, "depth": {"depth": "called", "library": None},
+          "genecall": {"extra": "GENECALL_MODE=gv-meta\n"}, "libcut": {"library": "pfam 38.2 trusted"}}.get(change, {})
+    c2 = _second(w, "ZZ2", **kw)
+    _ok(w.drive("rehearse", STAGE_WAVE="wa30"))
+    env = {"STAGE_WAVE": "wa30"}
+    if change == "code":
+        (w.tree / "src" / "biobox" / "x.py").write_text("X = 2\n")
+    elif change == "image":
+        env["DIGEST"] = "sha256:" + "0" * 64
+    elif change == "profile":
+        (w.tree / "profiles" / "wilkcomp02.yaml").write_text(PROFILE + "# edited\n")
+    elif change == "wave":
+        env["STAGE_WAVE"] = "wb30"
+    elif change == "tree":
+        shutil.copytree(w.tree, tmp_path / "tree2")  # the same code in another tree: never shared across trees
+        env["TREE"] = str(tmp_path / "tree2")
+    elif change == "switch":
+        env["STAGE_SHARE"] = "0"
+    elif change == "nowave":
+        del env["STAGE_WAVE"]
+    elif change == "source-gone":
+        (w.c / "rehearse" / "DONE").unlink()
+    w.log.write_text("")
+    _ok(w.drive("rehearse", stage="ZZ2", **env))
+    assert "pod_run zz2-rh-e" in w.calls(), f"{change}: the full rehearsal ran"
+    done = (c2 / "rehearse" / "DONE").read_text().splitlines()
+    assert done[0] == w.conf_sha("ZZ2")
+    assert not any("shared from" in ln for ln in done), done
+    assert "SHARED" not in _log_of(w, "ZZ2")
+    if change == "nowave":
+        assert done == [w.conf_sha("ZZ2")], "a stage alone writes its marker as before"
+    elif change == "switch":
+        assert "share: off (STAGE_SHARE=0)" in _log_of(w, "ZZ2")
+    else:
+        assert "rehearse: not shared" in _log_of(w, "ZZ2")
+
+
+@A30
+def test_a30_a_rehearsal_outside_a_wave_writes_its_marker_as_before(tmp_path):
+    w = _a30_world(tmp_path)
+    _ok(w.drive("rehearse"))
+    assert (w.c / "rehearse" / "DONE").read_text() == w.conf_sha() + "\n"
+    assert "share" not in _driver_log(w).lower()
+
+
+# (3) the verification before a build
+
+def _a30_after_of_zz1(w: World, wave: str = "wa30") -> None:
+    """ZZ1 built in the wave: before (full: nothing to take), a build that added its file, after (always full)."""
+    w.mark("estimate", "rehearse")
+    _ok(w.drive("before", STAGE_WAVE=wave))
+    w.mark("run")
+    own = w.root / "l0seq" / "x" / "stage=ZZ1"
+    own.mkdir(parents=True)
+    (own / "part-0.parquet").write_bytes(b"new")
+    _ok(w.drive("after", STAGE_WAVE=wave))
+
+
+@A30
+def test_a30_before_takes_the_verification_from_the_wave_when_nothing_changed_and_after_verifies_in_full(tmp_path):
+    w = _a30_world(tmp_path)
+    c2 = _second(w, "ZZ2")
+    _a30_after_of_zz1(w)
+    assert _verified(w) == sorted(RELEASES * 2), "ZZ1's before and after verified in full"
+    assert (w.c / "after" / "verified.share").exists()
+    w.log.write_text("")
+    _ok(w.drive("before", stage="ZZ2", STAGE_WAVE="wa30"), w, "a30-before-shared")
+    assert _verified(w) == [], "no release is verified again"
+    assert (c2 / "before" / "DONE").read_text().strip() == w.conf_sha("ZZ2")
+    log2 = _log_of(w, "ZZ2")
+    assert "before: SHARED the verification of 3 releases from stage ZZ1 mode after of wave wa30" in log2, log2
+    for r in RELEASES:
+        t = (c2 / "before" / f"verify-{r}.log").read_text()
+        assert "not verified here" in t and "stage ZZ1 mode after" in t and re.search(r"manifest hash [0-9a-f]+", t)
+        assert f"verify {r}: SHARED from stage ZZ1 mode after" in log2
+    assert "l0seq/x/stage=ZZ1/part-0.parquet" in (c2 / "before" / "earlier.sha256").read_text(), "the snapshot is taken"
+    assert not (c2 / "before" / "verified.share").exists(), "a shared verification is never a source"
+    # after verifies every release in full and compares its hashes with those before took
+    _mark_as(w, "ZZ2", "run")
+    own = w.root / "l0seq" / "x" / "stage=ZZ2"
+    own.mkdir(parents=True)
+    (own / "part-0.parquet").write_bytes(b"two")
+    w.log.write_text("")
+    _ok(w.drive("after", stage="ZZ2", STAGE_WAVE="wa30"))
+    assert _verified(w) == RELEASES
+
+
+@A30
+@pytest.mark.parametrize("change,why", [
+    ("new-file", "the root's listing"),
+    ("manifest", "the manifest of release rA"),
+    ("stage-sha", "files of other stages"),
+    ("older", "newer than the record"),
+    ("wave", "no record of a full verification in wave wb30"),
+    ("code", "the code's sha256"),
+    ("image", "the image or its digest"),
+    ("tree", "tree"),
+    ("source-done", "DONE"),
+    ("source-listing", "its listing.all.tsv"),
+    ("switch", "share: off (STAGE_SHARE=0)"),
+    ("nowave", None),
+])
+def test_a30_each_single_difference_runs_the_full_verification(tmp_path, change, why):
+    import shutil
+
+    w = _a30_world(tmp_path)
+    c2 = _second(w, "ZZ2")
+    _a30_after_of_zz1(w)
+    env = {"STAGE_WAVE": "wa30"}
+    if change == "new-file":
+        (w.root / "l0seq" / "stray.parquet").write_bytes(b"x")
+    elif change == "manifest":
+        _keep_mtime(w.root / "manifests" / "release=rA.json", json.dumps({"release": "rX"}).encode())
+    elif change == "stage-sha":
+        _keep_mtime(w.root / "l0seq" / "x" / "stage=S1" / "part-0.parquet", b"T1")
+    elif change == "older":
+        os.utime(w.c / "before" / "verified.share", (946684700, 946684700))
+        os.utime(w.c / "after" / "verified.share", (946684800, 946684800))  # 2000-01-01, before every file
+    elif change == "wave":
+        env["STAGE_WAVE"] = "wb30"
+    elif change == "code":
+        (w.tree / "src" / "biobox" / "x.py").write_text("X = 2\n")
+    elif change == "image":
+        env["DIGEST"] = "sha256:" + "0" * 64
+    elif change == "tree":
+        shutil.copytree(w.tree, tmp_path / "tree2")
+        env["TREE"] = str(tmp_path / "tree2")
+    elif change == "source-done":
+        (w.c / "after" / "DONE").unlink()
+    elif change == "source-listing":
+        with open(w.c / "after" / "listing.all.tsv", "a") as fh:
+            fh.write("l0seq/forged.parquet\t1\t1.0\n")
+    elif change == "switch":
+        env["STAGE_SHARE"] = "0"
+    elif change == "nowave":
+        del env["STAGE_WAVE"]
+    w.log.write_text("")
+    _ok(w.drive("before", stage="ZZ2", **env))
+    assert _verified(w) == RELEASES, f"{change}: every release verified in full"
+    assert (c2 / "before" / "DONE").exists()
+    log2 = _log_of(w, "ZZ2")
+    assert "SHARED" not in log2
+    if why is None:
+        assert "share" not in log2.lower(), "a stage alone: no word of sharing"
+        assert not (c2 / "before" / "verified.share").exists(), "and no record for a wave"
+    else:
+        assert why in log2, log2
+        if change != "switch":
+            assert "before: not shared" in log2
+
+
+@A30
+def test_a30_before_and_after_outside_a_wave_write_no_record(tmp_path):
+    w = _a30_world(tmp_path)
+    w.mark("estimate", "rehearse")
+    _ok(w.drive("before"))
+    w.mark("run")
+    _ok(w.drive("after"))
+    assert not (w.c / "before" / "verified.share").exists() and not (w.c / "after" / "verified.share").exists()
+    assert _verified(w) == sorted(RELEASES * 2)
+    assert "share" not in _driver_log(w).lower()
