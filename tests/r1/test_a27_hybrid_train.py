@@ -450,11 +450,29 @@ def test_watch_live_dec77_cut_uses_cluster_plan_while_running_and_enforces_cap(
     monkeypatch, capsys, tmp_path, action, cut_step
 ):
     """While <call>.cut is running, <call>.cut.json is NOT yet on disk; r50_watch.py reads
-    one_process_cpu_min_max from cluster.plan.json ONLY for shared-index prefilter .cut steps."""
-    root, _, _, _, _ = _setup_watch_env(tmp_path)
-    _write_plan(root, REL_W)
+    one_process_cpu_min_max from cluster.plan.json ONLY for shared-index prefilter .cut steps of the plan's method,
+    and only when build-stage grants exempt: DEC-77 (card R-05): the createindex estimate over the call's target in
+    the plan's work directory is over the plan's part budget (`l2.cut_createindex_estimate`)."""
+    root, scratch, _, _, _ = _setup_watch_env(tmp_path)
+    mode = "hybrid-b1" if cut_step == CUT_15 else "cascade"  # nr50.19 is no step of hybrid-b1
+    plan = {
+        "format": 2, "release": REL_W, "method": mode, "stages": ["S1"], "gene_call_version": GCV,
+        "mmseqs2": "18.8cc5c", "files": {}, "cut": {"part_cpu_min": 240.0, "one_process_cpu_min_max": 20000.0},
+    }
+    _write_plan(root, REL_W, plan)
+    c = {x.name: x for x in l2.calls(mode)}[cut_step[: -len(".cut")]]
+    index = Path(f"{l2._work_dir(scratch, root, l2._plan_input_dict(plan)) / c.positional[1]}.index")
+    index.parent.mkdir(parents=True, exist_ok=True)
     step = f"release cluster {action} release={REL_W} name={cut_step}"
 
+    # no target index in scratch: nothing to estimate, the default cap
+    rc, out = _run_watch(monkeypatch, capsys, tmp_path, live_rows=[{"pid": 555, "step": step, "cpu_min": 560.0}])
+    assert rc == 3 and any("280" in r for r in out["reasons"]), out
+
+    # createindex estimated over the part budget (and within the cap): the exempt cap
+    index.write_text("".join(f"{k}\t0\t500000000000\n" for k in range(100)))
+    est = l2.cut_createindex_estimate(root, REL_W, c, scratch)
+    assert est is not None and 240.0 < est <= 20000.0
     rc, out = _run_watch(monkeypatch, capsys, tmp_path, live_rows=[{"pid": 555, "step": step, "cpu_min": 560.0}])
     assert rc == 0, out
     assert out["reasons"] == []
@@ -462,6 +480,12 @@ def test_watch_live_dec77_cut_uses_cluster_plan_while_running_and_enforces_cap(
     rc, out = _run_watch(monkeypatch, capsys, tmp_path, live_rows=[{"pid": 555, "step": step, "cpu_min": 20000.5}])
     assert rc == 3, out
     assert any("20000" in r for r in out["reasons"]), out["reasons"]
+
+    # createindex estimated under the part budget: build-stage grants no exemption, the default cap
+    index.write_text("".join(f"{k}\t0\t1000002\n" for k in range(100)))
+    assert l2.cut_createindex_estimate(root, REL_W, c, scratch) is None
+    rc, out = _run_watch(monkeypatch, capsys, tmp_path, live_rows=[{"pid": 555, "step": step, "cpu_min": 560.0}])
+    assert rc == 3 and any("280" in r for r in out["reasons"]), out
 
 
 def test_watch_live_dec77_cut_fails_without_plan_cap_or_with_invalid_existing_cut_json(monkeypatch, capsys, tmp_path):
