@@ -1,0 +1,14 @@
+# Card R-12 (2026-11-26): a job list for scripts/orchestrator/fetch_to_tower.sh, five tab-separated fields:
+# <name> <file> <url> <md5 or -> <licence>. Built from read-only copies of tower's lists of 2026-11-25; nothing
+# was fetched to build it. See scripts/orchestrator/tower_jobs/README.md and
+# planning/measurements/2026-11-26_tower_job_lists.md.
+# Release: none assigned by a decision row (after r26.11.6). Run order 9 of 19. Source: batch6b_ncbi manifest.
+
+# PICJI_SAT - NCBI assemblies of PRJNA1424553 (manifest(s) batch6b_ncbi/PICJI_SAT/MANIFEST_PICJI_SAT_*.tsv on tower, written 2026-11-25 21:24 to
+#   21:26 CST); 6 assemblies, 29,450,714 bases by the manifests' base_count; about 0.0085 GB gzip by the worker's estimate
+batch6b_ncbi/PICJI_SAT/assemblies	GCF_058350605.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/058/350/605/GCA_058350605.1_ASM5835060v1/GCA_058350605.1_ASM5835060v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/PICJI_SAT/assemblies	GCF_058350645.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/058/350/645/GCA_058350645.1_ASM5835064v1/GCA_058350645.1_ASM5835064v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/PICJI_SAT/assemblies	GCF_058350665.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/058/350/665/GCA_058350665.1_ASM5835066v1/GCA_058350665.1_ASM5835066v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/PICJI_SAT/assemblies	GCF_058350685.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/058/350/685/GCA_058350685.1_ASM5835068v1/GCA_058350685.1_ASM5835068v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/PICJI_SAT/assemblies	GCF_058749025.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/058/749/025/GCA_058749025.1_ASM5874902v1/GCA_058749025.1_ASM5874902v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/PICJI_SAT/assemblies	GCF_058749125.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/058/749/125/GCA_058749125.1_ASM5874912v1/GCA_058749125.1_ASM5874912v1_genomic.fna.gz	-	INSDC
