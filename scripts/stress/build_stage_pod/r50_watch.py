@@ -212,7 +212,8 @@ def _live_cut_cap(root: Path, release: str, step: str, default_cap: float, tmp: 
     (`cut.part_cpu_min`) and holds a one-process cap (`cut.one_process_cpu_min_max`, the profile's
     cluster_cpu_min_max), `step` is a shared-index cut of the plan's method, and the createindex estimate over its
     target in the plan's work directory under `tmp` is over the budget (else build-stage runs it without the
-    exemption) and within the cap (else build-stage refuses to launch it). Else default_cap."""
+    exemption) and within the cap (else build-stage refuses to launch it); never for a plan of PLAN_FORMAT 1.
+    Else default_cap."""
     if tmp is None:
         return default_cap
     try:
@@ -220,6 +221,10 @@ def _live_cut_cap(root: Path, release: str, step: str, default_cap: float, tmp: 
     except (OSError, ValueError):
         return default_cap
     if not isinstance(plan, dict):
+        return default_cap
+    if plan.get("format") == 1:
+        # card R-02 (l2.cluster._format_1): a PLAN_FORMAT 1 cut keeps the pre-B-71 record and refusal, so
+        # cut_createindex_estimate is None for it and build-stage never grants it exempt: DEC-77
         return default_cap
     method = plan.get("method", DEFAULT_CLUSTERING_MODE)
     cuts = SHARED_INDEX_CUTS.get(method) if isinstance(method, str) else None
