@@ -80,6 +80,30 @@ established discipline as you keep going".
   from 26 resources, 46,920 of them from 12 resources r226 lacked) and GTDB R232 (199,923 species) are out. Its §5
   proposes a revised `r26.11.5`; **that is a proposal, not the roadmap, until the PI ratifies it** (W3 (4)).
 
+**W4. `tower`, 2026-11-26** (the PI's words, about 08:08 CST: "go ahead with your recommendations for tower;
+continue to work autonomously making reasonable decisions on pod to keep the work moving"):
+- Card R-11's worker reported at about 08:00 (branch `task/R-11`, `f52e51d`; its note is
+  `planning/measurements/2026-11-26_tower_ingest_audit.md` once merged). The inputs of the 19 stages of `r26.11.4` on
+  the pod are the listed sources, complete, and none of the handoff's contamination or duplication catches touches
+  them. On `tower`: batches 1 and 2 landed whole; batch 3 landed 92 of 94 files, about 30 GB of them not genome
+  sequence; batch 4 is running; no PI word names batch 6, ten items of batch 6b or `GPB_PHAGE` of batch 7; none of
+  the queued fetch scripts reads `sources.yaml` or a `STOP` file. No login, token or address was found in a request.
+  Its tests passed on the pod (*measured*, `wilkcomp02`, 2026-11-26 08:05: 315 passed in 16.33 s over
+  `test_r08_fetch_to_tower.py`, `test_c48a_jgi_lock.py` and `tests/r0`, one process); its `ci` run is awaited before
+  the merge.
+- **Ended at 08:09 CST, in this order, while each was waiting and had fetched nothing:** the runners of batch 7
+  (pid 3023133), batch 6b (3008415) and batch 6 (2957811), each with one `kill` (`ssh root@tower "kill <pid>"`;
+  after it `pgrep -a -f '_run_batch|_fetch_batch|curl'` shows only batch 4's runner, its fetcher and its `curl`, and
+  batch 5's waiting runner; the three logs end at their "WAITING" line). Batches 4 and 5 run on. No file on `tower`
+  was removed or moved.
+- What follows it, as cards: R-12 (the held batches as job lists in the tree for `fetch_to_tower.sh`, sequence data
+  only, without `MIDAS_FULL`, the PDB structures, the CDS-only sets, the sets with no stated licence and all of batch
+  7) and R-13 (`fetch_to_tower.sh` keeps a file whose provider md5 matched when its archive test fails: the Y1000
+  genome zip was removed that way). The non-sequence files that landed stay on `tower` and are never staged. Sets
+  whose licence no record confirms (the note's list) stay out of staging until the PI has read them.
+- Card C-72, part 1 (DEC-79 (4)): the `sources.yaml` entries of the five approved sources and their job list, on
+  branch `task/C-72-1` from `task/R-11`; the fetch runs on `tower` with `fetch_to_tower.sh` after its merge.
+
 **W3. Next, in order:**
 1. Look at the first ten shard records (due about 08:35 CST: 61 minutes of wall each on the earlier stages); they
    should hold 216 to 255 CPU-minutes each. The scan is 72 shards, about 7.3 h of wall (*derived*: 72 / 10 × 61 min),
