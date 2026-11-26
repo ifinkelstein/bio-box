@@ -87,7 +87,8 @@ finished and R1's plan record equals the plan record R2's own clustering would w
   then all renamed into place (a mismatch removes every copy: nothing is written); never a link, and R1's files are
   only read. R2's plan records: R1's, each with `release` and `plan_sha256` made R2's (equal to a clustering's on the
   fixture, test). R2's `release_def` as `finish` writes it. R2's clustering ledger: R1's rows of the clustering
-  (reason `ok`: the counts per level and the tools), and one more row per level with the same counts and the reason
+  (reason `ok`: the counts per level and the tools), the rows of its clustering mode as a clustering writes them
+  (`method_rows`: none for `cascade`), and one more row per level with the same counts and the reason
   `reused:<R1>:<inputs_sha256>` (its n_rejected 0, so L-01 and L-03 hold; tool versions as the provenance check wants).
   The record `cluster.reuse` (`REUSE_RECORD`): the source, both plans' `plan_sha256` and `inputs_sha256`, the records
   rewritten, every file copied with its sha256, the candidates. Under `run-step` (build-stage) the run record of the step
@@ -480,7 +481,7 @@ def run(root: Path, release: str, gene_call_version: str, stages: list[str], thr
             mm("createsubdb", "clu90", "db", "rep90", threaded=False)
             _run_workflow_calls(mm, w, "nr50", mode)
         mm("mergeclusters", "db", "clu50", "clu90", "clu50r")
-        return _write_tables(mm, w, w, out, release, n_prot, limit, max_file_bytes, member_align=True)
+        return _write_tables(mm, w, w, out, release, n_prot, limit, max_file_bytes, member_align=True, mode=mode)
 
 
 def _run_workflow_calls(mm: MMseqs, w: Path, level: str, mode: str) -> None:
@@ -593,11 +594,46 @@ def _prepare_level(mm: MMseqs, w: Path, f: Path, level: str, limit: str, member_
         shutil.rmtree(stage_dir, ignore_errors=True)
 
 
+METHOD_REASON = "method"  # the clustering ledger's reason of the rows that name a mode other than the default (R-02)
+
+
+def method_rows(ok_rows: Iterable[dict], mode: str) -> list[dict]:
+    """The clustering ledger's rows that record the clustering mode (DEC-77 (2), card R-02): for a mode other than
+    `DEFAULT_CLUSTERING_MODE`, one more row per level, a copy of its row of the clustering (`ok_rows`, reason `ok`)
+    with the reason `method:<mode>` (its n_rejected 0, so L-01 and L-03 hold, as the rows of a reuse). None for
+    `'cascade'`, so the ledger of a cascade clustering is the ledger of before card B-71, byte for byte, and a
+    ledger without such rows was made by `'cascade'` (`ledger_method`)."""
+    _check_mode(mode)
+    if mode == DEFAULT_CLUSTERING_MODE:
+        return []
+    return [{**r, "reason_code": f"{METHOD_REASON}:{mode}"} for r in ok_rows]
+
+
+def ledger_method(rows: Iterable[dict]) -> str:
+    """The clustering mode a release's clustering ledger `rows` records (`method_rows`): `'cascade'` when no row
+    names one; ValueError when rows name two."""
+    got = {r["reason_code"].removeprefix(f"{METHOD_REASON}:") for r in rows
+           if r["reason_code"].startswith(f"{METHOD_REASON}:")}
+    if len(got) > 1:
+        raise ValueError(f"the clustering ledger names {len(got)} clustering methods: {sorted(got)}")
+    return _check_mode(got.pop()) if got else DEFAULT_CLUSTERING_MODE
+
+
+def _cluster_ledger_rows(n_prot: int, counts: dict[str, int], mode: str) -> list[dict]:
+    """The release's clustering ledger (ledger/release=<R>/step=cluster, card B-28): NR90 sees every protein, NR50
+    the NR90 representatives; one row per level (reason `ok`), and the method's rows (`method_rows`)."""
+    n_in = {"nr90": n_prot, "nr50": counts["nr90"]}
+    tools = provenance.tool_versions("mmseqs2", "pyarrow")
+    ok = [ledger.row(lvl.encode(), "level", n_in[lvl], counts[lvl], n_in[lvl] - counts[lvl], tools=tools)
+          for lvl in LEVELS]
+    return sorted(ok + method_rows(ok, mode), key=lambda r: (r["object_key"], r["reason_code"]))
+
+
 def _publish_prepared(f: Path, out: Path, release: str, n_prot: int, counts: dict[str, int],
-                      aligned: dict[str, int], max_file_bytes: int) -> dict:
+                      aligned: dict[str, int], max_file_bytes: int, mode: str = DEFAULT_CLUSTERING_MODE) -> dict:
     """Stream the pre-sorted per-level Parquet files under `f / <level>` into the release's published
     `cluster_member`, `cluster_member_aln`, `member_cluster` tables and clustering ledger (zero DuckDB
-    sorting; byte-identical to unsplit `_write_tables`, card B-72)."""
+    sorting; byte-identical to unsplit `_write_tables`, card B-72). The ledger records `mode` (`method_rows`)."""
     order = sorted(LEVELS)  # `level` leads every sort key: ("nr50", "nr90")
 
     def stream(filename: str) -> Iterator[pa.RecordBatch]:
@@ -611,23 +647,18 @@ def _publish_prepared(f: Path, out: Path, release: str, n_prot: int, counts: dic
     io.write_parts(stream("member_cluster.parquet"), table("member_cluster"),
                    out / f"l2/member_cluster/release={release}", EST_MEMBER_CLUSTER_ROW, max_file_bytes)
 
-    # the release's own ledger (ledger/release=<R>/step=cluster, card B-28): NR90 sees every protein, NR50
-    # the NR90 representatives
-    n_in = {"nr90": n_prot, "nr50": counts["nr90"]}
-    tools = provenance.tool_versions("mmseqs2", "pyarrow")
-    ledger.write_release(out, release, "cluster",
-                 sorted((ledger.row(lvl.encode(), "level", n_in[lvl], counts[lvl], n_in[lvl] - counts[lvl], tools=tools)
-                         for lvl in LEVELS), key=lambda r: (r["object_key"], r["reason_code"])))
+    ledger.write_release(out, release, "cluster", _cluster_ledger_rows(n_prot, counts, mode))
     return {"proteins": n_prot, "clusters": counts, "aligned": aligned}
 
 
 def _write_tables(mm: MMseqs, w: Path, f: Path, out: Path, release: str, n_prot: int, limit: str,
-                  max_file_bytes: int, member_align: bool) -> dict:
+                  max_file_bytes: int, member_align: bool, mode: str = DEFAULT_CLUSTERING_MODE) -> dict:
     """From the clusterings `clu90` and `clu50` in the MMseqs2 working directory `w` (and `w/prot.parquet`): each
     level's members' TSV, the members aligned to their representatives (`aln_<level>`, made here when
     `member_align`, else made before, in parts, card B-41) and that alignment's TSV; then the release's cluster
     tables, its `member_cluster` and its ledger under `out`. Processed sequentially (`nr90` then `nr50`, cleaning
-    per-level scratch before `nr50`, card B-72). Closes `mm`'s log. Returns `run`'s report."""
+    per-level scratch before `nr50`, card B-72). Closes `mm`'s log. Returns `run`'s report. The ledger records
+    `mode` (`method_rows`, card R-02)."""
     counts: dict[str, int] = {}
     aligned: dict[str, int] = {}
     try:
@@ -635,7 +666,7 @@ def _write_tables(mm: MMseqs, w: Path, f: Path, out: Path, release: str, n_prot:
             counts[level], aligned[level] = _prepare_level(mm, w, f, level, limit, member_align)
     finally:
         mm.log.close()
-    return _publish_prepared(f, out, release, n_prot, counts, aligned, max_file_bytes)
+    return _publish_prepared(f, out, release, n_prot, counts, aligned, max_file_bytes, mode)
 
 
 # --- clustering in parts (card B-41; design planning/design/B-37_split_clustering.md) -------------------------
@@ -1335,9 +1366,15 @@ _INPUT_KEYS_V1 = ("format", "release", "stages", "gene_call_version", "mmseqs2",
 _INPUT_KEYS = (*_INPUT_KEYS_V1, "method")
 
 
+def _format_1(plan_: dict) -> bool:
+    """A plan record of `PLAN_FORMAT == 1` (before card B-71): cascade, no `'method'`, and its cut records without
+    the DEC-77 `createindex` estimate (card R-02)."""
+    return plan_.get("format") == 1
+
+
 def _plan_input_dict(plan_: dict) -> dict:
     """The input fields of `plan_` used to hash its work directory (`PLAN_FORMAT == 1` has no `'method'`)."""
-    keys = _INPUT_KEYS_V1 if plan_.get("format") == 1 else _INPUT_KEYS
+    keys = _INPUT_KEYS_V1 if _format_1(plan_) else _INPUT_KEYS
     return {k: plan_[k] for k in keys}
 
 
@@ -1595,6 +1632,14 @@ def _cut_doc(ctx: _Ctx, c: Call) -> dict:
            "parts": got}
     if seq and c.shares_index and ctx.shared_index and len(got) > 1:
         doc["index_cpu_min"] = round(index_cpu_min(targets), 6)
+        if _format_1(ctx.plan):
+            # PLAN_FORMAT 1: the cut record and refusal of that format, as before card B-71, so a format-1 clustering
+            # whose scratch is lost is made again to its records (`redo`, card R-02)
+            if budget is not None and doc["index_cpu_min"] > budget:
+                raise ValueError(f"{c.name}: the shared index of its {targets:,} targets is estimated at "
+                                 f"{doc['index_cpu_min']:,.1f} CPU-minutes in one process, over the part budget of "
+                                 f"{budget:g} (and every part building the table itself would cost more); refused")
+            return doc
         sens = _opt(c.argv, "-s")
         ci_est = createindex_cpu_min(total_units, targets, sens)
         doc["createindex_cpu_min"] = round(ci_est, 6)
@@ -1664,11 +1709,12 @@ def createindex_cpu_min(residues: int, targets: int, sensitivity: str = "2") -> 
 def cut_createindex_estimate(root: Path, release: str, c: Call, tmp: Path, out: Path | None = None) -> float | None:
     """For `stage.py` before launching `<call>.cut` on a shared-index prefilter: if the plan uses `part_cpu_min` and
     `createindex_cpu_min` over `c`'s target in scratch exceeds `part_cpu_min`, return that estimate (so `stage.py` can
-    check `cluster_cpu_min_max` and pass `budget_reason="exempt: DEC-77"`); else None."""
+    check `cluster_cpu_min_max` and pass `budget_reason="exempt: DEC-77"`); else None. None for a plan of
+    `PLAN_FORMAT == 1`, whose cut has no such exemption (card R-02)."""
     if not c.shares_index:
         return None
     plan_ = read_record(root, release, PLAN_STEP, out)
-    if plan_ is None:
+    if plan_ is None or _format_1(plan_):
         return None
     budget = plan_["cut"].get("part_cpu_min")
     if budget is None:
@@ -2118,12 +2164,56 @@ def _write_pruned(w: Path, entries: list[dict]) -> None:
     os.replace(tmp, p)
 
 
+def _outputs_ok(root: Path, release: str, w: Path, out: Path | None) -> Callable[[str], bool | None]:
+    """A memoized check of a step's outputs: True when every output of its record is in the work directory `w` with
+    its recorded digest, False when one is not, None when the step has no record."""
+    good: dict[str, bool | None] = {}
+
+    def ok(name: str) -> bool | None:
+        if name not in good:
+            rec = read_record(root, release, name, out)
+            good[name] = None if rec is None else all(_digest(w / p) == d for p, d in rec.get("outputs", {}).items())
+        return good[name]
+
+    return ok
+
+
+def _pruned_steps(entries: list[dict], ok: Callable[[str], bool | None]) -> set[str]:
+    """The steps a recorded prune (`entries` of `.pruned.json`) covers: those of every entry whose milestones are each
+    in place (`ok`) or covered themselves by another entry, to a fixed point (card B-72)."""
+    skip: set[str] = set()
+    changed = True
+    while changed:
+        changed = False
+        for ent in entries:
+            if all(ok(m) or m in skip for m in ent.get("milestones", ())):
+                before = len(skip)
+                skip.update(ent.get("steps", ()))
+                changed = changed or len(skip) != before
+    return skip
+
+
+def _present(w: Path, kind: str, rel: str) -> bool:
+    """Whether prune target `rel` (`"dir"` or `"db"`, `_prune_spec`) has anything in the work directory `w`."""
+    base = Path(w) / rel
+    if kind == "dir":
+        return base.exists()
+    if not base.parent.is_dir():
+        return False
+    pat = re.compile(re.escape(base.name) + _DB_FILE)
+    return any(pat.fullmatch(p.name) and (p.is_symlink() or p.is_file()) for p in base.parent.iterdir())
+
+
 def clean_consumed(root: Path, release: str, step_name: str, tmp: Path, out: Path | None = None) -> list[str]:
     """Unlink dead MMseqs2 intermediates in the work directory once their downstream milestone `step_name`
-    is recorded and verified intact on disk (card B-72, DEC-77). Records pruned milestones atomically in
-    `<work_dir>/.pruned.json` so `lost()` skips pruned intermediates while their verified downstream
-    milestone remains intact, and rebuilds them if the milestone itself is lost or corrupted. Idempotent
-    on resume; returns the list of unlinked relative paths."""
+    is recorded and verified intact on disk (card B-72, DEC-77). The prune is recorded in
+    `<work_dir>/.pruned.json` (written to a temporary name, then renamed) before anything is removed (card R-02), so
+    `lost()` skips pruned intermediates while their verified downstream milestones remain intact, and rebuilds them
+    if a milestone itself is lost or corrupted. A milestone counts as intact when its outputs are its record's, or
+    when a recorded prune covers it (`_pruned_steps`: a later milestone made it dead). A process killed while
+    removing leaves the prune recorded; the next call for the same step finishes it (build-stage calls this again
+    for every call when it resumes), and a recorded prune whose targets a redo wrote again removes them again.
+    Idempotent; returns the list of unlinked relative paths."""
     plan_ = read_record(root, release, PLAN_STEP, out)
     if plan_ is None:
         raise FileNotFoundError(f"release {release}: no plan of clustering in parts ({_rel(release, PLAN_STEP)})")
@@ -2134,19 +2224,25 @@ def clean_consumed(root: Path, release: str, step_name: str, tmp: Path, out: Pat
     milestones, pruned_steps, targets = spec
     w = _work_dir(tmp, root, _plan_input_dict(plan_))
     entries = _read_pruned(w)
-    if any(e.get("step") == step_name for e in entries):
-        return []
+    recorded = any(e.get("step") == step_name for e in entries)
+    if recorded and not any(_present(w, kind, rel) for kind, rel in targets):
+        return []  # recorded and done: nothing to verify or remove
 
     # Verify the trigger step and all required downstream milestones are recorded AND intact on disk
+    ok = _outputs_ok(root, release, w, out)
+    covered: set[str] | None = None
     for req in dict.fromkeys([step_name, *milestones]):
-        rec = read_record(root, release, req, out)
-        if rec is None:
+        if read_record(root, release, req, out) is None:
             raise FileNotFoundError(f"{req}: milestone is not published; refusing to prune intermediates")
-        for rel_p, digest in rec.get("outputs", {}).items():
-            if _digest(w / rel_p) != digest:
-                raise ValueError(f"{w / rel_p}: milestone {req} output is missing or does not match its record; "
+        if not ok(req):
+            covered = _pruned_steps(entries, ok) if covered is None else covered
+            if req not in covered:
+                raise ValueError(f"{w}: an output of milestone {req} is missing or does not match its record; "
                                  "refusing to prune intermediates")
 
+    if not recorded:  # the intent first, atomically: a kill from here on leaves a recorded prune (card R-02)
+        entries.append({"step": step_name, "milestones": milestones, "steps": pruned_steps})
+        _write_pruned(w, entries)
     removed: list[str] = []
     for kind, rel in targets:
         target = w / rel
@@ -2158,8 +2254,6 @@ def clean_consumed(root: Path, release: str, step_name: str, tmp: Path, out: Pat
             if target.parent.is_dir():
                 _clear(w, rel)
                 removed.append(rel)
-    entries.append({"step": step_name, "milestones": milestones, "steps": pruned_steps})
-    _write_pruned(w, entries)
     return removed
 
 
@@ -2168,28 +2262,13 @@ def lost(root: Path, release: str, tmp: Path, out: Path | None = None) -> list[s
     another digest), in step order: what `redo` must make again before the build goes on (a reboot clears /tmp).
     A cut has no outputs, but a cut that built a shared index is listed when that index is missing; the index and a
     part are not needed again once their call's join is published and in place. Intermediates pruned by
-    `clean_consumed` (recorded in `<work_dir>/.pruned.json`) are skipped while all of their downstream milestones
-    remain verified intact on disk (card B-72)."""
+    `clean_consumed` (recorded in `<work_dir>/.pruned.json`, before their removal: card R-02) are skipped while all
+    of their downstream milestones remain verified intact on disk (card B-72)."""
     if read_record(root, release, PLAN_STEP, out) is None:
         return []
-    w, good, bad = work_dir(tmp, root, release, out), {}, []
-
-    def ok(name: str) -> bool | None:
-        if name not in good:
-            rec = read_record(root, release, name, out)
-            good[name] = None if rec is None else all(_digest(w / p) == d for p, d in rec.get("outputs", {}).items())
-        return good[name]
-
-    skip_calls: set[str] = set()
-    entries = _read_pruned(w)
-    changed = True
-    while changed:
-        changed = False
-        for ent in entries:
-            if all(ok(m) or m in skip_calls for m in ent.get("milestones", ())):
-                before = len(skip_calls)
-                skip_calls.update(ent.get("steps", ()))
-                changed = changed or len(skip_calls) != before
+    w, bad = work_dir(tmp, root, release, out), []
+    ok = _outputs_ok(root, release, w, out)
+    skip_calls = _pruned_steps(_read_pruned(w), ok)
 
     names = list(sequence(root, release, out))
     for fs in FINISH_LEVEL_STEPS:
@@ -2291,7 +2370,7 @@ def finish(root: Path, release: str, tmp: Path, threads: int, *, out: Path | Non
             mm.log.close()
             mm = None
         catalog.define_release(root, release, stages, out=out_root)
-        res = _publish_prepared(f, out_root, release, ctx.plan["proteins"], counts, aligned, max_file_bytes)
+        res = _publish_prepared(f, out_root, release, ctx.plan["proteins"], counts, aligned, max_file_bytes, mode)
         shutil.rmtree(f, ignore_errors=True)
         return res
     except BaseException:
@@ -2324,6 +2403,10 @@ def run_split(root: Path, release: str, gene_call_version: str, stages: list[str
         plan(root, release, gene_call_version, stages, tmp, parts=parts, part_cpu_min=part_cpu_min,
              one_process_cpu_min_max=one_process_cpu_min_max, rebuild_cpu_min=rebuild_cpu_min, out=out, mode=mode)
     active_mode = plan_method(read_record(root, release, PLAN_STEP, out))
+    if prune:  # on a resume, first finish what a killed call left of a recorded prune, as build-stage does (R-02)
+        for name in [c.name for c in calls(active_mode)] + list(FINISH_LEVEL_STEPS):
+            if read_record(root, release, name, out) is not None:
+                clean_consumed(root, release, name, tmp, out)
     while True:
         todo = [n for n in sequence(root, release, out) if read_record(root, release, n, out) is None]
         if not todo:
@@ -2650,8 +2733,9 @@ def reuse(root: Path, release: str, gene_call_version: str, stages: list[str], t
     ok = [r for r in _ledger_rows(led_path) if r["reason_code"] == "ok"]
     h = inputs_sha256(plan2)
     more = [{**r, "reason_code": f"{REUSE_REASON}:{src}:{h}"} for r in ok]
-    ledger.write_release(out_root, release, "cluster",
-                         sorted(ok + more, key=lambda r: (r["object_key"], r["reason_code"])))
+    ledger.write_release(out_root, release, "cluster",  # the method's rows as a clustering writes them (R-02)
+                         sorted(ok + method_rows(ok, plan_method(plan1)) + more,
+                                key=lambda r: (r["object_key"], r["reason_code"])))
     _write_record(root, out_root, release, REUSE_RECORD, {
         "format": PLAN_FORMAT, "release": release, "step": REUSE_RECORD, "from": src, "candidates": cands,
         "plan_sha256": sha2, "from_plan_sha256": sha1, "inputs_sha256": h,
