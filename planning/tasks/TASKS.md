@@ -2210,6 +2210,12 @@ depend on each other unless one says so. None of them writes to the data root or
 build. Tests that need MMseqs2, `hmmsearch` or MinCED must skip cleanly without them (GitHub Actions has none); the
 orchestrator pushes each task branch to `origin` and reads its `ci` run before the merge.
 
+Done 2026-11-25 (`STATUS.md` rows R-01, R-04, R-05, R-06, R-07, R-08; merged together through `task/R-int`): R-01
+(`f68c911`), R-04 (`1553f4d`), R-05 (`c80969b`; its part (3), the default of `train_est.py --cluster-method`, was
+withdrawn by the orchestrating session because it needs a test of card A-27 changed, which the card does not list),
+R-06 (`a779fbd`, `1cdb5d9`; the function is `_resolve_library_path`), R-07 (`8e2d24c`), R-08 (`d600173`, `2ba0cc8`; six
+job lists, not four, were on `tower` by then).
+
 ### R-01 Four tests fail on GitHub Actions since `f5c644b`
 **M** · Pod: yes (pytest only) · Depends: none · audit §2.1 (1)
 Files: `tests/r1/test_a25b_example_search_mem.py`, `tests/r1/test_b67_genecall_mode_gvmeta.py`, `tests/r1/test_b54_cluster_estimates.py`, `tests/r2/test_w39_panel_fixture.py`, `tests/conftest.py` (only to share a helper the two first tests import), `src/biobox/search/panel.py` (only if the memory bound is a fault of the code)
