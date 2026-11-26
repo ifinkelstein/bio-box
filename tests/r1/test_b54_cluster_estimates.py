@@ -188,14 +188,17 @@ def test_b54_call_cpu_min_without_targets_falls_back_to_release_proteins():
 
 def test_b54_legacy_pre_b54_cut_records_remain_reusable_under_b49(tmp_path, monkeypatch):
     """Published releases clustered before card B-54 (`rM.2`, `r26.11.1`) wrote `.cut.json` with the legacy
-    `proteins`-only `cpu_min`. `_source_problem` must still accept them while rejecting an arbitrary wrong `cpu_min`."""
+    `proteins`-only `cpu_min`. `_source_problem` must still accept them while rejecting an arbitrary wrong `cpu_min`.
+    Those releases were also clustered before card B-71, so their plan and its records are format 1, with no
+    `"method"` (a cascade): the fixture is built, and its inputs read, as the code reads a format-1 plan (card R-01)."""
     root = tmp_path / "root"
     src, rel = "rM.2", "r26.11.2"
     proteins = 45_815_843
+    legacy_format = 1  # PLAN_FORMAT before card B-71
     tools = {"mmseqs2": "18.8cc5c", "pyarrow": "23.0.1"}
     monkeypatch.setattr(provenance, "tool_versions", lambda *names: {k: tools[k] for k in names})
     plan_doc = {
-        "format": cluster.PLAN_FORMAT, "release": src, "stages": ["S1"], "gene_call_version": "gv",
+        "format": legacy_format, "release": src, "stages": ["S1"], "gene_call_version": "gv",
         "mmseqs2": tools["mmseqs2"], "files": [], "cut": {"parts": 1}, "proteins": proteins,
         "release_cpu_min": 1.0, "outputs": {"db": "a", "db_h": "b", "prot.parquet": "c"},
     }
@@ -210,7 +213,7 @@ def test_b54_legacy_pre_b54_cut_records_remain_reusable_under_b49(tmp_path, monk
             units = 2_454_500_276 if c.name == "cluster.nr50.19.prefilter" else 100_000_000
             legacy_est = round(cluster._legacy_call_cpu_min(c.name, proteins, units), 6)
             cut_doc = {
-                "format": cluster.PLAN_FORMAT, "release": src, "step": f"{c.name}.cut", "plan_sha256": sha1,
+                "format": legacy_format, "release": src, "step": f"{c.name}.cut", "plan_sha256": sha1,
                 "module": c.module, "inputs": {}, "split": c.positional[cluster.PER_QUERY[c.module]],
                 "units": "residues" if c.module == "prefilter" else "entry_bytes",
                 "cpu_min": legacy_est, "overhead_cpu_min": 0.0,
@@ -218,7 +221,7 @@ def test_b54_legacy_pre_b54_cut_records_remain_reusable_under_b49(tmp_path, monk
             }
             (plan_dir / f"{c.name}.cut.json").write_bytes(cluster._json_bytes(cut_doc))
         call_doc = {
-            "format": cluster.PLAN_FORMAT, "release": src, "step": c.name, "plan_sha256": sha1,
+            "format": legacy_format, "release": src, "step": c.name, "plan_sha256": sha1,
             "module": c.module, "argv": list(c.argv), "inputs": {}, "outputs": {},
         }
         (plan_dir / f"{c.name}.json").write_bytes(cluster._json_bytes(call_doc))
@@ -241,7 +244,8 @@ def test_b54_legacy_pre_b54_cut_records_remain_reusable_under_b49(tmp_path, monk
     run_p.parent.mkdir(parents=True, exist_ok=True)
     run_p.write_text(json.dumps({"exit_code": 0, "stage": src, "step": "cluster", "outputs": outputs}))
 
-    want = {k: plan_doc[k] for k in cluster._INPUT_KEYS if k != "release"}
+    want = {k: v for k, v in cluster._plan_input_dict(plan_doc).items() if k != "release"}
+    assert "method" not in want and cluster.plan_method(plan_doc) == "cascade"
     assert cluster._source_problem(root, rel, src, want) is None
 
     # Tampering with cpu_min to a value matching neither new nor legacy model must still be refused
