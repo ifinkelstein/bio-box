@@ -1453,12 +1453,22 @@ Never delete:
 
 Under DEC-66 (`S-4`, card C-54), the newest two rolling releases (`r<YY>.<MM>.<n>`) and any signed milestone release (`rS<k>.<n>`) keep their large `release=` files on `/tmp`. An older release whose durable backup `.tar` is verified on both `/stor/work` and `tower` may be retired with `bio-box release retire`:
 
-- It verifies the release in full (`verify_manifest`), checks the local `--tar <PATH>=<SHA256>` on disk, writes `archived/release=<R>.json` atomically, and unlinks only the eight large `release=<R>` data tables (`cluster_member`, `cluster_member_aln`, `member_cluster`, `token_dict`, `tape_tokens`, `token_postings`, `contig_dim`, `genome_dim`) plus `l2/cluster_plan/release=<R>/*.json` (and `<profile.tmp>/packs/release=<R>/` when `--profile` is given).
+- It verifies the release in full (`verify_manifest`), then reads each local `--tar <PATH>=<SHA256>` once, as a stream (card R-04): the tar's sha256 must be the one given, and every file it is about to remove must be a regular-file member of the tars, named as `tar -C "$ROOT"` stores it (`l2/...` or `./l2/...`), with the manifest's size and sha256 (a plan file: its size and sha256 on disk), and no tar may hold it with other bytes. A release's files may be spread over several tars (`l1_and_records.tar`, `l2.tar`, `l3.tar`): give each with its own `--tar`. A tar of another release, a partial tar, or one with another version of a file is refused (`exit 2`) and nothing is written or removed. One pass over each tar gives both its sha256 and every member's, so a tar is read once.
+- At least one `--copy <LOCATION>=<SHA256>` is required, and each sha256 must equal one of the `--tar`s'. The pod cannot reach `tower`, so read the sha256 from `tower`'s `SHA256SUMS` (on the laptop, as in "Mirror to tower") and type it: `bio-box` does not check the copy, and the record stores it as the operator's statement (`{"location": ..., "sha256": ..., "stated_by": "operator"}`). Records written before card R-04 hold each copy as one string and still verify.
+- Only then it writes `archived/release=<R>.json` atomically and unlinks only the eight large `release=<R>` data tables (`cluster_member`, `cluster_member_aln`, `member_cluster`, `token_dict`, `tape_tokens`, `token_postings`, `contig_dim`, `genome_dim`) plus `l2/cluster_plan/release=<R>/*.json` (and `<profile.tmp>/packs/release=<R>/` when `--profile` is given). Run again on a retired release, with the same `--tar`s, it reads the tars again before removing any file left behind.
 - Every stage's files and the release's `manifests/release=<R>.json`, `catalog/release=<R>.duckdb`, `release_def/release=<R>/`, `ledger/release=<R>/`, and `runs/stage=<R>/` stay on disk.
 - `bio-box release verify --root "$ROOT" --release <R>` still exits 0 with the unchanged manifest hash (`verified (archived: <k> release files, stages ..., manifest hash <h>)`), `bio-box releases` shows `archived` in the `manifest` column, `--release latest` and clustering reuse (card B-49) skip it, and readers (`sql`, `find`, `seq`, `export`, `search`, `nbr`) exit 2 with the restore command.
 
+On the laptop, read the copy's sha256 from `tower` (`BIOBOX_TOWER` as in "Mirror to tower"); it must be the line of the same tar the pod's `--tar` names:
+
 ```bash
-bio-box release retire --root "$ROOT" --release rM.2 --tar "$TAR_PATH=$TAR_SHA" --copy "tower:/mnt/user/research-bulk/bio-box/root_backups/$TAR_NAME=$TAR_SHA" --profile "$PROFILE"
+ssh "${BIOBOX_TOWER:-root@tower}" grep "$TAR_NAME" /mnt/user/research-bulk/bio-box/root_backups/SHA256SUMS
+```
+
+Then on the pod:
+
+```bash
+bio-box release retire --root "$ROOT" --release rM.2 --tar "$TAR_PATH=$TAR_SHA" --copy "tower:/mnt/user/research-bulk/bio-box/root_backups/$TAR_NAME=$TOWER_SHA" --profile "$PROFILE"
 bio-box release verify --root "$ROOT" --release rM.2
 ```
 

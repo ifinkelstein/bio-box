@@ -283,6 +283,11 @@ def _make_backup_tar(root: Path, release: str, tar_path: Path) -> str:
     return _sha256(tar_path)
 
 
+def _copy_arg(sha: str, name: str = "backup.tar") -> str:
+    """A `--copy <LOCATION>=<SHA256>` value (card R-04): the tower copy of a tar, with the tar's sha256."""
+    return f"tower:/mnt/user/research-bulk/bio-box/root_backups/{name}={sha}"
+
+
 def test_c54_release_archived_artifact_registered():
     assert "release_archived" in ARTIFACTS
     spec = ARTIFACTS["release_archived"]
@@ -311,26 +316,28 @@ def test_c54_retire_refusals_and_keep_latest_policy(tmp_path, capsys):
     tar_path = tmp_path / "backup.tar"
     tar_sha = _make_backup_tar(root, "r26.11.1", tar_path)
     tar_arg = f"{tar_path}={tar_sha}"
+    cp = ["--copy", _copy_arg(tar_sha)]
 
     # Refuse latest
-    assert cli.main(["release", "retire", "--root", str(root), "--release", "latest", "--tar", tar_arg]) == 2
+    assert cli.main(["release", "retire", "--root", str(root), "--release", "latest", "--tar", tar_arg, *cp]) == 2
     # Refuse signed milestone rS0.1
-    assert cli.main(["release", "retire", "--root", str(root), "--release", "rS0.1", "--tar", tar_arg]) == 2
+    assert cli.main(["release", "retire", "--root", str(root), "--release", "rS0.1", "--tar", tar_arg, *cp]) == 2
     assert not (root / "archived" / "release=rS0.1.json").exists()
     # Refuse missing manifest
-    assert cli.main(["release", "retire", "--root", str(root), "--release", "r26.11.99", "--tar", tar_arg]) == 2
+    assert cli.main(["release", "retire", "--root", str(root), "--release", "r26.11.99", "--tar", tar_arg, *cp]) == 2
     # Refuse --keep-latest 0
-    assert cli.main(["release", "retire", "--root", str(root), "--release", "r26.11.1", "--keep-latest", "0", "--tar", tar_arg]) == 2
+    assert cli.main(["release", "retire", "--root", str(root), "--release", "r26.11.1", "--keep-latest", "0", "--tar", tar_arg, *cp]) == 2
     # Refuse empty --tar, malformed --tar, missing tar file, wrong tar sha256
-    assert cli.main(["release", "retire", "--root", str(root), "--release", "r26.11.1"]) == 2
-    assert cli.main(["release", "retire", "--root", str(root), "--release", "r26.11.1", "--tar", "not-valid"]) == 2
-    assert cli.main(["release", "retire", "--root", str(root), "--release", "r26.11.1", "--tar", f"{tmp_path / 'nope.tar'}={tar_sha}"]) == 2
-    assert cli.main(["release", "retire", "--root", str(root), "--release", "r26.11.1", "--tar", f"{tar_path}={'0' * 64}"]) == 2
+    assert cli.main(["release", "retire", "--root", str(root), "--release", "r26.11.1", *cp]) == 2
+    assert cli.main(["release", "retire", "--root", str(root), "--release", "r26.11.1", "--tar", "not-valid", *cp]) == 2
+    assert cli.main(["release", "retire", "--root", str(root), "--release", "r26.11.1", "--tar", f"{tmp_path / 'nope.tar'}={tar_sha}", *cp]) == 2
+    assert cli.main(["release", "retire", "--root", str(root), "--release", "r26.11.1", "--tar", f"{tar_path}={'0' * 64}",
+                     "--copy", _copy_arg("0" * 64)]) == 2
     assert not (root / "archived" / "release=r26.11.1.json").exists()
 
     # Refuse newest 2 rolling releases (r26.11.2, r26.11.3) under default --keep-latest 2
-    assert cli.main(["release", "retire", "--root", str(root), "--release", "r26.11.2", "--tar", tar_arg]) == 2
-    assert cli.main(["release", "retire", "--root", str(root), "--release", "r26.11.3", "--tar", tar_arg]) == 2
+    assert cli.main(["release", "retire", "--root", str(root), "--release", "r26.11.2", "--tar", tar_arg, *cp]) == 2
+    assert cli.main(["release", "retire", "--root", str(root), "--release", "r26.11.3", "--tar", tar_arg, *cp]) == 2
     assert not (root / "archived" / "release=r26.11.2.json").exists()
     assert not (root / "archived" / "release=r26.11.3.json").exists()
 
@@ -338,17 +345,19 @@ def test_c54_retire_refusals_and_keep_latest_policy(tmp_path, capsys):
     for rel in ("rN.3", "rM.2", "r26.11.1"):
         t = tmp_path / f"{rel}.tar"
         h = _make_backup_tar(root, rel, t)
-        assert cli.main(["release", "retire", "--root", str(root), "--release", rel, "--tar", f"{t}={h}"]) == 0
+        assert cli.main(["release", "retire", "--root", str(root), "--release", rel, "--tar", f"{t}={h}",
+                         "--copy", _copy_arg(h, f"{rel}.tar")]) == 0
         assert (root / "archived" / f"release={rel}.json").is_file()
 
     # Now only r26.11.2 and r26.11.3 remain non-archived rolling: retiring r26.11.2 with --keep-latest 2 MUST be refused
     t2 = tmp_path / "r26.11.2.tar"
     h2 = _make_backup_tar(root, "r26.11.2", t2)
-    assert cli.main(["release", "retire", "--root", str(root), "--release", "r26.11.2", "--keep-latest", "2", "--tar", f"{t2}={h2}"]) == 2
+    cp2 = ["--copy", _copy_arg(h2, "r26.11.2.tar")]
+    assert cli.main(["release", "retire", "--root", str(root), "--release", "r26.11.2", "--keep-latest", "2", "--tar", f"{t2}={h2}", *cp2]) == 2
     assert not (root / "archived" / "release=r26.11.2.json").exists()
 
     # With --keep-latest 1, retiring r26.11.2 succeeds (leaving r26.11.3)
-    assert cli.main(["release", "retire", "--root", str(root), "--release", "r26.11.2", "--keep-latest", "1", "--tar", f"{t2}={h2}"]) == 0
+    assert cli.main(["release", "retire", "--root", str(root), "--release", "r26.11.2", "--keep-latest", "1", "--tar", f"{t2}={h2}", *cp2]) == 0
     assert (root / "archived" / "release=r26.11.2.json").is_file()
     capsys.readouterr()
 
@@ -397,7 +406,12 @@ def test_c54_retire_idempotency_and_tamper_detection(tmp_path, capsys):
     assert rec["release"] == "r26.11.1"
     assert rec["manifest_hash"] == h_before
     assert rec["tars"] == [{"path": str(tar_path), "sha256": tar_sha}]
-    assert rec["copies"] == [copy_arg]
+    # card R-04: a copy is recorded as its location and sha256, the operator's statement
+    assert rec["copies"] == [{
+        "location": "tower:/mnt/user/research-bulk/bio-box/root_backups/r26.11.1.tar",
+        "sha256": tar_sha,
+        "stated_by": "operator",
+    }]
     assert len(rec["removed_files"]) >= 7
     assert len(rec["removed_plan_files"]) == 1
 
@@ -414,13 +428,14 @@ def test_c54_retire_idempotency_and_tamper_detection(tmp_path, capsys):
     assert not (prof_tmp / "packs" / "release=r26.11.1").exists()
 
     # Idempotent re-run with same tar
-    assert cli.main(["release", "retire", "--root", str(root), "--release", "r26.11.1", "--tar", tar_arg]) == 0
+    assert cli.main(["release", "retire", "--root", str(root), "--release", "r26.11.1", "--tar", tar_arg, "--copy", copy_arg]) == 0
 
     # Conflict with different tar
     other_tar = tmp_path / "other.tar"
     other_tar.write_bytes(b"different")
     other_sha = _sha256(other_tar)
-    assert cli.main(["release", "retire", "--root", str(root), "--release", "r26.11.1", "--tar", f"{other_tar}={other_sha}"]) == 2
+    assert cli.main(["release", "retire", "--root", str(root), "--release", "r26.11.1", "--tar", f"{other_tar}={other_sha}",
+                     "--copy", _copy_arg(other_sha, "other.tar")]) == 2
 
     # Crash recovery: straggler file still on disk -> verify fails, re-run retire cleans it up -> verify passes
     straggler = root / rec["removed_files"][0]["path"]
@@ -428,7 +443,7 @@ def test_c54_retire_idempotency_and_tamper_detection(tmp_path, capsys):
     straggler.write_bytes(b"leftover")
     assert catalog.verify_manifest(man_before, root)
     assert cli.main(["release", "verify", "--root", str(root), "--release", "r26.11.1"]) == 1
-    assert cli.main(["release", "retire", "--root", str(root), "--release", "r26.11.1", "--tar", tar_arg]) == 0
+    assert cli.main(["release", "retire", "--root", str(root), "--release", "r26.11.1", "--tar", tar_arg, "--copy", copy_arg]) == 0
     assert not straggler.exists()
     assert catalog.verify_manifest(man_before, root) == []
 
@@ -473,7 +488,8 @@ def test_c54_verify_output_matches_stage_driver_and_release_train_hash_of(tmp_pa
 
     tar_path = tmp_path / "r26.11.1.tar"
     tar_sha = _make_backup_tar(root, "r26.11.1", tar_path)
-    assert cli.main(["release", "retire", "--root", str(root), "--release", "r26.11.1", "--tar", f"{tar_path}={tar_sha}"]) == 0
+    assert cli.main(["release", "retire", "--root", str(root), "--release", "r26.11.1", "--tar", f"{tar_path}={tar_sha}",
+                     "--copy", _copy_arg(tar_sha)]) == 0
     capsys.readouterr()
 
     assert cli.main(["release", "verify", "--root", str(root), "--release", "r26.11.1"]) == 0
@@ -499,7 +515,8 @@ def test_c54_latest_and_releases_and_b49_skip_archived(tmp_path, capsys):
 
     tar_path = tmp_path / "r26.11.1.tar"
     tar_sha = _make_backup_tar(root, "r26.11.1", tar_path)
-    assert cli.main(["release", "retire", "--root", str(root), "--release", "r26.11.1", "--tar", f"{tar_path}={tar_sha}"]) == 0
+    assert cli.main(["release", "retire", "--root", str(root), "--release", "r26.11.1", "--tar", f"{tar_path}={tar_sha}",
+                     "--copy", _copy_arg(tar_sha)]) == 0
     capsys.readouterr()
 
     # latest_release skips archived
@@ -511,7 +528,8 @@ def test_c54_latest_and_releases_and_b49_skip_archived(tmp_path, capsys):
         _write_minimal_release(r_only, rel)
     t1 = tmp_path / "o1.tar"
     h1 = _make_backup_tar(r_only, "r26.11.1", t1)
-    assert cli.main(["release", "retire", "--root", str(r_only), "--release", "r26.11.1", "--keep-latest", "1", "--tar", f"{t1}={h1}"]) == 0
+    assert cli.main(["release", "retire", "--root", str(r_only), "--release", "r26.11.1", "--keep-latest", "1", "--tar", f"{t1}={h1}",
+                     "--copy", _copy_arg(h1, "o1.tar")]) == 0
     capsys.readouterr()
     (r_only / "manifests" / "release=r26.11.2.json").unlink()
     with pytest.raises(catalog.NoLatestRelease, match="archived"):

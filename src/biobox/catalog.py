@@ -810,6 +810,7 @@ def _validate_archived_record(rec: object, manifest: dict, root: Path) -> tuple[
             if not isinstance(t, dict) or not t.get("path") or not _HEX64.fullmatch(str(t.get("sha256", ""))):
                 problems.append(f"archived record invalid: {rel_doc} has malformed tar entry")
                 break
+    problems += _validate_archived_copies(rec, rel_doc)
     removed = rec.get("removed_files")
     if not isinstance(removed, list) or not removed:
         problems.append(f"archived record invalid: {rel_doc} has no removed_files")
@@ -858,6 +859,165 @@ def _validate_archived_record(rec: object, manifest: dict, root: Path) -> tuple[
     return problems, valid_paths
 
 
+def _validate_archived_copies(rec: dict, rel_doc: str) -> list[str]:
+    """Check the `copies` of an archive record (card R-04). A copy written since card R-04 is
+    `{"location", "sha256", "stated_by": "operator"}` whose sha256 is one of the record's tars'; a plain string is a
+    copy written before card R-04 (the operator's text, never checked) and is accepted as it stands."""
+    copies = rec.get("copies", [])
+    if not isinstance(copies, list):
+        return [f"archived record invalid: {rel_doc} copies must be a list"]
+    tar_shas = {t.get("sha256") for t in rec.get("tars") or () if isinstance(t, dict)}
+    problems: list[str] = []
+    for c in copies:
+        if isinstance(c, str):
+            continue
+        if (not isinstance(c, dict) or not isinstance(c.get("location"), str) or not c["location"].strip()
+                or not _HEX64.fullmatch(str(c.get("sha256", ""))) or c.get("stated_by") != "operator"):
+            problems.append(f"archived record invalid: {rel_doc} has malformed copies entry {c!r}")
+        elif c["sha256"] not in tar_shas:
+            problems.append(f"archived record invalid: {rel_doc} copy {c['location']} has sha256 {c['sha256']}, "
+                            "which is no tar's")
+    return problems
+
+
+# Card R-04: a tar is read once, as a stream, in blocks of this many bytes
+_TAR_BLOCK = 1 << 20
+
+
+class _HashingReader:
+    """A read-only file wrapper that hashes every byte read through it, so that one pass over a tar gives the
+    sha256 of the whole file while `tarfile` reads its members."""
+
+    def __init__(self, fh):
+        self._fh = fh
+        self.sha = hashlib.sha256()
+        self.n = 0
+
+    def read(self, size: int = -1) -> bytes:
+        data = self._fh.read(size)
+        self.sha.update(data)
+        self.n += len(data)
+        return data
+
+
+def _tar_member_path(name: str) -> str:
+    """A member's name as a path relative to the data root (`tar -C <root> -xf` extracts it there): `./x` is `x`."""
+    while name.startswith("./"):
+        name = name[2:]
+    return name
+
+
+def _tar_member_kind(m) -> str:
+    if m.isreg():
+        return "file"
+    if m.issym():
+        return "symbolic link"
+    if m.islnk():
+        return "hard link"
+    if m.isdir():
+        return "directory"
+    return "special"
+
+
+def _scan_tar(path: Path, wanted: dict[str, int]) -> tuple[str, dict[str, list[tuple[str, int, str | None]]]]:
+    """Read the tar at `path` once, as a stream, and return its sha256 and, for every member whose root-relative
+    name is in `wanted` (path -> expected size), a list of `(kind, size, sha256)`, one per occurrence. `kind` is
+    `"file"` for a regular file; `sha256` is None unless the member is a regular file of the expected size. Memory is
+    bounded: member data is hashed in blocks of `_TAR_BLOCK` bytes and member headers are not kept (card R-04).
+    Raises `tarfile.TarError` or `OSError` when the file cannot be read as a tar."""
+    import tarfile
+
+    found: dict[str, list[tuple[str, int, str | None]]] = {}
+    with open(path, "rb") as fh:
+        reader = _HashingReader(fh)
+        with tarfile.open(fileobj=reader, mode="r|*") as tf:
+            while True:
+                m = tf.next()
+                if m is None:
+                    break
+                tf.members.clear()  # a stream needs no index of earlier members; keep memory flat
+                name = _tar_member_path(m.name)
+                if name not in wanted:
+                    continue
+                kind = _tar_member_kind(m)
+                sha = None
+                if kind == "file" and m.size == wanted[name]:
+                    h = hashlib.sha256()
+                    member = tf.extractfile(m)
+                    for block in iter(lambda: member.read(_TAR_BLOCK), b""):
+                        h.update(block)
+                    sha = h.hexdigest()
+                found.setdefault(name, []).append((kind, m.size, sha))
+        # the end-of-archive blocks and the record padding after them are part of the file's sha256
+        for _ in iter(lambda: reader.read(_TAR_BLOCK), b""):
+            pass
+        size = os.fstat(fh.fileno()).st_size
+    if reader.n != size:
+        raise OSError(f"{path}: read {reader.n} bytes of {size}")
+    return reader.sha.hexdigest(), found
+
+
+def _check_tars(tars: list[dict], entries: list[dict]) -> list[str]:
+    """Card R-04: read each tar once and check that every entry (`path`, `size_bytes`, `sha256`) to be removed is a
+    regular-file member of at least one tar with that size and sha256, that no tar holds it otherwise (restoring
+    extracts every tar in turn), and that each tar's sha256 is the one stated. Returns the problems, [] if none."""
+    import tarfile
+
+    wanted = {e["path"]: e["size_bytes"] for e in entries}
+    problems: list[str] = []
+    held: set[str] = set()
+    for t in tars:
+        p = Path(t["path"])
+        try:
+            sha, found = _scan_tar(p, wanted)
+        except (tarfile.TarError, OSError, EOFError) as e:
+            problems.append(f"{p} cannot be read as a tar: {e}")
+            continue
+        if sha != t["sha256"]:
+            problems.append(f"--tar sha256 mismatch for {p}: expected {t['sha256']}, got {sha}")
+            continue
+        for e in entries:
+            for kind, size, got in found.get(e["path"], ()):
+                if kind != "file":
+                    problems.append(f"{e['path']}: {p} holds it as a {kind} member, not a regular file")
+                elif size != e["size_bytes"]:
+                    problems.append(f"{e['path']}: {p} holds {size} bytes, expected {e['size_bytes']}")
+                elif got != e["sha256"]:
+                    problems.append(f"{e['path']}: {p} holds sha256 {got}, expected {e['sha256']}")
+                else:
+                    held.add(e["path"])
+    if not any(pr.startswith("--tar sha256 mismatch") or " cannot be read as a tar" in pr for pr in problems):
+        problems += [f"{e['path']}: not in any --tar" for e in entries if e["path"] not in held]
+    return problems
+
+
+def _parse_copies(copies, tar_shas: set[str]) -> list[dict]:
+    """Card R-04: each `--copy` is `(location, sha256)`, at least one, and each sha256 is one of the `--tar`s'. The
+    pod cannot reach `tower`, so the sha256 is the operator's statement (read from `tower`'s `SHA256SUMS`) and is
+    recorded as such (`stated_by: operator`); it is not checked here."""
+    out: list[dict] = []
+    for c in copies:
+        if not isinstance(c, (tuple, list)) or len(c) != 2:
+            raise ValueError(f"malformed --copy entry {c!r}: expected <LOCATION>=<64-hex-sha256>")
+        loc, raw_sha = str(c[0]).strip(), str(c[1]).strip().lower()
+        if not loc or not _HEX64.fullmatch(raw_sha):
+            raise ValueError(f"malformed --copy entry {c[0]!r}={c[1]!r}: expected <LOCATION>=<64-hex-sha256>")
+        if raw_sha not in tar_shas:
+            raise ValueError(f"--copy {loc} has sha256 {raw_sha}, which is no --tar's ({', '.join(sorted(tar_shas))})")
+        out.append({"location": loc, "sha256": raw_sha, "stated_by": "operator"})
+    if not out:
+        raise ValueError("release retire requires at least one --copy <LOCATION>=<SHA256> (the copy on tower, its "
+                         "sha256 as tower's SHA256SUMS gives it)")
+    uniq = {(d["location"], d["sha256"]): d for d in out}
+    return [uniq[k] for k in sorted(uniq)]
+
+
+def _refuse_tars(release: str, problems: list[str]) -> ValueError:
+    shown = "; ".join(problems[:3]) + ("; ..." if len(problems) > 3 else "")
+    return ValueError(f"release {release}: the --tar files do not hold what retiring would remove "
+                      f"({len(problems)} problems; nothing removed): {shown}")
+
+
 def _rmdir_empty_release_dirs(root: Path, rel_path: str, release: str) -> None:
     """Remove empty directories from `rel_path`'s parent up to and including `release=<R>` only."""
     cur = (root / rel_path).parent
@@ -889,6 +1049,12 @@ def retire_release(
     `release=<R>` and `l2/cluster_plan/release=<R>/*.json`, removes empty `release=<R>` leaf dirs and
     (when `profile_path` is given) `<profile.tmp>/packs/release=<R>/`. Never touches any `stage=` file,
     `release_def`, `release_round`, `ledger`, `manifests`, `catalog`, or `runs`.
+
+    `tars` and `copies` are `(path or location, sha256)` pairs. Card R-04: before anything is written or removed,
+    each tar is read once as a stream, its sha256 must be the one stated, and every file to be removed must be a
+    regular-file member of the tars with the manifest's (or, for a plan file, the disk's) size and sha256, held
+    with no other bytes by any tar; there must be at least one copy and each copy's sha256 must be a tar's. A copy's
+    sha256 is the operator's statement (the pod cannot reach `tower`) and is recorded with `stated_by: operator`.
     """
     root = Path(root)
     if keep_latest < 1:
@@ -910,11 +1076,9 @@ def retire_release(
             raise ValueError(f"malformed --tar entry {raw_path!r}={raw_sha!r}: expected <PATH>=<64-hex-sha256>")
         if not p.is_file():
             raise FileNotFoundError(f"--tar file does not exist on disk: {p}")
-        actual = ids.sha256_file(p).hex()
-        if actual != sha:
-            raise ValueError(f"--tar sha256 mismatch for {p}: expected {sha}, got {actual}")
         tar_entries.append({"path": str(p), "sha256": sha})
     tar_entries.sort(key=lambda x: (x["path"], x["sha256"]))
+    copy_entries = _parse_copies(copies, {t["sha256"] for t in tar_entries})
     man = read_manifest(mpath)
 
     # Idempotency / crash-recovery path when archived/release=<R>.json already exists
@@ -929,6 +1093,17 @@ def retire_release(
                 f"release {release} is already archived ({apath}) with different tars: "
                 f"recorded {existing.get('tars')}, requested {tar_entries}"
             )
+        # A record written before card R-04 was written without reading its tars: check them before removing a file
+        # left behind (one pass per tar, which also checks each tar's sha256 again)
+        recorded = []
+        for item in existing.get("removed_files", []) + existing.get("removed_plan_files", []):
+            if not (isinstance(item, dict) and isinstance(item.get("path"), str)
+                    and isinstance(item.get("size_bytes"), int) and isinstance(item.get("sha256"), str)):
+                raise ValueError(f"{apath}: malformed removed entry {item!r}; nothing removed")
+            recorded.append(item)
+        problems = _check_tars(tar_entries, recorded)
+        if problems:
+            raise _refuse_tars(release, problems)
         # Clean up any straggler files if a prior retire was interrupted after writing the archive record
         for item in existing.get("removed_files", []) + existing.get("removed_plan_files", []):
             if isinstance(item, dict) and isinstance(item.get("path"), str):
@@ -1000,8 +1175,13 @@ def retire_release(
                     "sha256": ids.sha256_file(p).hex(),
                 })
 
+    # Card R-04: every check of the tars happens before the record is written and before the first file is removed
+    problems = _check_tars(tar_entries, removed_files + removed_plan_files)
+    if problems:
+        raise _refuse_tars(release, problems)
+
     record = {
-        "copies": [str(c) for c in copies],
+        "copies": copy_entries,
         "manifest_hash": manifest_hash(man),
         "release": release,
         "removed_files": removed_files,
