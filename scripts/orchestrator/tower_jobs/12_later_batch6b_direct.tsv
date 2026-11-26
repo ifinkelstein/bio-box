@@ -1,0 +1,9 @@
+# Card R-12 (2026-11-26): a job list for scripts/orchestrator/fetch_to_tower.sh, five tab-separated fields:
+# <name> <file> <url> <md5 or -> <licence>. Built from read-only copies of tower's lists of 2026-11-25; nothing
+# was fetched to build it. See scripts/orchestrator/tower_jobs/README.md and
+# planning/measurements/2026-11-26_tower_job_lists.md.
+# Release: none assigned by a decision row (after r26.11.6). Run order 12 of 19. Source: _batch6b.tsv.
+
+# RNA_VIROID - ViroidDB flat filename retry (fixes Batch 3 L108 slash-in-filename failure; zenodo:5202946, 16.46 MB)
+#   provider record (batch3_resolved.json, zenodo 5202945/5202946): 16,460,717 bytes, licence other-open
+RNA_VIROID	viroiddb-2021-06-06.zip	https://zenodo.org/api/records/5202946/files/Benjamin-Lee/viroiddb-2021-06-06.zip/content	c4a5d8cd25d27b2939d49d8f8faec3e9	other-open

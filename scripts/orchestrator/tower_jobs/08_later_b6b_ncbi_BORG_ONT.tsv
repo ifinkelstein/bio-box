@@ -1,0 +1,9 @@
+# Card R-12 (2026-11-26): a job list for scripts/orchestrator/fetch_to_tower.sh, five tab-separated fields:
+# <name> <file> <url> <md5 or -> <licence>. Built from read-only copies of tower's lists of 2026-11-25; nothing
+# was fetched to build it. See scripts/orchestrator/tower_jobs/README.md and
+# planning/measurements/2026-11-26_tower_job_lists.md.
+# Release: none assigned by a decision row (after r26.11.6). Run order 8 of 19. Source: batch6b_ncbi manifest.
+
+# BORG_ONT - NCBI assemblies of PRJNA1119519 (manifest(s) batch6b_ncbi/BORG_ONT/MANIFEST_BORG_ONT_*.tsv on tower, written 2026-11-25 21:24 to
+#   21:26 CST); 1 assemblies, 2,426,186 bases by the manifests' base_count; about 0.0007 GB gzip by the worker's estimate
+batch6b_ncbi/BORG_ONT/assemblies	GCA_040223915.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/040/223/915/GCA_040223915.1_ASM4022391v1/GCA_040223915.1_ASM4022391v1_genomic.fna.gz	-	INSDC

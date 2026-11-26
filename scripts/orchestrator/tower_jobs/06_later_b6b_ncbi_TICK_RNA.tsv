@@ -1,0 +1,76 @@
+# Card R-12 (2026-11-26): a job list for scripts/orchestrator/fetch_to_tower.sh, five tab-separated fields:
+# <name> <file> <url> <md5 or -> <licence>. Built from read-only copies of tower's lists of 2026-11-25; nothing
+# was fetched to build it. See scripts/orchestrator/tower_jobs/README.md and
+# planning/measurements/2026-11-26_tower_job_lists.md.
+# Release: none assigned by a decision row (after r26.11.6). Run order 6 of 19. Source: batch6b_ncbi manifest.
+
+# TICK_RNA - NCBI assemblies of PRJNA841744 (manifest(s) batch6b_ncbi/TICK_RNA/MANIFEST_TICK_RNA_*.tsv on tower, written 2026-11-25 21:24 to
+#   21:26 CST); 68 assemblies, 460,261 bases by the manifests' base_count; about 0.0001 GB gzip by the worker's estimate
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031161585.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/161/585/GCA_031161585.1_ASM3116158v1/GCA_031161585.1_ASM3116158v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031162165.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/162/165/GCA_031162165.1_ASM3116216v1/GCA_031162165.1_ASM3116216v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031166085.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/166/085/GCA_031166085.1_ASM3116608v1/GCA_031166085.1_ASM3116608v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031167795.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/167/795/GCA_031167795.1_ASM3116779v1/GCA_031167795.1_ASM3116779v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031167885.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/167/885/GCA_031167885.1_ASM3116788v1/GCA_031167885.1_ASM3116788v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031171265.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/171/265/GCA_031171265.1_ASM3117126v1/GCA_031171265.1_ASM3117126v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031190085.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/190/085/GCA_031190085.1_ASM3119008v1/GCA_031190085.1_ASM3119008v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031191825.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/191/825/GCA_031191825.1_ASM3119182v1/GCA_031191825.1_ASM3119182v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031192095.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/192/095/GCA_031192095.1_ASM3119209v1/GCA_031192095.1_ASM3119209v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031192105.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/192/105/GCA_031192105.1_ASM3119210v1/GCA_031192105.1_ASM3119210v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031192375.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/192/375/GCA_031192375.1_ASM3119237v1/GCA_031192375.1_ASM3119237v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031198595.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/198/595/GCA_031198595.1_ASM3119859v1/GCA_031198595.1_ASM3119859v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031198605.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/198/605/GCA_031198605.1_ASM3119860v1/GCA_031198605.1_ASM3119860v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031198685.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/198/685/GCA_031198685.1_ASM3119868v1/GCA_031198685.1_ASM3119868v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031198775.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/198/775/GCA_031198775.1_ASM3119877v1/GCA_031198775.1_ASM3119877v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031198845.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/198/845/GCA_031198845.1_ASM3119884v1/GCA_031198845.1_ASM3119884v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031198885.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/198/885/GCA_031198885.1_ASM3119888v1/GCA_031198885.1_ASM3119888v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031199075.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/199/075/GCA_031199075.1_ASM3119907v1/GCA_031199075.1_ASM3119907v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031199085.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/199/085/GCA_031199085.1_ASM3119908v1/GCA_031199085.1_ASM3119908v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031200125.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/200/125/GCA_031200125.1_ASM3120012v1/GCA_031200125.1_ASM3120012v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031200135.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/200/135/GCA_031200135.1_ASM3120013v1/GCA_031200135.1_ASM3120013v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031200145.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/200/145/GCA_031200145.1_ASM3120014v1/GCA_031200145.1_ASM3120014v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031200155.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/200/155/GCA_031200155.1_ASM3120015v1/GCA_031200155.1_ASM3120015v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031200175.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/200/175/GCA_031200175.1_ASM3120017v1/GCA_031200175.1_ASM3120017v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031201785.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/201/785/GCA_031201785.1_ASM3120178v1/GCA_031201785.1_ASM3120178v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031201875.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/201/875/GCA_031201875.1_ASM3120187v1/GCA_031201875.1_ASM3120187v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031201945.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/201/945/GCA_031201945.1_ASM3120194v1/GCA_031201945.1_ASM3120194v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031204105.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/204/105/GCA_031204105.1_ASM3120410v1/GCA_031204105.1_ASM3120410v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031209025.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/209/025/GCA_031209025.1_ASM3120902v1/GCA_031209025.1_ASM3120902v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031209445.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/209/445/GCA_031209445.1_ASM3120944v1/GCA_031209445.1_ASM3120944v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031213445.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/213/445/GCA_031213445.1_ASM3121344v1/GCA_031213445.1_ASM3121344v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031233015.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/233/015/GCA_031233015.1_ASM3123301v1/GCA_031233015.1_ASM3123301v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031236635.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/236/635/GCA_031236635.1_ASM3123663v1/GCA_031236635.1_ASM3123663v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031238965.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/238/965/GCA_031238965.1_ASM3123896v1/GCA_031238965.1_ASM3123896v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031238995.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/238/995/GCA_031238995.1_ASM3123899v1/GCA_031238995.1_ASM3123899v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031239355.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/239/355/GCA_031239355.1_ASM3123935v1/GCA_031239355.1_ASM3123935v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031239395.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/239/395/GCA_031239395.1_ASM3123939v1/GCA_031239395.1_ASM3123939v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031243105.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/243/105/GCA_031243105.1_ASM3124310v1/GCA_031243105.1_ASM3124310v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031249765.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/249/765/GCA_031249765.1_ASM3124976v1/GCA_031249765.1_ASM3124976v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031249955.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/249/955/GCA_031249955.1_ASM3124995v1/GCA_031249955.1_ASM3124995v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031253245.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/253/245/GCA_031253245.1_ASM3125324v1/GCA_031253245.1_ASM3125324v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031253255.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/253/255/GCA_031253255.1_ASM3125325v1/GCA_031253255.1_ASM3125325v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031265135.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/265/135/GCA_031265135.1_ASM3126513v1/GCA_031265135.1_ASM3126513v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031268785.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/268/785/GCA_031268785.1_ASM3126878v1/GCA_031268785.1_ASM3126878v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031274675.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/274/675/GCA_031274675.1_ASM3127467v1/GCA_031274675.1_ASM3127467v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031323175.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/323/175/GCA_031323175.1_ASM3132317v1/GCA_031323175.1_ASM3132317v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031323195.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/323/195/GCA_031323195.1_ASM3132319v1/GCA_031323195.1_ASM3132319v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031323205.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/323/205/GCA_031323205.1_ASM3132320v1/GCA_031323205.1_ASM3132320v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031323215.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/323/215/GCA_031323215.1_ASM3132321v1/GCA_031323215.1_ASM3132321v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031323225.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/323/225/GCA_031323225.1_ASM3132322v1/GCA_031323225.1_ASM3132322v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031323375.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/323/375/GCA_031323375.1_ASM3132337v1/GCA_031323375.1_ASM3132337v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031323465.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/323/465/GCA_031323465.1_ASM3132346v1/GCA_031323465.1_ASM3132346v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031323485.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/323/485/GCA_031323485.1_ASM3132348v1/GCA_031323485.1_ASM3132348v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031323495.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/323/495/GCA_031323495.1_ASM3132349v1/GCA_031323495.1_ASM3132349v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_031323535.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/031/323/535/GCA_031323535.1_ASM3132353v1/GCA_031323535.1_ASM3132353v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_051027965.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/051/027/965/GCA_051027965.1_ASM5102796v1/GCA_051027965.1_ASM5102796v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_051027975.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/051/027/975/GCA_051027975.1_ASM5102797v1/GCA_051027975.1_ASM5102797v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_051048355.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/051/048/355/GCA_051048355.1_ASM5104835v1/GCA_051048355.1_ASM5104835v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCA_051048375.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/051/048/375/GCA_051048375.1_ASM5104837v1/GCA_051048375.1_ASM5104837v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCF_050926175.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/050/926/175/GCA_050926175.1_ASM5092617v1/GCA_050926175.1_ASM5092617v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCF_051027785.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/051/027/785/GCA_051027785.1_ASM5102778v1/GCA_051027785.1_ASM5102778v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCF_051027795.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/051/027/795/GCA_051027795.1_ASM5102779v1/GCA_051027795.1_ASM5102779v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCF_051027805.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/051/027/805/GCA_051027805.1_ASM5102780v1/GCA_051027805.1_ASM5102780v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCF_051027815.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/051/027/815/GCA_051027815.1_ASM5102781v1/GCA_051027815.1_ASM5102781v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCF_051027825.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/051/027/825/GCA_051027825.1_ASM5102782v1/GCA_051027825.1_ASM5102782v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCF_051027845.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/051/027/845/GCA_051027845.1_ASM5102784v1/GCA_051027845.1_ASM5102784v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCF_051027985.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/051/027/985/GCA_051027985.1_ASM5102798v1/GCA_051027985.1_ASM5102798v1_genomic.fna.gz	-	INSDC
+batch6b_ncbi/TICK_RNA/assemblies	GCF_051048565.1_genomic.fna.gz	https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/051/048/565/GCA_051048565.1_ASM5104856v1/GCA_051048565.1_ASM5104856v1_genomic.fna.gz	-	INSDC

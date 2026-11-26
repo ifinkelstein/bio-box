@@ -1,0 +1,800 @@
+# Card R-12 (2026-11-26): a job list for scripts/orchestrator/fetch_to_tower.sh, five tab-separated fields:
+# <name> <file> <url> <md5 or -> <licence>. Built from read-only copies of tower's lists of 2026-11-25; nothing
+# was fetched to build it. See scripts/orchestrator/tower_jobs/README.md and
+# planning/measurements/2026-11-26_tower_job_lists.md.
+# Release: none assigned by a decision row (after r26.11.6). Run order 19 of 19. Source: _batch6.tsv.
+
+# batch6_euks_org/C60_NUC - 2026 Teleaulax nucleomorph FASTA + GFF annotations (T. acuta & T. amphioxeia) (figshare:31293505, CC BY 4.0)
+#   2 job(s), 885,443 bytes by the provider record
+batch6_euks_org/C60_NUC	T_acu_NM.fasta	https://ndownloader.figshare.com/files/61743778	22c5f529b19414e030d6649512300609	CC BY 4.0
+batch6_euks_org/C60_NUC	T_amp_NM.fasta	https://ndownloader.figshare.com/files/61743781	f76149e8ba8c426b26ced9130f8adb5e	CC BY 4.0
+
+# batch6_symbionts/BTCN_VIR1 - BtCN-Virome bat RNA virome full-spectrum contigs + metadata (C-50 ready) (figshare:24515056, CC BY 4.0)
+#   2 job(s), 3,213,398 bytes by the provider record
+batch6_symbionts/BTCN_VIR1	BtCN-Virome_full_spectrum_contigs.tar.gz	https://ndownloader.figshare.com/files/43059583	14e0de97108e2dc5641ca7808edb38f3	CC BY 4.0
+batch6_symbionts/BTCN_VIR1	Meta_data_for_ecological_modeling.zip	https://ndownloader.figshare.com/files/45561465	9a9984ed1c36e6c3e734ab355912a807	CC BY 4.0
+
+# batch6_mges/ECE_METH - Jumbo circular Methanoperedens archaeal ECEs & host genomes (figshare:32069694, CC BY 4.0)
+#   1 job(s), 11,337,910 bytes by the provider record
+batch6_mges/ECE_METH	Mp_and_ECE_genomes.fa.gz	https://ndownloader.figshare.com/files/63940497	eb74e7b6d810fe6794ccbee2cc32f7e7	CC BY 4.0
+
+# batch6_euk_viruses/WRVIRDB - WRVirDB 55,900 WWTP RNA vOTUs + sample metadata (figshare:33088094, CC BY 4.0)
+#   2 job(s), 42,405,149 bytes by the provider record
+batch6_euk_viruses/WRVIRDB	WWTP.RNA.vOTUs.fa	https://ndownloader.figshare.com/files/66985160	872e3c23524a78320e9c5b2fd2f8d621	CC BY 4.0
+batch6_euk_viruses/WRVIRDB	WWTP_samples_metadata.xls	https://ndownloader.figshare.com/files/66985175	37ce6d065f557a4074faf7d0d8db45a6	CC BY 4.0
+
+# batch6_mges/SAT_P4P2 - Dereplicated att-delimited 3,085 P4 satellites & 1,511 P2 prophages (figshare:31843870, CC BY 4.0)
+#   1 job(s), 55,549,395 bytes by the provider record
+batch6_mges/SAT_P4P2	P4P2_DereplicatedGenomes.zip	https://ndownloader.figshare.com/files/63058165	a89970ec94c39c795f46a764cba1333c	CC BY 4.0
+
+# batch6_longread_sags/BBMO_HIFI - Blanes Bay BBMO 30 individual PacBio HiFi marine MAGs (preserves bin boundaries) (zenodo:21517772, cc-by-4.0)
+#   30 job(s), 67,175,215 bytes by the provider record
+batch6_longread_sags/BBMO_HIFI	s96.ctg000111c_BL_0908sc.fa	https://zenodo.org/api/records/21517772/files/s96.ctg000111c_BL_0908sc.fa/content	eecfe3f622b048af74a55637090d1741	cc-by-4.0
+batch6_longread_sags/BBMO_HIFI	BL_pooled_bin.full.1551.fa	https://zenodo.org/api/records/21517772/files/BL_pooled_bin.full.1551.fa/content	bdfa0d2800e5a99004f4215695af3bc9	cc-by-4.0
+batch6_longread_sags/BBMO_HIFI	s111.ctg000126c_BL_0902sc.fa	https://zenodo.org/api/records/21517772/files/s111.ctg000126c_BL_0902sc.fa/content	9154d1cd85e331c72d7527a45c0e72aa	cc-by-4.0
+batch6_longread_sags/BBMO_HIFI	s131.ctg000151c_BL_0908sc.fa	https://zenodo.org/api/records/21517772/files/s131.ctg000151c_BL_0908sc.fa/content	5df8812b8f99f5f38d9923f223fbe943	cc-by-4.0
+batch6_longread_sags/BBMO_HIFI	s1032.ctg001132l_BL_0908sc.fa	https://zenodo.org/api/records/21517772/files/s1032.ctg001132l_BL_0908sc.fa/content	1d3fb581f3697b0fe83dd844b1e4f6b3	cc-by-4.0
+batch6_longread_sags/BBMO_HIFI	BL_0902_bin.full.136.fa	https://zenodo.org/api/records/21517772/files/BL_0902_bin.full.136.fa/content	2d553c3d74d38ec7ca490c94c23576ce	cc-by-4.0
+batch6_longread_sags/BBMO_HIFI	s249.ctg000277l_BL_0908sc.fa	https://zenodo.org/api/records/21517772/files/s249.ctg000277l_BL_0908sc.fa/content	7a703e64f3b1aa734478b82ba618d714	cc-by-4.0
+batch6_longread_sags/BBMO_HIFI	BL_0908_bin.full.418.fa	https://zenodo.org/api/records/21517772/files/BL_0908_bin.full.418.fa/content	1dd1fbb8b7dde1f82e75b7211e257893	cc-by-4.0
+batch6_longread_sags/BBMO_HIFI	BL_pooled_bin.full.761.fa	https://zenodo.org/api/records/21517772/files/BL_pooled_bin.full.761.fa/content	41d88327d7a6415693b6a65d265f1a46	cc-by-4.0
+batch6_longread_sags/BBMO_HIFI	BL_0908_bin.full.869.fa	https://zenodo.org/api/records/21517772/files/BL_0908_bin.full.869.fa/content	e083d2a2a6ef7241c46972f256c54c05	cc-by-4.0
+batch6_longread_sags/BBMO_HIFI	s388.ctg000435l_BL_0908sc.fa	https://zenodo.org/api/records/21517772/files/s388.ctg000435l_BL_0908sc.fa/content	37f0f985cfc17cbad3c47edcd18d519b	cc-by-4.0
+batch6_longread_sags/BBMO_HIFI	BL_0908_bin.full.436.fa	https://zenodo.org/api/records/21517772/files/BL_0908_bin.full.436.fa/content	e2c37b41b05ecdc7b02f04c7411781ab	cc-by-4.0
+batch6_longread_sags/BBMO_HIFI	s35.ctg000041c_BL_0902sc.fa	https://zenodo.org/api/records/21517772/files/s35.ctg000041c_BL_0902sc.fa/content	67cb953fac7b81a70f55fc8e30283d34	cc-by-4.0
+batch6_longread_sags/BBMO_HIFI	BL_0908_bin.full.759.fa	https://zenodo.org/api/records/21517772/files/BL_0908_bin.full.759.fa/content	623d6a9bf36f9fe24eacd986297ef205	cc-by-4.0
+batch6_longread_sags/BBMO_HIFI	BL_pooled_bin.circ.35.fa	https://zenodo.org/api/records/21517772/files/BL_pooled_bin.circ.35.fa/content	24e6474bda108616802121ab589a882f	cc-by-4.0
+batch6_longread_sags/BBMO_HIFI	BL_pooled_bin.full.145.fa	https://zenodo.org/api/records/21517772/files/BL_pooled_bin.full.145.fa/content	658bea3f1ddec7060596aa8fd8fc68d8	cc-by-4.0
+batch6_longread_sags/BBMO_HIFI	BL_0908_bin.full.20.fa	https://zenodo.org/api/records/21517772/files/BL_0908_bin.full.20.fa/content	b71765f58ac3fb9844bf8a058f687fd1	cc-by-4.0
+batch6_longread_sags/BBMO_HIFI	s325.ctg000366c_BL_0908sc.fa	https://zenodo.org/api/records/21517772/files/s325.ctg000366c_BL_0908sc.fa/content	ca3d18311f23d075a3d056aa2cdefdd2	cc-by-4.0
+batch6_longread_sags/BBMO_HIFI	s7.ctg000447l_BL_0908sc.fa	https://zenodo.org/api/records/21517772/files/s7.ctg000447l_BL_0908sc.fa/content	cf0d613c10e6a72c725ef1602a709548	cc-by-4.0
+batch6_longread_sags/BBMO_HIFI	BL_0908_bin.full.559.fa	https://zenodo.org/api/records/21517772/files/BL_0908_bin.full.559.fa/content	d0f2f660fd60ca3121f72b8e4330da98	cc-by-4.0
+batch6_longread_sags/BBMO_HIFI	BL_0908_bin.full.528.fa	https://zenodo.org/api/records/21517772/files/BL_0908_bin.full.528.fa/content	ac34edb113efae4d92f8059931049704	cc-by-4.0
+batch6_longread_sags/BBMO_HIFI	s2266.ctg002461l_BL_0908sc.fa	https://zenodo.org/api/records/21517772/files/s2266.ctg002461l_BL_0908sc.fa/content	d3ee86fc349c75e805d817216d01317b	cc-by-4.0
+batch6_longread_sags/BBMO_HIFI	BL_0908_bin.full.522.fa	https://zenodo.org/api/records/21517772/files/BL_0908_bin.full.522.fa/content	700b289b07ee9c5e49815cd3fea38e24	cc-by-4.0
+batch6_longread_sags/BBMO_HIFI	BL_pooled_bin.circ.36.fa	https://zenodo.org/api/records/21517772/files/BL_pooled_bin.circ.36.fa/content	54ed804375d57b232900976f539e6180	cc-by-4.0
+batch6_longread_sags/BBMO_HIFI	s23.ctg000345l_BL_0902sc.fa	https://zenodo.org/api/records/21517772/files/s23.ctg000345l_BL_0902sc.fa/content	0fd1fc5ede878445680dc8fbb2e0f4e3	cc-by-4.0
+batch6_longread_sags/BBMO_HIFI	BL_pooled_bin.full.596.fa	https://zenodo.org/api/records/21517772/files/BL_pooled_bin.full.596.fa/content	da59176c2ca9c48644e52b5f8d3a72d6	cc-by-4.0
+batch6_longread_sags/BBMO_HIFI	s266.ctg000297l_BL_0908sc.fa	https://zenodo.org/api/records/21517772/files/s266.ctg000297l_BL_0908sc.fa/content	f88ee27183059a42072b2472756fdb0b	cc-by-4.0
+batch6_longread_sags/BBMO_HIFI	BL_1001_bin.full.234.fa	https://zenodo.org/api/records/21517772/files/BL_1001_bin.full.234.fa/content	497b277210b83161d2a379903e0a5706	cc-by-4.0
+batch6_longread_sags/BBMO_HIFI	s215.ctg000240l_BL_0908sc.fa	https://zenodo.org/api/records/21517772/files/s215.ctg000240l_BL_0908sc.fa/content	bbb3a08d61ccb42e4d104feaaa22ad4b	cc-by-4.0
+batch6_longread_sags/BBMO_HIFI	s44.ctg000052l_BL_0902sc.fa	https://zenodo.org/api/records/21517772/files/s44.ctg000052l_BL_0902sc.fa/content	e1e7cfcefe88b4f6a5689df5af5a01c5	cc-by-4.0
+
+# batch6_longread_sags/WWB_HIC - Wastewater Hi-C plasmid-host contact & cluster metadata table (CSV only; MAGs on PRJNA1295499) (zenodo:21381023, cc-by-4.0)
+#   1 job(s), 69,713,703 bytes by the provider record
+batch6_longread_sags/WWB_HIC	ALL_CITIES_anonymized.csv	https://zenodo.org/api/records/21381023/files/ALL_CITIES_anonymized.csv/content	c06f5179ca9d3e57bd533edcf20f3cfb	cc-by-4.0
+
+# batch6_extremes/OILV1 - Global Oil Reservoir Virome ORVC 3,886 >=10 kb vOTUs (figshare:24298258, CC BY 4.0)
+#   1 job(s), 91,737,863 bytes by the provider record
+batch6_extremes/OILV1	oil_ref_allmhighviral_contig10K.fasta.zip	https://ndownloader.figshare.com/files/42649519	a656ac287b931108a2ddd4ea41fdb07f	CC BY 4.0
+
+# batch6_euk_viruses/RHIZO_SSRNA - Rhizosphere 16,541 ssRNA Leviviricetes + 1,059 dsDNA phage vOTUs (Leicester Figshare) (figshare:19635336, CC BY 4.0)
+#   1 job(s), 96,839,680 bytes by the provider record
+batch6_euk_viruses/RHIZO_SSRNA	RhizosphereVirome.tar	https://ndownloader.figshare.com/files/34872915	fd632c47df8a8a03db5d816ff99c6193	CC BY 4.0
+
+# batch6_longread_sags/EMCG_MAR - Marine nanolitre single-particle genomes (cSAGs + emSAGs + non-canonical vSAGs) (figshare:29087720, CC BY 4.0)
+#   3 job(s), 98,169,911 bytes by the provider record
+batch6_longread_sags/EMCG_MAR	vSAGs.zip	https://ndownloader.figshare.com/files/54607421	949430c82bd765dbd6bf81dbc09ee0ec	CC BY 4.0
+batch6_longread_sags/EMCG_MAR	emSAGs.zip	https://ndownloader.figshare.com/files/54607424	4f4251c1c61b7e4463f7fec6f21d88d9	CC BY 4.0
+batch6_longread_sags/EMCG_MAR	cSAGs.zip	https://ndownloader.figshare.com/files/54607427	de31834afc871480e780f3ed3fb46240	CC BY 4.0
+
+# batch6_symbionts/PROT_FUNG_SYM1 - 39 Mycetohabitans Mucorales fungal intracellular endosymbiont MAGs (zenodo:18216013, cc-by-4.0)
+#   39 job(s), 128,825,226 bytes by the provider record
+batch6_symbionts/PROT_FUNG_SYM1	SRR9029403_bacterial_contigs.fasta	https://zenodo.org/api/records/18216013/files/SRR9029403_bacterial_contigs.fasta/content	317577a3f8eec4870e264f90f82e5e36	cc-by-4.0
+batch6_symbionts/PROT_FUNG_SYM1	SRR9029401_bacterial_contigs.fasta	https://zenodo.org/api/records/18216013/files/SRR9029401_bacterial_contigs.fasta/content	9f5548feeb0e93fc8137ec73df599e85	cc-by-4.0
+batch6_symbionts/PROT_FUNG_SYM1	ERR647685_bacterial_contigs.fasta	https://zenodo.org/api/records/18216013/files/ERR647685_bacterial_contigs.fasta/content	24396f01231a706d9bc0eddee282d91f	cc-by-4.0
+batch6_symbionts/PROT_FUNG_SYM1	SRR9029155_bacterial_contigs.fasta	https://zenodo.org/api/records/18216013/files/SRR9029155_bacterial_contigs.fasta/content	56e3657b2b5bef03cb40ec0cb12eed7d	cc-by-4.0
+batch6_symbionts/PROT_FUNG_SYM1	SRR9650585_bacterial_contigs.fasta	https://zenodo.org/api/records/18216013/files/SRR9650585_bacterial_contigs.fasta/content	d57686415cb461aafa8ef63256e3f86a	cc-by-4.0
+batch6_symbionts/PROT_FUNG_SYM1	SRR8485126_bacterial_contigs.fasta	https://zenodo.org/api/records/18216013/files/SRR8485126_bacterial_contigs.fasta/content	c8a4fdebad3da8d4d09793270ef76d4e	cc-by-4.0
+batch6_symbionts/PROT_FUNG_SYM1	SRR12278013_bacterial_contigs.fasta	https://zenodo.org/api/records/18216013/files/SRR12278013_bacterial_contigs.fasta/content	67b49fcfb1fc14e53077d6ea7eaadabe	cc-by-4.0
+batch6_symbionts/PROT_FUNG_SYM1	SRR8845249_bacterial_contigs.fasta	https://zenodo.org/api/records/18216013/files/SRR8845249_bacterial_contigs.fasta/content	456d8d4f04ba0b5c771980246ec77440	cc-by-4.0
+batch6_symbionts/PROT_FUNG_SYM1	SRR9029062_bacterial_contigs.fasta	https://zenodo.org/api/records/18216013/files/SRR9029062_bacterial_contigs.fasta/content	51a1fd7428bc9a034b30edef07b41d61	cc-by-4.0
+batch6_symbionts/PROT_FUNG_SYM1	SRR11788061_bacterial_contigs.fasta	https://zenodo.org/api/records/18216013/files/SRR11788061_bacterial_contigs.fasta/content	535074021c4d292e2fd199c36bdfa7e5	cc-by-4.0
+batch6_symbionts/PROT_FUNG_SYM1	SRR9712532_bacterial_contigs.fasta	https://zenodo.org/api/records/18216013/files/SRR9712532_bacterial_contigs.fasta/content	3f702665d5b03c3601959d51ebef4ca2	cc-by-4.0
+batch6_symbionts/PROT_FUNG_SYM1	SRR16016944_bacterial_contigs.fasta	https://zenodo.org/api/records/18216013/files/SRR16016944_bacterial_contigs.fasta/content	12fb0cd6017f7ba5d34b7ebf5eebd474	cc-by-4.0
+batch6_symbionts/PROT_FUNG_SYM1	SRR20066946_bacterial_contigs.fasta	https://zenodo.org/api/records/18216013/files/SRR20066946_bacterial_contigs.fasta/content	3e69ae52868c507be9f1861d1ea42a39	cc-by-4.0
+batch6_symbionts/PROT_FUNG_SYM1	SRR25224717_bacterial_contigs.fasta	https://zenodo.org/api/records/18216013/files/SRR25224717_bacterial_contigs.fasta/content	a24aa8cd246a7451ef12475a2a605359	cc-by-4.0
+batch6_symbionts/PROT_FUNG_SYM1	SRR25224693_bacterial_contigs.fasta	https://zenodo.org/api/records/18216013/files/SRR25224693_bacterial_contigs.fasta/content	39ae457f6c9bb720e27dc403000836c2	cc-by-4.0
+batch6_symbionts/PROT_FUNG_SYM1	SRR9720377_bacterial_contigs.fasta	https://zenodo.org/api/records/18216013/files/SRR9720377_bacterial_contigs.fasta/content	9a9fa55590bc39e9030428d23841503e	cc-by-4.0
+batch6_symbionts/PROT_FUNG_SYM1	SRR11788056_bacterial_contigs.fasta	https://zenodo.org/api/records/18216013/files/SRR11788056_bacterial_contigs.fasta/content	073b40953d2327ab86b3650d1fa175e5	cc-by-4.0
+batch6_symbionts/PROT_FUNG_SYM1	SRR7686242_bacterial_contigs.fasta	https://zenodo.org/api/records/18216013/files/SRR7686242_bacterial_contigs.fasta/content	cc7f7763356ce2d70a9a2b41f64b2e71	cc-by-4.0
+batch6_symbionts/PROT_FUNG_SYM1	SRR8845252_bacterial_contigs.fasta	https://zenodo.org/api/records/18216013/files/SRR8845252_bacterial_contigs.fasta/content	cadb2234565c7a244f0896f87793a208	cc-by-4.0
+batch6_symbionts/PROT_FUNG_SYM1	SRR9029124_bacterial_contigs.fasta	https://zenodo.org/api/records/18216013/files/SRR9029124_bacterial_contigs.fasta/content	c86dfa64a2f4165fc3e3815207de0fc1	cc-by-4.0
+batch6_symbionts/PROT_FUNG_SYM1	SRR9029156_bacterial_contigs.fasta	https://zenodo.org/api/records/18216013/files/SRR9029156_bacterial_contigs.fasta/content	25dfccd417f2105b33b06157cd4f78c0	cc-by-4.0
+batch6_symbionts/PROT_FUNG_SYM1	SRR9650540_bacterial_contigs.fasta	https://zenodo.org/api/records/18216013/files/SRR9650540_bacterial_contigs.fasta/content	c06ffa5ee7b0e661063cc1373f1abedc	cc-by-4.0
+batch6_symbionts/PROT_FUNG_SYM1	SRR12354412_bacterial_contigs.fasta	https://zenodo.org/api/records/18216013/files/SRR12354412_bacterial_contigs.fasta/content	f499b68b5a65986eb33eb95637b46344	cc-by-4.0
+batch6_symbionts/PROT_FUNG_SYM1	SRR9720186_bacterial_contigs.fasta	https://zenodo.org/api/records/18216013/files/SRR9720186_bacterial_contigs.fasta/content	ac88d94b35c28397999a343afb89f37c	cc-by-4.0
+batch6_symbionts/PROT_FUNG_SYM1	SRR9720307_bacterial_contigs.fasta	https://zenodo.org/api/records/18216013/files/SRR9720307_bacterial_contigs.fasta/content	946d3e93019d834d0ee39aea6460628b	cc-by-4.0
+batch6_symbionts/PROT_FUNG_SYM1	SRR9720297_bacterial_contigs.fasta	https://zenodo.org/api/records/18216013/files/SRR9720297_bacterial_contigs.fasta/content	d28d670f3ce255b3f7b335150dafd89a	cc-by-4.0
+batch6_symbionts/PROT_FUNG_SYM1	SRR16016945_bacterial_contigs.fasta	https://zenodo.org/api/records/18216013/files/SRR16016945_bacterial_contigs.fasta/content	5fd6e46a5c2f2e2b19ddd0cb420ebb8e	cc-by-4.0
+batch6_symbionts/PROT_FUNG_SYM1	SRR12951099_bacterial_contigs.fasta	https://zenodo.org/api/records/18216013/files/SRR12951099_bacterial_contigs.fasta/content	496c3fe3773a1e3d90b2e6229c9d5fe8	cc-by-4.0
+batch6_symbionts/PROT_FUNG_SYM1	SRR20066947_bacterial_contigs.fasta	https://zenodo.org/api/records/18216013/files/SRR20066947_bacterial_contigs.fasta/content	e525d045988327f7074fab4cf8aba9a4	cc-by-4.0
+batch6_symbionts/PROT_FUNG_SYM1	SRR25224725_bacterial_contigs.fasta	https://zenodo.org/api/records/18216013/files/SRR25224725_bacterial_contigs.fasta/content	5a7bd9b7ee20d4420ce99afa44999375	cc-by-4.0
+batch6_symbionts/PROT_FUNG_SYM1	SRR9720300_bacterial_contigs.fasta	https://zenodo.org/api/records/18216013/files/SRR9720300_bacterial_contigs.fasta/content	d36ff26642aad360f1311b149fbac063	cc-by-4.0
+batch6_symbionts/PROT_FUNG_SYM1	SRR8845250_bacterial_contigs.fasta	https://zenodo.org/api/records/18216013/files/SRR8845250_bacterial_contigs.fasta/content	b94b262469c9fd8f7c0172949cad10f6	cc-by-4.0
+batch6_symbionts/PROT_FUNG_SYM1	SRR7686240_bacterial_contigs.fasta	https://zenodo.org/api/records/18216013/files/SRR7686240_bacterial_contigs.fasta/content	3dd31ba8f13a7caad2e55176b16b4b3e	cc-by-4.0
+batch6_symbionts/PROT_FUNG_SYM1	SRR9720220_bacterial_contigs.fasta	https://zenodo.org/api/records/18216013/files/SRR9720220_bacterial_contigs.fasta/content	0881219997b39a84b13dfa003761a3ec	cc-by-4.0
+batch6_symbionts/PROT_FUNG_SYM1	SRR9029145_bacterial_contigs.fasta	https://zenodo.org/api/records/18216013/files/SRR9029145_bacterial_contigs.fasta/content	bf8eaf1e1977a6a5804c3cf14426dfc9	cc-by-4.0
+batch6_symbionts/PROT_FUNG_SYM1	SRR9650549_bacterial_contigs.fasta	https://zenodo.org/api/records/18216013/files/SRR9650549_bacterial_contigs.fasta/content	16285c45fe58de093e547e296b1a1acf	cc-by-4.0
+batch6_symbionts/PROT_FUNG_SYM1	SRR9650546_bacterial_contigs.fasta	https://zenodo.org/api/records/18216013/files/SRR9650546_bacterial_contigs.fasta/content	07acc6ba358347ef88093e549d4fa231	cc-by-4.0
+batch6_symbionts/PROT_FUNG_SYM1	SRR9712541_bacterial_contigs.fasta	https://zenodo.org/api/records/18216013/files/SRR9712541_bacterial_contigs.fasta/content	a1b198e7fe9716ff8a90eb08ed338a17	cc-by-4.0
+batch6_symbionts/PROT_FUNG_SYM1	SRR11788076_bacterial_contigs.fasta	https://zenodo.org/api/records/18216013/files/SRR11788076_bacterial_contigs.fasta/content	45f5c12147188d2ba247b4855c1e4660	cc-by-4.0
+
+# batch6_longread_sags/RPGUTDB - Red panda gut 254 representative MAGs (Sci. Data Oct 2026) (figshare:31136686, CC BY 4.0)
+#   2 job(s), 193,294,015 bytes by the provider record
+batch6_longread_sags/RPGUTDB	05_genome_MAGs_analysis.txt	https://ndownloader.figshare.com/files/67638840	ad5118cb33f9fd18ad11be68a3e489d3	CC BY 4.0
+batch6_longread_sags/RPGUTDB	Figshare_254_representative_MAG_genomes.zip	https://ndownloader.figshare.com/files/69686319	44747b943e594b296dd24168000fe3e6	CC BY 4.0
+
+# batch6_extremes/PF_VLP1 - Stordalen Mire permafrost thaw VLP-enriched 9,963 ssDNA+dsDNA vOTUs (zenodo:15637204, cc-by-4.0)
+#   1 job(s), 207,511,291 bytes by the provider record
+batch6_extremes/PF_VLP1	9963_vOTUs_May_2025.fa	https://zenodo.org/api/records/15637204/files/9963_vOTUs_May_2025.fa/content	057b88b4574b66200439648a52f8c03f	cc-by-4.0
+
+# batch6_symbionts/WRGV1 - Global Wild Rodent Gut Virome wrGVC 16,854 vOTUs + metadata (zenodo:20544493, cc-by-4.0)
+#   2 job(s), 213,676,134 bytes by the provider record
+batch6_symbionts/WRGV1	Detailed_information_for_all_16_854_vOTUs.xlsx	https://zenodo.org/api/records/20544493/files/Detailed%20information%20for%20all%2016,854%20vOTUs.xlsx/content	ad08c465ab677a5a631e051963232ab7	cc-by-4.0
+batch6_symbionts/WRGV1	votu.fa.gz	https://zenodo.org/api/records/20544493/files/votu.fa.gz/content	b68a7fa38fd6d4b88f7932f4df9ec294	cc-by-4.0
+
+# batch6_euks_org/C60_MICRO - Rozellid single-cell genomics supplementary genome data (Biol. Lett. 2023) (figshare:24711323, CC BY 4.0) / Khalaf PLOS Biol 2025 40 new Microsporidia genome FASTAs (S12) + GeneMark-ES annotations (S14) + Table S1 (zenodo:17251512, cc-by-4.0)
+#   3 job(s), 243,297,749 bytes by the provider record
+batch6_euks_org/C60_MICRO	rsbl20230398_si_002.zip	https://ndownloader.figshare.com/files/43531632	25da3caa99512ca9d774f24a4be05c24	CC BY 4.0
+batch6_euks_org/C60_MICRO	File_Collection_S12.zip	https://zenodo.org/api/records/17251512/files/File%20Collection%20S12.zip/content	94d193ccc5bf9d3a8558461eef0d8cbb	cc-by-4.0
+batch6_euks_org/C60_MICRO	Table_S1.xlsx	https://zenodo.org/api/records/17251512/files/Table%20S1.xlsx/content	8ddea7c90ea7e76c9a8a37616a7a555f	cc-by-4.0
+
+# batch6_mges/MFD_PLAS - MFD nation-scale complete circular environmental plasmids (8,744 plasmids) (zenodo:22944851, cc-by-4.0)
+#   3 job(s), 311,735,530 bytes by the provider record
+batch6_mges/MFD_PLAS	mfd_plasmids_drep_and_members.fasta	https://zenodo.org/api/records/22944851/files/mfd_plasmids_drep_and_members.fasta/content	a38f27f388dd706fb584ee0ae2e5ef34	cc-by-4.0
+batch6_mges/MFD_PLAS	MFD01716.bin.1.47.fasta	https://zenodo.org/api/records/22944851/files/MFD01716.bin.1.47.fasta/content	eae3a016b17cc8f78a28dae6097f8219	cc-by-4.0
+batch6_mges/MFD_PLAS	pfd_metadata.tsv	https://zenodo.org/api/records/22944851/files/pfd_metadata.tsv/content	d07e54af37f9e3170c468ef1328d0b04	cc-by-4.0
+
+# batch6_extremes/KERM1 - Kermadec Trench ~10 km hadal representative MAGs (figshare:28253495, CC BY 4.0) / Kermadec Trench ~10 km hadal 186,496 viral populations (figshare:30020233, CC BY 4.0)
+#   2 job(s), 332,023,936 bytes by the provider record
+batch6_extremes/KERM1	MAGs.zip	https://ndownloader.figshare.com/files/51839069	48fee1676c3d620e91ec0972972c7a7b	CC BY 4.0
+batch6_extremes/KERM1	all_virus.zip	https://ndownloader.figshare.com/files/57552088	3497205ebef6e21df970a1d210d05c88	CC BY 4.0
+
+# batch6_mges/ECE_HODOR - Hodor >300 kb conjugative megaplasmids & CheckV-cleaned prophages (figshare:31385365, CC BY 4.0)
+#   6 job(s), 340,910,359 bytes by the provider record
+batch6_mges/ECE_HODOR	Hodor.38.genomes.fasta	https://ndownloader.figshare.com/files/62055532	660b72b7b8e26fc923154d285a601d02	CC BY 4.0
+batch6_mges/ECE_HODOR	Hodor.prophages.fasta	https://ndownloader.figshare.com/files/62055535	ede62c8147eb61f8355773459d1994ff	CC BY 4.0
+batch6_mges/ECE_HODOR	prophage03.all.pure.fa	https://ndownloader.figshare.com/files/62498599	cf477545cdcb2698132bfc372c151024	CC BY 4.0
+batch6_mges/ECE_HODOR	prophage02.all.pure.fa	https://ndownloader.figshare.com/files/62498605	25ff2a318dfac2dcae840ff410dd95d0	CC BY 4.0
+batch6_mges/ECE_HODOR	prophage01.all.pure.fa	https://ndownloader.figshare.com/files/62498602	1b656575b6cce213cc29eb9427bee8b6	CC BY 4.0
+batch6_mges/ECE_HODOR	draft.Hodor.genomes.tar.gz	https://ndownloader.figshare.com/files/62498968	13012705296c2252f54ca33c61525659	CC BY 4.0
+
+# batch6_longread_sags/FELMGDB_CULT - FelMGDB feline gut species-resolved 514 SGBs / culturomics catalog (figshare:31841092, CC BY 4.0)
+#   1 job(s), 376,344,464 bytes by the provider record
+batch6_longread_sags/FELMGDB_CULT	felMGDB_species_genomes.tar.gz	https://ndownloader.figshare.com/files/63040780	d34c55b290f94844933b32838aafe485	CC BY 4.0
+
+# batch6_longread_sags/HIBC - HiBC complete isolate plasmid sequences (zenodo:12187897, cc-by-4.0) / HiBC Human intestinal Bacterial Collection 340 pure isolate genomes (zenodo:12180083, cc-by-4.0)
+#   2 job(s), 386,139,083 bytes by the provider record
+batch6_longread_sags/HIBC	HiBC_Plasmids_sequences_20240620.zip	https://zenodo.org/api/records/12187897/files/HiBC_Plasmids_sequences_20240620.zip/content	ef4bcb56a5bc88ea73425f12841bfde8	cc-by-4.0
+batch6_longread_sags/HIBC	HiBC_Genome_sequences_20240620.zip	https://zenodo.org/api/records/12180083/files/HiBC_Genome_sequences_20240620.zip/content	58bd145eb8715b89ed1e529d90392bb6	cc-by-4.0
+
+# batch6_extremes/CCZ1 - Clarion-Clipperton Zone abyssal polymetallic nodule 4,919 vOTUs + 484 MAGs (zenodo:20629959, cc-by-4.0)
+#   2 job(s), 543,130,820 bytes by the provider record
+batch6_extremes/CCZ1	CCZV.fa	https://zenodo.org/api/records/20629959/files/CCZV.fa/content	8133ae374783a2dc82ceb94ae72e44ad	cc-by-4.0
+batch6_extremes/CCZ1	CCZ_MAGs.tar.gz	https://zenodo.org/api/records/20629959/files/CCZ_MAGs.tar.gz/content	5ea04f027abaaaa598a9131c9a4e5c60	cc-by-4.0
+
+# batch6_symbionts/WILDBOAR1 - Global Wild Boar Faecal Microbiome 968 SGBs + metadata (zenodo:17935607, cc-by-4.0)
+#   2 job(s), 607,585,010 bytes by the provider record
+batch6_symbionts/WILDBOAR1	02.SGB_collection.zip	https://zenodo.org/api/records/17935607/files/02.SGB%20collection.zip/content	758257b7d727d7a41a3f58f363f64066	cc-by-4.0
+batch6_symbionts/WILDBOAR1	Metadata_wbfm.xlsx	https://zenodo.org/api/records/17935607/files/Metadata_wbfm.xlsx/content	b389ee31b01d0a01adc8a82d8ef03186	cc-by-4.0
+
+# batch6_extremes/WUS_HS1 - Western US 56 remote hot springs 780 ultra-clean MAGs + metadata (figshare:30284068, CC BY 4.0)
+#   4 job(s), 676,567,716 bytes by the provider record
+batch6_extremes/WUS_HS1	Data_01_-_Sample_metadata.tsv	https://ndownloader.figshare.com/files/61153429	402095b04e2c5518cbec462f41528d4f	CC BY 4.0
+batch6_extremes/WUS_HS1	Data_06_-_MAGs.tar	https://ndownloader.figshare.com/files/61153474	2752b6d8ce42be3bbc8b1b852931df9f	CC BY 4.0
+batch6_extremes/WUS_HS1	Data_09_-_SGB_members.tsv	https://ndownloader.figshare.com/files/61153447	927308159838a98bdc5917d936843d56	CC BY 4.0
+batch6_extremes/WUS_HS1	Data_07_-_MAG_metadata.tsv	https://ndownloader.figshare.com/files/62623690	80dc62e4b3b0bf8c70b42b446d2979aa	CC BY 4.0
+
+# batch6_extremes/PALEO_CALC1 - Klapper Science 2023 459 Paleolithic dental calculus MAGs + metadata (Edmond Dataverse 10.17617/3.COCL7R, CC0-1.0)
+#   461 job(s), 892,223,436 bytes by the provider record
+batch6_extremes/PALEO_CALC1	Dataset_S3c_overviewMAGs.xlsx	https://edmond.mpg.de/api/access/datafile/196150	12bcf741b5d9bfbcbb51c53ebe41ad84	CC0-1.0
+batch6_extremes/PALEO_CALC1	Dataset_S3e_representativeMAGs.xlsx	https://edmond.mpg.de/api/access/datafile/196151	76233ff2d30d30ae2c17ac5b2da9e4de	CC0-1.0
+batch6_extremes/PALEO_CALC1	ECO002_001.fa	https://edmond.mpg.de/api/access/datafile/195959	f3c0a9ad709e00e491d2fdef7daeb50f	CC0-1.0
+batch6_extremes/PALEO_CALC1	ECO002_004.fa	https://edmond.mpg.de/api/access/datafile/196074	689964f31d69aa4660364bbc9f0ff382	CC0-1.0
+batch6_extremes/PALEO_CALC1	ECO002_005.fa	https://edmond.mpg.de/api/access/datafile/195716	034e1be4805e565d5be1dc6d9d1288eb	CC0-1.0
+batch6_extremes/PALEO_CALC1	ECO002_007.fa	https://edmond.mpg.de/api/access/datafile/196144	32a5a6c1c265821ecfb5d833a7c8997e	CC0-1.0
+batch6_extremes/PALEO_CALC1	ECO002_008.fa	https://edmond.mpg.de/api/access/datafile/195739	407b70d198208b8ff3116149173ebefb	CC0-1.0
+batch6_extremes/PALEO_CALC1	ECO002_009.fa	https://edmond.mpg.de/api/access/datafile/195696	e56c377995ea360ac9d67aab5ee2c57e	CC0-1.0
+batch6_extremes/PALEO_CALC1	ECO002_012.fa	https://edmond.mpg.de/api/access/datafile/195790	8927773596ffb5f34fa90670413f4291	CC0-1.0
+batch6_extremes/PALEO_CALC1	ECO004_001.fa	https://edmond.mpg.de/api/access/datafile/195860	a6b99d60bc41339a4f8aefa22dc6cd14	CC0-1.0
+batch6_extremes/PALEO_CALC1	ECO004_002.fa	https://edmond.mpg.de/api/access/datafile/195748	89c4bb0ad9c4504c4374333aa867b431	CC0-1.0
+batch6_extremes/PALEO_CALC1	ECO004_004.fa	https://edmond.mpg.de/api/access/datafile/195901	5e5d33542235d1a4979c88956fdaa53d	CC0-1.0
+batch6_extremes/PALEO_CALC1	ECO004_005.fa	https://edmond.mpg.de/api/access/datafile/196131	1c57a6c6e762ea4fcfff315effc23b6b	CC0-1.0
+batch6_extremes/PALEO_CALC1	ECO010_001.fa	https://edmond.mpg.de/api/access/datafile/195841	60e455132da3aec38a0658942f44813c	CC0-1.0
+batch6_extremes/PALEO_CALC1	ECO010_003.fa	https://edmond.mpg.de/api/access/datafile/196061	3203e8acd5619eb5b5aa3a08120e4a6c	CC0-1.0
+batch6_extremes/PALEO_CALC1	ECO010_006.fa	https://edmond.mpg.de/api/access/datafile/195908	91d8941e7977b110e6c510ad95f57d24	CC0-1.0
+batch6_extremes/PALEO_CALC1	ECO010_007.fa	https://edmond.mpg.de/api/access/datafile/195964	275b1cc714d42121d1ed4e7fd2077ff2	CC0-1.0
+batch6_extremes/PALEO_CALC1	EMN001_001.fa	https://edmond.mpg.de/api/access/datafile/195930	68a7c38c7541b5708f64bab8064953a6	CC0-1.0
+batch6_extremes/PALEO_CALC1	EMN001_002.fa	https://edmond.mpg.de/api/access/datafile/196109	3a6c63c2050f767f566285d05d5382ce	CC0-1.0
+batch6_extremes/PALEO_CALC1	EMN001_005.fa	https://edmond.mpg.de/api/access/datafile/195926	74cebebf53bd1e6f5224de43facfcc75	CC0-1.0
+batch6_extremes/PALEO_CALC1	EMN001_010.fa	https://edmond.mpg.de/api/access/datafile/196080	adaf7c1eae7d7395858f79ba31eddc52	CC0-1.0
+batch6_extremes/PALEO_CALC1	EMN001_012.fa	https://edmond.mpg.de/api/access/datafile/195743	673c941c943e503e46c839b8164dc03a	CC0-1.0
+batch6_extremes/PALEO_CALC1	EMN001_015.fa	https://edmond.mpg.de/api/access/datafile/196134	48718a763bf31132d9b7b359bfbae9f3	CC0-1.0
+batch6_extremes/PALEO_CALC1	EMN001_016.fa	https://edmond.mpg.de/api/access/datafile/195886	4f760a4e281c2a27e35b693cfaa4a3de	CC0-1.0
+batch6_extremes/PALEO_CALC1	EMN001_017.fa	https://edmond.mpg.de/api/access/datafile/196057	77e5f253f5cffab4f8b5eaa074c0dc42	CC0-1.0
+batch6_extremes/PALEO_CALC1	EMN001_018.fa	https://edmond.mpg.de/api/access/datafile/195856	9482465c2be4ba74a210f42dab6c003f	CC0-1.0
+batch6_extremes/PALEO_CALC1	EMN001_021.fa	https://edmond.mpg.de/api/access/datafile/195809	d8a49e97a50ffb5f56449ccfe67271c5	CC0-1.0
+batch6_extremes/PALEO_CALC1	EMN001_027.fa	https://edmond.mpg.de/api/access/datafile/195752	53ef071f29160c2872b4f1de5b4628f8	CC0-1.0
+batch6_extremes/PALEO_CALC1	EMN001_029.fa	https://edmond.mpg.de/api/access/datafile/195788	cf8b821101be9ffb81ae6de0b53ee4c1	CC0-1.0
+batch6_extremes/PALEO_CALC1	ESA006_002.fa	https://edmond.mpg.de/api/access/datafile/195796	7f1a065f78d3ab7ee48bb6443c5e6913	CC0-1.0
+batch6_extremes/PALEO_CALC1	ESA006_003.fa	https://edmond.mpg.de/api/access/datafile/195704	7ba89e66bf4c213ac9dd52e1191b4a2d	CC0-1.0
+batch6_extremes/PALEO_CALC1	ESA007_002.fa	https://edmond.mpg.de/api/access/datafile/196115	c92dc4a0cf9888be1c388071c61a0712	CC0-1.0
+batch6_extremes/PALEO_CALC1	FUM002_002.fa	https://edmond.mpg.de/api/access/datafile/195854	ba8d3ba8d8a5723c40aabbf191e271e7	CC0-1.0
+batch6_extremes/PALEO_CALC1	FUM002_005.fa	https://edmond.mpg.de/api/access/datafile/196066	cec5e0cfc3f84cd1ad36eefebb6b0ad9	CC0-1.0
+batch6_extremes/PALEO_CALC1	FUM002_007.fa	https://edmond.mpg.de/api/access/datafile/195979	e3487e2d15f68de1b56efe19abf5a4a4	CC0-1.0
+batch6_extremes/PALEO_CALC1	FUM002_008.fa	https://edmond.mpg.de/api/access/datafile/196040	9d4720769cd69e43805778b78d9b0d45	CC0-1.0
+batch6_extremes/PALEO_CALC1	FUM003_001.fa	https://edmond.mpg.de/api/access/datafile/195735	9d588fe77bea1a6a8b548aca6b688dc4	CC0-1.0
+batch6_extremes/PALEO_CALC1	GOY005_001.fa	https://edmond.mpg.de/api/access/datafile/195975	31dc3ae64a99b563d4a0744e3c83e6b2	CC0-1.0
+batch6_extremes/PALEO_CALC1	GOY005_002.fa	https://edmond.mpg.de/api/access/datafile/195731	bda75f8e1d77bab71f76093a4b7dfca1	CC0-1.0
+batch6_extremes/PALEO_CALC1	GOY005_004.fa	https://edmond.mpg.de/api/access/datafile/195808	c1aa83dd054337e920a6e79d0ee6af0a	CC0-1.0
+batch6_extremes/PALEO_CALC1	GOY005_005.fa	https://edmond.mpg.de/api/access/datafile/196099	b3b45260154adc8fedebbffc0770692f	CC0-1.0
+batch6_extremes/PALEO_CALC1	GOY005_007.fa	https://edmond.mpg.de/api/access/datafile/195972	4dd8bea3a6603a0f11788c1e7761c0d9	CC0-1.0
+batch6_extremes/PALEO_CALC1	GOY005_011.fa	https://edmond.mpg.de/api/access/datafile/195971	1dc1220d5f908deb13880751c401e819	CC0-1.0
+batch6_extremes/PALEO_CALC1	GOY005_012.fa	https://edmond.mpg.de/api/access/datafile/195702	541b16167b566e2f822fd65c1ca20dbe	CC0-1.0
+batch6_extremes/PALEO_CALC1	GOY005_013.fa	https://edmond.mpg.de/api/access/datafile/195869	7e10ab6679f7d9995eb0ddc37806a04f	CC0-1.0
+batch6_extremes/PALEO_CALC1	GOY005_015.fa	https://edmond.mpg.de/api/access/datafile/195710	f3d6baf741ed0826cac9af66b5062f7b	CC0-1.0
+batch6_extremes/PALEO_CALC1	GOY005_016.fa	https://edmond.mpg.de/api/access/datafile/196018	95a209200d33adaf04a3cb529a472ad5	CC0-1.0
+batch6_extremes/PALEO_CALC1	GOY005_018.fa	https://edmond.mpg.de/api/access/datafile/195925	2ca6d63bbc7bed4ae4a5f25bee0e866b	CC0-1.0
+batch6_extremes/PALEO_CALC1	GOY006_001.fa	https://edmond.mpg.de/api/access/datafile/196132	f57f4a027f9816044e5edb904347b1f6	CC0-1.0
+batch6_extremes/PALEO_CALC1	GOY006_003.fa	https://edmond.mpg.de/api/access/datafile/195911	e1b5be4b38d4890141f9b9618e9bc749	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE006_001.fa	https://edmond.mpg.de/api/access/datafile/195768	665f05722efa6ca576254513b2692b92	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE006_002.fa	https://edmond.mpg.de/api/access/datafile/196053	cc8a6792d53abf9769d75382c0505357	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE006_003.fa	https://edmond.mpg.de/api/access/datafile/196124	3c11877bd42df38459a9ae76c571c27d	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE006_004.fa	https://edmond.mpg.de/api/access/datafile/196050	1d2b2a156d068aba2d56390d63c06b37	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE006_005.fa	https://edmond.mpg.de/api/access/datafile/195810	b75d7aa15b16f4bfa7018546463fa434	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE006_006.fa	https://edmond.mpg.de/api/access/datafile/195755	55d60145d9ebf65b86deb365c90dde93	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE006_007.fa	https://edmond.mpg.de/api/access/datafile/195740	414fe02f8610d4d17da40b7850026366	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE006_008.fa	https://edmond.mpg.de/api/access/datafile/196056	a3d964b14b0d7b7df779af30d939e209	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE006_009.fa	https://edmond.mpg.de/api/access/datafile/195978	4d654fa4869afdc80e6d749318d9c78b	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE006_010.fa	https://edmond.mpg.de/api/access/datafile/195906	183e522eaabbc92a31e13793e676106c	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE006_011.fa	https://edmond.mpg.de/api/access/datafile/196118	5c773688e4ae640bc8770207a5057230	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE006_012.fa	https://edmond.mpg.de/api/access/datafile/196046	433e1e4b8cf675beabe4de45aba65b84	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE006_013.fa	https://edmond.mpg.de/api/access/datafile/195717	0af2e0d13ceb5c625c6d4659d7693d72	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE006_014.fa	https://edmond.mpg.de/api/access/datafile/196123	0beb0f2522023aa71f170a414c64841b	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE006_015.fa	https://edmond.mpg.de/api/access/datafile/195745	52f5f0b3d8b1f83f4bd172604c56b4b7	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE006_016.fa	https://edmond.mpg.de/api/access/datafile/196089	9878d86db420b53f06af066e8c7bd73c	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE006_018.fa	https://edmond.mpg.de/api/access/datafile/196069	7476b9f1d19966d4ac5d57c496485a6a	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE006_019.fa	https://edmond.mpg.de/api/access/datafile/196103	455aca7a52868326c08119355aefd0e5	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE006_021.fa	https://edmond.mpg.de/api/access/datafile/195770	bfbe37c430ae91ce664b1f69490c9fff	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE006_022.fa	https://edmond.mpg.de/api/access/datafile/196027	592ca21cdfae42c17813ed1d7f62b159	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE006_023.fa	https://edmond.mpg.de/api/access/datafile/195895	8aafa88ed3e52a3a713d7b5269a2f00f	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE006_024.fa	https://edmond.mpg.de/api/access/datafile/196034	9c97ef37b7b256d7cf1a91c122061dea	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE007_003.fa	https://edmond.mpg.de/api/access/datafile/195866	5ba4bd13846e34ae3c69698126f0eec8	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE007_004.fa	https://edmond.mpg.de/api/access/datafile/196083	1e5ba87bcb9f8a61a6214c501457773e	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE007_005.fa	https://edmond.mpg.de/api/access/datafile/195951	342503a519e0ff02a6158b9e5082a2c6	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE007_006.fa	https://edmond.mpg.de/api/access/datafile/196114	a752f17a8c63ff8d11ffd0f15882a494	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE007_007.fa	https://edmond.mpg.de/api/access/datafile/196012	a2e21f119c2cdb83c32d05821a7624ac	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE007_008.fa	https://edmond.mpg.de/api/access/datafile/195960	463b45821d6bf04fd8514a814d273ef3	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE007_009.fa	https://edmond.mpg.de/api/access/datafile/196148	2369c2332018d346783b0d8c90558fd2	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE007_010.fa	https://edmond.mpg.de/api/access/datafile/195969	063fed05d863f4e68d2cd919ee39eb89	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE007_012.fa	https://edmond.mpg.de/api/access/datafile/195888	b3500df6fee79e622034eb0e10fba70f	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE007_013.fa	https://edmond.mpg.de/api/access/datafile/196042	1fb6cb4507470226bb7f807a2fcd8e86	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE007_014.fa	https://edmond.mpg.de/api/access/datafile/195921	c23364ab0f0b26e94f14fd6f6a732df6	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE007_015.fa	https://edmond.mpg.de/api/access/datafile/195877	6382b9e5cc822c2994865bea02a67766	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE007_016.fa	https://edmond.mpg.de/api/access/datafile/196127	da861c23cac88ae1959b5cd0ce6442e0	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE007_017.fa	https://edmond.mpg.de/api/access/datafile/196097	31c2ce7db5c4e07b19774941ba6fe307	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE007_018.fa	https://edmond.mpg.de/api/access/datafile/195776	e3fb70fb30b5029ddb630073102fef4b	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE008_001.fa	https://edmond.mpg.de/api/access/datafile/195936	e1c335a628157c0847ff4fff9f0e6781	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE008_003.fa	https://edmond.mpg.de/api/access/datafile/196146	22f19eeadaf782777adfd2ac6a8fc4d6	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE008_004.fa	https://edmond.mpg.de/api/access/datafile/196033	f464e91e9e6a0585110c4cec8273be10	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE008_005.fa	https://edmond.mpg.de/api/access/datafile/196121	66ba628ccbe29e6784753662f9009c54	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE008_006.fa	https://edmond.mpg.de/api/access/datafile/196059	a2fdf5266d25f186d84d77c1b670d3f1	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE008_007.fa	https://edmond.mpg.de/api/access/datafile/196048	ad24e63a692ef7a5efedbd5194a37665	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE008_008.fa	https://edmond.mpg.de/api/access/datafile/195829	e8c4e84629723541782e56fae947c480	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE008_009.fa	https://edmond.mpg.de/api/access/datafile/196122	f03f73bc5fe2190c0ef0525af3372452	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE008_011.fa	https://edmond.mpg.de/api/access/datafile/195690	5ddbe67f595325894788b79e4f28ec3d	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE008_012.fa	https://edmond.mpg.de/api/access/datafile/195958	00c8a1e28ff48d3421365e9406194f63	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE008_013.fa	https://edmond.mpg.de/api/access/datafile/196039	230706dbb7ae5df945f508544c488117	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE008_014.fa	https://edmond.mpg.de/api/access/datafile/196087	c94fbb25df3b57661911bf1bde3ade83	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE008_015.fa	https://edmond.mpg.de/api/access/datafile/196116	38fa6d85ceb2a8bcfb34ae824eb6d45c	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE008_016.fa	https://edmond.mpg.de/api/access/datafile/195938	9475fa9863e5b531e141d761a816f47e	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE008_017.fa	https://edmond.mpg.de/api/access/datafile/195918	edaf469f578385ab02737b6d916b4118	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE008_020.fa	https://edmond.mpg.de/api/access/datafile/195865	37acca3dc8b51bbb49807be91b37b4a8	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE008_021.fa	https://edmond.mpg.de/api/access/datafile/195904	c44c3011cb1115f681d012228eae5ba5	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE008_024.fa	https://edmond.mpg.de/api/access/datafile/195917	91775b7cadbb47745aef3e19c70d1c06	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE008_025.fa	https://edmond.mpg.de/api/access/datafile/195832	4689a90e57f6a8a744d55242e28ae800	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE009_006.fa	https://edmond.mpg.de/api/access/datafile/196026	cc3ab1c648957a5aeb12784d28a87486	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE009_007.fa	https://edmond.mpg.de/api/access/datafile/195965	d194cf6aef180765449aea978ba00f2b	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE009_011.fa	https://edmond.mpg.de/api/access/datafile/195699	bbb7911504a5ac32e0706443439c9c8d	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE009_012.fa	https://edmond.mpg.de/api/access/datafile/195741	c71381c1a34fc9d703f446a1692f881f	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE009_014.fa	https://edmond.mpg.de/api/access/datafile/195955	82581951c56bc72fbe6660ea3ab10ed4	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE009_015.fa	https://edmond.mpg.de/api/access/datafile/195751	3883420acdd20b4fd80d373aa2f0fbfd	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE009_016.fa	https://edmond.mpg.de/api/access/datafile/195750	821ff75245d2e6e78c2a521e43ff9781	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE009_017.fa	https://edmond.mpg.de/api/access/datafile/196006	29a19bfdce39ad8e7b12a33f9684d31f	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE009_019.fa	https://edmond.mpg.de/api/access/datafile/195876	6ca800f9e8a925b686942ba835e3c074	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE009_020.fa	https://edmond.mpg.de/api/access/datafile/195996	7620096c525bcd6f5b9379f963ca3ee0	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE009_021.fa	https://edmond.mpg.de/api/access/datafile/195689	ffdea8f71d3596891b8a275520daca65	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE009_022.fa	https://edmond.mpg.de/api/access/datafile/195881	6a64ffc160d19cadaec353e5901d48fc	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE009_023.fa	https://edmond.mpg.de/api/access/datafile/195734	9a95090b10701631183a3a3ffe69f509	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE009_024.fa	https://edmond.mpg.de/api/access/datafile/196025	dcf67d869cc6c04b85ace6f405036bce	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE009_025.fa	https://edmond.mpg.de/api/access/datafile/196149	15a5b8a3fbfa8f7cd9d7ecb54f1b9bcd	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE009_026.fa	https://edmond.mpg.de/api/access/datafile/195932	d77eb7a88ae741bc8b386c66458515a8	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE009_029.fa	https://edmond.mpg.de/api/access/datafile/196029	caf42e7ed1895a46850bf136bd9b5e89	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE010_002.fa	https://edmond.mpg.de/api/access/datafile/195687	1b6379a2193b7deffd0c35906ad61963	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE010_003.fa	https://edmond.mpg.de/api/access/datafile/195872	fc97a140bfd5c78cd993ea02a2824e11	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE010_005.fa	https://edmond.mpg.de/api/access/datafile/195902	6fa33ff93bd64807c6a4b7592f426904	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE010_008.fa	https://edmond.mpg.de/api/access/datafile/195692	a5cccbdedb748799c13918c6cb39429a	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE010_009.fa	https://edmond.mpg.de/api/access/datafile/196011	6864a82f39545daae4df5f158aa41c82	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE010_010.fa	https://edmond.mpg.de/api/access/datafile/196054	a27501293914d5888b8ce4b52d59c2ac	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE010_011.fa	https://edmond.mpg.de/api/access/datafile/196005	1c392a99435a80925a52107da32dae42	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE010_012.fa	https://edmond.mpg.de/api/access/datafile/195799	cc0eed91f96961b4e30ce37f8a5205cc	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE010_015.fa	https://edmond.mpg.de/api/access/datafile/196147	8da3a2ac1e95baeedeb55441654d04ec	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE010_017.fa	https://edmond.mpg.de/api/access/datafile/196120	866d954c690e46483c78cd29fccd9394	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE010_019.fa	https://edmond.mpg.de/api/access/datafile/195722	951cc58e689cdd425b16eede0dd15f18	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE010_020.fa	https://edmond.mpg.de/api/access/datafile/195724	5e6f10825baf5fdd24448ee104cb57c9	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE010_021.fa	https://edmond.mpg.de/api/access/datafile/195937	40616cb26c863e61a48cecb96bbaf00a	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE010_023.fa	https://edmond.mpg.de/api/access/datafile/196035	425b4a5347ade14058e422376de6da65	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE010_026.fa	https://edmond.mpg.de/api/access/datafile/195844	86566aa4a1e761c46a4eae7cc8c3d3be	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE012_001.fa	https://edmond.mpg.de/api/access/datafile/196095	f2d72383f7061559786d6317e4e6d45d	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE012_003.fa	https://edmond.mpg.de/api/access/datafile/196031	31a5e9087620406b3104e4b18d3d6b6a	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE012_004.fa	https://edmond.mpg.de/api/access/datafile/196107	aded650e5aca5e51fe78f0e46af15665	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE012_005.fa	https://edmond.mpg.de/api/access/datafile/195989	2392b4e1ed69b6962a8faf6bde833705	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE012_006.fa	https://edmond.mpg.de/api/access/datafile/195813	a7aac3a524f4bf1b1f3d30c976bef728	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE012_009.fa	https://edmond.mpg.de/api/access/datafile/196036	3767c690b118e8c277f40896130027cd	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE012_011.fa	https://edmond.mpg.de/api/access/datafile/195823	499f90f3e6b2fe1fac5ffabbe999070a	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE012_012.fa	https://edmond.mpg.de/api/access/datafile/195868	383b7a1bbcd35535cc5b757d017eeb8e	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE012_013.fa	https://edmond.mpg.de/api/access/datafile/195804	b9804c97e4634d63793b160fbe9d0c7c	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE012_014.fa	https://edmond.mpg.de/api/access/datafile/195828	4713873a709ff55dd29db70bd4983b94	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE012_016.fa	https://edmond.mpg.de/api/access/datafile/196088	46bd0ad8ec1e4338e930fb390a4a9143	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE012_018.fa	https://edmond.mpg.de/api/access/datafile/195983	0a0060f092f62b5f4a14ca652862fc09	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE012_021.fa	https://edmond.mpg.de/api/access/datafile/195873	ebd73b4e287594cf1f4bb839715cb32a	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE012_022.fa	https://edmond.mpg.de/api/access/datafile/195697	828be88782d2fd68e9c88f12e02f3c6e	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE012_023.fa	https://edmond.mpg.de/api/access/datafile/195927	4ea317ae7110b80ea090a47cd5bcab02	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE012_024.fa	https://edmond.mpg.de/api/access/datafile/195782	67ef97f7a29f989299419214fa489acf	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE012_025.fa	https://edmond.mpg.de/api/access/datafile/195862	67f96d46d6651f6f92842ccbeda10f48	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE012_027.fa	https://edmond.mpg.de/api/access/datafile/195849	e339509b037f5c52a01cb363186992bd	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE012_028.fa	https://edmond.mpg.de/api/access/datafile/195794	6915d315d9b36028d3b49d9cca8cc99e	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE013_002.fa	https://edmond.mpg.de/api/access/datafile/195718	46baf0db4166a62d741e05d231b34add	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE013_004.fa	https://edmond.mpg.de/api/access/datafile/195874	1db6e2c29b5bb8fc56d1f135a164ba35	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE013_005.fa	https://edmond.mpg.de/api/access/datafile/195726	57bc04145b07abd9e7b7d5c968ad3425	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE013_006.fa	https://edmond.mpg.de/api/access/datafile/195801	0ade09dcb523551a0b9c73d0803764d5	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE013_007.fa	https://edmond.mpg.de/api/access/datafile/196136	37da159c95ae23aefd84e646917e552f	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE013_009.fa	https://edmond.mpg.de/api/access/datafile/195962	e5f0d0e7bd482158658bb5267ef9e4b3	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE013_010.fa	https://edmond.mpg.de/api/access/datafile/195896	e45abcb52b21fa6123450dc368d5aa83	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE013_011.fa	https://edmond.mpg.de/api/access/datafile/196017	6a71df550f0b95fa869d2096492dc3b2	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE013_012.fa	https://edmond.mpg.de/api/access/datafile/195787	2c7efa15f11202d20fa1a517e668366b	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE013_013.fa	https://edmond.mpg.de/api/access/datafile/195858	4d3d68d9acf2b282cd07ba98c897593e	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE013_015.fa	https://edmond.mpg.de/api/access/datafile/195850	c1ced6015dadf591e4f37e0987937b3a	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE013_016.fa	https://edmond.mpg.de/api/access/datafile/196101	1ab266c58f26abfb4895c7fd470ad5df	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE013_017.fa	https://edmond.mpg.de/api/access/datafile/196104	f5a82ac4a0932621d2d7d608f684842f	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE013_018.fa	https://edmond.mpg.de/api/access/datafile/195706	b63fe4530afea3c2b81d0bfd3780e51e	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE014_001.fa	https://edmond.mpg.de/api/access/datafile/195894	840c920ced865a3968784c43306d23b9	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE014_003.fa	https://edmond.mpg.de/api/access/datafile/195798	21e631f23fe9ec2e8c9df9697bba4298	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE014_004.fa	https://edmond.mpg.de/api/access/datafile/195806	38d7adba2cf1c9b5ca877f7669152db6	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE014_005.fa	https://edmond.mpg.de/api/access/datafile/195985	efb487dbabd07cabf91f91e607510f4c	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE014_006.fa	https://edmond.mpg.de/api/access/datafile/195709	53449487818fc63e40c200eab427140e	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE014_007.fa	https://edmond.mpg.de/api/access/datafile/195766	2f87b3f20f7d27977a1864047d69edb4	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE014_008.fa	https://edmond.mpg.de/api/access/datafile/195933	75a81bbe5dff0120bc188fc29a772cc2	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE014_009.fa	https://edmond.mpg.de/api/access/datafile/195742	133237be45350de435913a28dbbd90f0	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE014_010.fa	https://edmond.mpg.de/api/access/datafile/195730	18e17fd9216cc5bbdb4ff025f1be0f44	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE014_011.fa	https://edmond.mpg.de/api/access/datafile/195757	6c8124abee6f5722d111c1e975d6d6b3	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE014_012.fa	https://edmond.mpg.de/api/access/datafile/195817	355d99a876bc4b24fa1b56fe7d6b82fb	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE014_013.fa	https://edmond.mpg.de/api/access/datafile/195853	33e2fd631a814f71a9058a9b365ba150	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE014_014.fa	https://edmond.mpg.de/api/access/datafile/196010	e1b700a041645109d9fedcd2b21fce39	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE014_015.fa	https://edmond.mpg.de/api/access/datafile/196082	175cb48b7488b4e6a51d38533d0e1971	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE014_016.fa	https://edmond.mpg.de/api/access/datafile/195837	5ab2b5dc2f52a1423a0e23d305d96e5c	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE014_017.fa	https://edmond.mpg.de/api/access/datafile/195797	b0c9dc6db2d9413d1b610e1b063fd616	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE014_018.fa	https://edmond.mpg.de/api/access/datafile/196013	b25ebecbd006a57c70e3e7f502a3dc0a	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE014_019.fa	https://edmond.mpg.de/api/access/datafile/195705	aeec4d2104755dd19d3e8d961fdcb174	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE014_020.fa	https://edmond.mpg.de/api/access/datafile/195753	04dbfafe00735e59324c51639c1e8707	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE014_021.fa	https://edmond.mpg.de/api/access/datafile/196037	69292f2ed2d6b1bcbae658167a2a1dfb	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE014_023.fa	https://edmond.mpg.de/api/access/datafile/196004	6cb58989493ea84e321888eba328e34d	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE014_024.fa	https://edmond.mpg.de/api/access/datafile/195685	36294858c3a52f50466ffd90f29ad680	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE014_025.fa	https://edmond.mpg.de/api/access/datafile/196067	fcb80f2ce414b0b99301b5f93bda9a7c	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE014_027.fa	https://edmond.mpg.de/api/access/datafile/195783	0316958ca688e8530868ef0419f3f08a	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE014_029.fa	https://edmond.mpg.de/api/access/datafile/196032	114d458a30caa0009528d1533ff35961	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE014_033.fa	https://edmond.mpg.de/api/access/datafile/196110	ed348e7d4edba5bdb761e308be960815	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE014_035.fa	https://edmond.mpg.de/api/access/datafile/195884	b1bda148a658dd0f7b9afb2649bb0687	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE015_001.fa	https://edmond.mpg.de/api/access/datafile/196093	a14b758bdd63ed8033cc8d4ef15957d4	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE015_006.fa	https://edmond.mpg.de/api/access/datafile/195774	f0f8159e1d649cdcd6cfaa082822d18e	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE015_009.fa	https://edmond.mpg.de/api/access/datafile/195833	2726684960fc0791657f465c5d770387	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE015_011.fa	https://edmond.mpg.de/api/access/datafile/196024	b8ec53d4f4d5ea6cb61b8827085758af	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE015_012.fa	https://edmond.mpg.de/api/access/datafile/195785	58a98d34bb3f804442b51d799d129912	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE015_013.fa	https://edmond.mpg.de/api/access/datafile/195945	972a9967d530c19eea73d42752be66c2	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE015_015.fa	https://edmond.mpg.de/api/access/datafile/196028	7b3221136e2e7776a5beabbf31b1e5d4	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE015_016.fa	https://edmond.mpg.de/api/access/datafile/196091	ee257baf120ed58813fd0c251650b6b2	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE015_018.fa	https://edmond.mpg.de/api/access/datafile/195946	3454cd946ad88ab20625bf45b54a69d0	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE015_020.fa	https://edmond.mpg.de/api/access/datafile/195986	289200de55b455ee273fdec4f335dedb	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE015_021.fa	https://edmond.mpg.de/api/access/datafile/196047	3ff16b226da2018bfdd6ed28c769fd91	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE015_023.fa	https://edmond.mpg.de/api/access/datafile/195998	a4900d0857b10a50ff738fa97b7580cf	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE015_025.fa	https://edmond.mpg.de/api/access/datafile/195772	c0ac85234a443a9bad6ecc8031e80804	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE015_026.fa	https://edmond.mpg.de/api/access/datafile/195944	439dadb8ebc16f0d446bdf9d61de46d7	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE015_027.fa	https://edmond.mpg.de/api/access/datafile/195994	1570c8ddd4117945d4d727f8392a3402	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE015_028.fa	https://edmond.mpg.de/api/access/datafile/196000	f6056b251ed8fd5eeba69b610e4d15a7	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE015_029.fa	https://edmond.mpg.de/api/access/datafile/195910	9bcb5a795ad21b77e8d6effd799466d8	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE015_031.fa	https://edmond.mpg.de/api/access/datafile/195885	4c0d505493d92bc79b73d532d5fd5ee6	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE016_001.fa	https://edmond.mpg.de/api/access/datafile/195800	79bf9e5f5bec6b6ed782f5192d3628df	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE016_003.fa	https://edmond.mpg.de/api/access/datafile/195980	1e2d511878a05413a58b4abc82016a29	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE016_004.fa	https://edmond.mpg.de/api/access/datafile/196125	a3263ee1079d0f6de2a64cc831a065eb	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE016_007.fa	https://edmond.mpg.de/api/access/datafile/196041	a7003b0fe32b0c587e3326dbc427582f	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE016_008.fa	https://edmond.mpg.de/api/access/datafile/195992	dbcc8d834eb4e3f0cebd2237f29b6d90	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE016_010.fa	https://edmond.mpg.de/api/access/datafile/195691	51e637d556a7183f614a095cd936cb28	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE016_011.fa	https://edmond.mpg.de/api/access/datafile/195701	2837c5e2e813bf1ebf34634e51b908f4	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE016_013.fa	https://edmond.mpg.de/api/access/datafile/196063	8fc1696ac487dbfde6f215638b1ea5f1	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE016_014.fa	https://edmond.mpg.de/api/access/datafile/195934	dcfbd34690988016a90a717d8b5d5be0	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE016_016.fa	https://edmond.mpg.de/api/access/datafile/195682	6674899911bfc423ff62b48702f54821	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE016_019.fa	https://edmond.mpg.de/api/access/datafile/195845	d16f20cfb030794febc8588e86c0aa50	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE016_022.fa	https://edmond.mpg.de/api/access/datafile/196021	61e358d3eafb3be809d1b5acde252df9	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE016_023.fa	https://edmond.mpg.de/api/access/datafile/195830	555ad83961b84fdd5c6de9e0f4dc6e54	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE016_024.fa	https://edmond.mpg.de/api/access/datafile/195775	3f3704bf374375fc7e659e1fcde2f2a1	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE016_025.fa	https://edmond.mpg.de/api/access/datafile/195995	8f21c2fe1d00b56b915356df850e5282	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE016_026.fa	https://edmond.mpg.de/api/access/datafile/195791	0beeda7189800dde067151fcd6a41774	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE016_027.fa	https://edmond.mpg.de/api/access/datafile/195793	7a748ef593e8601d999fb2471a357d43	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE016_028.fa	https://edmond.mpg.de/api/access/datafile/196009	6166b7aa7693c9d7b523036b47715e84	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE016_029.fa	https://edmond.mpg.de/api/access/datafile/196098	28887116831b90e245a4f7432073fcf4	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE016_030.fa	https://edmond.mpg.de/api/access/datafile/195920	546ebb0fa7d249403d678a480eaf6c4e	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE016_031.fa	https://edmond.mpg.de/api/access/datafile/196038	b25e8af04c6dd9893a78a36412dd3191	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE016_032.fa	https://edmond.mpg.de/api/access/datafile/195779	9803eaf1200402e3109c4cacd6f43323	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE016_034.fa	https://edmond.mpg.de/api/access/datafile/195942	aca3439b30edcf6e067a4332c441e5ca	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE016_035.fa	https://edmond.mpg.de/api/access/datafile/195729	7dde540dce98a13686c22ed01910fdcc	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE016_037.fa	https://edmond.mpg.de/api/access/datafile/195941	5f685210cdeaf883830c0567b8858149	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE016_040.fa	https://edmond.mpg.de/api/access/datafile/195953	b99fc28a160469e2a94af1402326eed1	CC0-1.0
+batch6_extremes/PALEO_CALC1	JAE016_042.fa	https://edmond.mpg.de/api/access/datafile/195700	1c15aabdd5ca0bd1d4cb213e5477d4f2	CC0-1.0
+batch6_extremes/PALEO_CALC1	LIS001_003.fa	https://edmond.mpg.de/api/access/datafile/195981	bf549849730b384e3091489a36d11483	CC0-1.0
+batch6_extremes/PALEO_CALC1	MOA001_001.fa	https://edmond.mpg.de/api/access/datafile/196015	b47675130b04d727dff0b73e342d52ef	CC0-1.0
+batch6_extremes/PALEO_CALC1	MOA001_005.fa	https://edmond.mpg.de/api/access/datafile/195781	7bf956d0085e23203612f34cfaed0ae4	CC0-1.0
+batch6_extremes/PALEO_CALC1	MOA001_006.fa	https://edmond.mpg.de/api/access/datafile/195954	391384bea38986bdc97e183bd7e83566	CC0-1.0
+batch6_extremes/PALEO_CALC1	OAK002_002.fa	https://edmond.mpg.de/api/access/datafile/195922	a3266d18bc0c93dd1558341017760fe7	CC0-1.0
+batch6_extremes/PALEO_CALC1	OAK002_003.fa	https://edmond.mpg.de/api/access/datafile/195879	a743b612fe4beb3559eb6e25b525cfc5	CC0-1.0
+batch6_extremes/PALEO_CALC1	OAK002_005.fa	https://edmond.mpg.de/api/access/datafile/195990	97c3ab85069e457bac875ac0ae6e35f3	CC0-1.0
+batch6_extremes/PALEO_CALC1	OAK002_006.fa	https://edmond.mpg.de/api/access/datafile/195948	a174a1bac72836026d686946608ae86b	CC0-1.0
+batch6_extremes/PALEO_CALC1	OAK002_007.fa	https://edmond.mpg.de/api/access/datafile/196077	41604a2dc3cbd7564cd0a2dce35676dc	CC0-1.0
+batch6_extremes/PALEO_CALC1	OAK002_008.fa	https://edmond.mpg.de/api/access/datafile/196079	732153d06d5954d56da51cf9a8eb22f5	CC0-1.0
+batch6_extremes/PALEO_CALC1	OAK003_001.fa	https://edmond.mpg.de/api/access/datafile/195861	1e3e45167aaae72e7f7192dc03afa55f	CC0-1.0
+batch6_extremes/PALEO_CALC1	OAK003_004.fa	https://edmond.mpg.de/api/access/datafile/195760	eafd1ae2ddef8939f544465c67f99ef2	CC0-1.0
+batch6_extremes/PALEO_CALC1	OAK003_005.fa	https://edmond.mpg.de/api/access/datafile/196070	92ff136bbb458927267bba71a5437184	CC0-1.0
+batch6_extremes/PALEO_CALC1	OAK004_001.fa	https://edmond.mpg.de/api/access/datafile/195968	1b180255f498ca918b4a2654b1522a68	CC0-1.0
+batch6_extremes/PALEO_CALC1	OAK004_002.fa	https://edmond.mpg.de/api/access/datafile/195912	4ac8a1c9e01980d2c6002f1e7093b9d0	CC0-1.0
+batch6_extremes/PALEO_CALC1	OAK005_002.fa	https://edmond.mpg.de/api/access/datafile/195982	d9607359294a99603d1368a3e46417da	CC0-1.0
+batch6_extremes/PALEO_CALC1	OAK005_003.fa	https://edmond.mpg.de/api/access/datafile/195786	61bbf558e8c1bef83c5fb257a3579d16	CC0-1.0
+batch6_extremes/PALEO_CALC1	OAK005_004.fa	https://edmond.mpg.de/api/access/datafile/195683	3b174d7e2591960e0732b1820ae70b3e	CC0-1.0
+batch6_extremes/PALEO_CALC1	OAK005_005.fa	https://edmond.mpg.de/api/access/datafile/195831	49de4b8ae75d6952007021718629c03c	CC0-1.0
+batch6_extremes/PALEO_CALC1	OFN001_003.fa	https://edmond.mpg.de/api/access/datafile/196138	ddcaf0cbdc70b59212eb8486f02ab4d8	CC0-1.0
+batch6_extremes/PALEO_CALC1	OFN001_004.fa	https://edmond.mpg.de/api/access/datafile/195949	3cefe9b9fb240fad44c008fc7383f893	CC0-1.0
+batch6_extremes/PALEO_CALC1	OFN001_005.fa	https://edmond.mpg.de/api/access/datafile/196022	dd4ec8651422fb02774936bad632b4ac	CC0-1.0
+batch6_extremes/PALEO_CALC1	OFN001_006.fa	https://edmond.mpg.de/api/access/datafile/195694	ce03e2bc538825849d6f12b31a602740	CC0-1.0
+batch6_extremes/PALEO_CALC1	OFN001_007.fa	https://edmond.mpg.de/api/access/datafile/195834	bebf132e3e7c2313bbea39074159303a	CC0-1.0
+batch6_extremes/PALEO_CALC1	OFN001_010.fa	https://edmond.mpg.de/api/access/datafile/195882	c6e725d7fb22defc6ba7d3aeaa6ad8ec	CC0-1.0
+batch6_extremes/PALEO_CALC1	OFN001_011.fa	https://edmond.mpg.de/api/access/datafile/195899	6e9aa17c9cc49d523567a4e5cbbf7509	CC0-1.0
+batch6_extremes/PALEO_CALC1	OFN001_013.fa	https://edmond.mpg.de/api/access/datafile/195950	27c83d6035f8a5d7a85a3942d9b8404a	CC0-1.0
+batch6_extremes/PALEO_CALC1	OFN001_019.fa	https://edmond.mpg.de/api/access/datafile/195723	6d7e3bd0052e0a7c9035f854c8b91e09	CC0-1.0
+batch6_extremes/PALEO_CALC1	OFN001_021.fa	https://edmond.mpg.de/api/access/datafile/195754	369994fc65ce7f209397c66bedab0f81	CC0-1.0
+batch6_extremes/PALEO_CALC1	PES001_001.fa	https://edmond.mpg.de/api/access/datafile/195915	e181c158cf21b22318f32c820feb3aab	CC0-1.0
+batch6_extremes/PALEO_CALC1	PES001_002.fa	https://edmond.mpg.de/api/access/datafile/195897	7692240bb522edff54adfda36c95bbec	CC0-1.0
+batch6_extremes/PALEO_CALC1	PES001_003.fa	https://edmond.mpg.de/api/access/datafile/195707	b544df1f9368aa23d01c1f889eee104c	CC0-1.0
+batch6_extremes/PALEO_CALC1	PES001_004.fa	https://edmond.mpg.de/api/access/datafile/195924	5402a15353753a1b3a89924fac3d7eeb	CC0-1.0
+batch6_extremes/PALEO_CALC1	PES001_005.fa	https://edmond.mpg.de/api/access/datafile/195984	d203a620998dcf41452d9550f470b047	CC0-1.0
+batch6_extremes/PALEO_CALC1	PES001_006.fa	https://edmond.mpg.de/api/access/datafile/195824	d03ed394759bd5904aa92698dfd54394	CC0-1.0
+batch6_extremes/PALEO_CALC1	PES001_007.fa	https://edmond.mpg.de/api/access/datafile/196111	4ff1261addd13c9332897fa73f8cd492	CC0-1.0
+batch6_extremes/PALEO_CALC1	PES001_008.fa	https://edmond.mpg.de/api/access/datafile/196135	36bfc922ecea1c6ed1e1aee3d900f4a1	CC0-1.0
+batch6_extremes/PALEO_CALC1	PES001_009.fa	https://edmond.mpg.de/api/access/datafile/196126	06e9ef9d57eb1c52407b08791182e9ea	CC0-1.0
+batch6_extremes/PALEO_CALC1	PES001_011.fa	https://edmond.mpg.de/api/access/datafile/195765	ef4150ee7da18aee2bb8fd79d4b21896	CC0-1.0
+batch6_extremes/PALEO_CALC1	PES001_013.fa	https://edmond.mpg.de/api/access/datafile/196106	456106735d4a08065440045e9efb13b1	CC0-1.0
+batch6_extremes/PALEO_CALC1	PES001_017.fa	https://edmond.mpg.de/api/access/datafile/195713	a8770042515e02ee5358c540d1781bdc	CC0-1.0
+batch6_extremes/PALEO_CALC1	PES001_018.fa	https://edmond.mpg.de/api/access/datafile/196130	2e908397e48cb49fb15727a4f114dd77	CC0-1.0
+batch6_extremes/PALEO_CALC1	PES001_020.fa	https://edmond.mpg.de/api/access/datafile/195825	160a9cc52923048f4a7f76d830321c22	CC0-1.0
+batch6_extremes/PALEO_CALC1	PES001_021.fa	https://edmond.mpg.de/api/access/datafile/195784	ad97ca712b13bff73a82c8dec8d0a5e6	CC0-1.0
+batch6_extremes/PALEO_CALC1	PLV001_001.fa	https://edmond.mpg.de/api/access/datafile/195805	0985111c3ec2094ea6319d88f6e58697	CC0-1.0
+batch6_extremes/PALEO_CALC1	PLV001_002.fa	https://edmond.mpg.de/api/access/datafile/195712	a677ac82b0dc9561e69b1ce17000f149	CC0-1.0
+batch6_extremes/PALEO_CALC1	PLV001_004.fa	https://edmond.mpg.de/api/access/datafile/196019	08ea0ccbce551f1253c5eb3b406acf82	CC0-1.0
+batch6_extremes/PALEO_CALC1	PLV001_009.fa	https://edmond.mpg.de/api/access/datafile/195848	30e10be6289a0ed4a74fa63c7a8b0aa6	CC0-1.0
+batch6_extremes/PALEO_CALC1	PLV001_010.fa	https://edmond.mpg.de/api/access/datafile/195970	851961401c98b1cc7d4fd7945a9ef8f6	CC0-1.0
+batch6_extremes/PALEO_CALC1	PLV001_013.fa	https://edmond.mpg.de/api/access/datafile/195929	51730ff62137fe4b3e2395c70d592e23	CC0-1.0
+batch6_extremes/PALEO_CALC1	PLV001_014.fa	https://edmond.mpg.de/api/access/datafile/196085	54dfea4e4938c9d31a0bdb1d5e58e9ad	CC0-1.0
+batch6_extremes/PALEO_CALC1	PLV001_016.fa	https://edmond.mpg.de/api/access/datafile/195900	d1f8d0b5ec071202a0f4e9b3e09dd18d	CC0-1.0
+batch6_extremes/PALEO_CALC1	PLV001_017.fa	https://edmond.mpg.de/api/access/datafile/195852	edf53e0d97a44e4ba44a4fb61a022af7	CC0-1.0
+batch6_extremes/PALEO_CALC1	PLV001_018.fa	https://edmond.mpg.de/api/access/datafile/195963	c0bbcd6c9570fe21195c885d7db70890	CC0-1.0
+batch6_extremes/PALEO_CALC1	PYK003_001.fa	https://edmond.mpg.de/api/access/datafile/195988	37e11afc7129950994f8e8e85b0e5e6f	CC0-1.0
+batch6_extremes/PALEO_CALC1	PYK003_002.fa	https://edmond.mpg.de/api/access/datafile/195847	a83731fc9c68e67c3f73ae04492d1568	CC0-1.0
+batch6_extremes/PALEO_CALC1	PYK003_004.fa	https://edmond.mpg.de/api/access/datafile/195789	a858d1e443ac4b9f89b666ed9206ffd8	CC0-1.0
+batch6_extremes/PALEO_CALC1	PYK004_001.fa	https://edmond.mpg.de/api/access/datafile/195780	349fba84cf6550952a54d43e953136ad	CC0-1.0
+batch6_extremes/PALEO_CALC1	PYK004_002.fa	https://edmond.mpg.de/api/access/datafile/195826	ed677f0ef169f342ba2b35062fa915ee	CC0-1.0
+batch6_extremes/PALEO_CALC1	PYK004_004.fa	https://edmond.mpg.de/api/access/datafile/195892	c9ce8257aba958e8200a568df28f0e21	CC0-1.0
+batch6_extremes/PALEO_CALC1	PYK005_002.fa	https://edmond.mpg.de/api/access/datafile/195756	ae0293b4a5cae1afbc81d223a83ec8b1	CC0-1.0
+batch6_extremes/PALEO_CALC1	PYK005_007.fa	https://edmond.mpg.de/api/access/datafile/195991	3b3064413a9984a93855e5d0f1f6d391	CC0-1.0
+batch6_extremes/PALEO_CALC1	PYK005_008.fa	https://edmond.mpg.de/api/access/datafile/195898	b159bd25282b6f5d88d9754a2a4d32e6	CC0-1.0
+batch6_extremes/PALEO_CALC1	PYK005_009.fa	https://edmond.mpg.de/api/access/datafile/196096	ae2cce6c69cc84c86445af59dfbb6fb4	CC0-1.0
+batch6_extremes/PALEO_CALC1	PYK005_010.fa	https://edmond.mpg.de/api/access/datafile/195842	b96b47d7802a968f3415e04a085c0105	CC0-1.0
+batch6_extremes/PALEO_CALC1	RIG001_002.fa	https://edmond.mpg.de/api/access/datafile/195792	fed0a945b3e1b43536d13bf57557ed84	CC0-1.0
+batch6_extremes/PALEO_CALC1	RIG001_003.fa	https://edmond.mpg.de/api/access/datafile/195987	1001b513d6617650226c685827d64ee0	CC0-1.0
+batch6_extremes/PALEO_CALC1	RIG001_006.fa	https://edmond.mpg.de/api/access/datafile/195744	30da70e8ccc7b469465cd3a43f4ab0fc	CC0-1.0
+batch6_extremes/PALEO_CALC1	RIG001_011.fa	https://edmond.mpg.de/api/access/datafile/196084	e8137fb9e1311f15f519cae79b2390a9	CC0-1.0
+batch6_extremes/PALEO_CALC1	RIG001_013.fa	https://edmond.mpg.de/api/access/datafile/196002	b30254b454c16cf52308f9c2a799fdb6	CC0-1.0
+batch6_extremes/PALEO_CALC1	RIG001_014.fa	https://edmond.mpg.de/api/access/datafile/195727	81bb75a03d556ad2b34b82686502aa92	CC0-1.0
+batch6_extremes/PALEO_CALC1	RIG001_015.fa	https://edmond.mpg.de/api/access/datafile/196051	9e6cb99eb8ae31a3a5db5147001d14c8	CC0-1.0
+batch6_extremes/PALEO_CALC1	RIG001_016.fa	https://edmond.mpg.de/api/access/datafile/195957	42f37226095c8bfcbaafa5e0347d03d2	CC0-1.0
+batch6_extremes/PALEO_CALC1	RIG001_018.fa	https://edmond.mpg.de/api/access/datafile/195733	dcb79b5e5d5fc53a16074a976c7c3de8	CC0-1.0
+batch6_extremes/PALEO_CALC1	RIG001_019.fa	https://edmond.mpg.de/api/access/datafile/195887	ada233101209563060c687cfbeecb216	CC0-1.0
+batch6_extremes/PALEO_CALC1	SPM002_001.fa	https://edmond.mpg.de/api/access/datafile/195698	dbf707bb0a573cfa2b72f28421420a28	CC0-1.0
+batch6_extremes/PALEO_CALC1	TAF008_003.fa	https://edmond.mpg.de/api/access/datafile/195883	1abdd4929ccff3c75760c279a3ed1ece	CC0-1.0
+batch6_extremes/PALEO_CALC1	TAF008_004.fa	https://edmond.mpg.de/api/access/datafile/196108	b8aa569a033ae053133fc5ffe7e8235a	CC0-1.0
+batch6_extremes/PALEO_CALC1	TAF008_005.fa	https://edmond.mpg.de/api/access/datafile/196049	00c3dfd638fe25ad569e976428e01f1a	CC0-1.0
+batch6_extremes/PALEO_CALC1	TAF008_006.fa	https://edmond.mpg.de/api/access/datafile/195864	62329b99d3457e9d1989f15ab0dbf2b0	CC0-1.0
+batch6_extremes/PALEO_CALC1	TAF008_007.fa	https://edmond.mpg.de/api/access/datafile/195807	b542dc668cded96deea7ad0c1713b6c4	CC0-1.0
+batch6_extremes/PALEO_CALC1	TAF008_008.fa	https://edmond.mpg.de/api/access/datafile/196073	823e61c0a9b05ebd43dbb80d6ad5a502	CC0-1.0
+batch6_extremes/PALEO_CALC1	TAF008_009.fa	https://edmond.mpg.de/api/access/datafile/196076	59ca10bd1c6d0fa1712915a8d0981f81	CC0-1.0
+batch6_extremes/PALEO_CALC1	TAF008_010.fa	https://edmond.mpg.de/api/access/datafile/196140	41a0918bd99464f0a4dfdfff9a68008d	CC0-1.0
+batch6_extremes/PALEO_CALC1	TAF017_001.fa	https://edmond.mpg.de/api/access/datafile/195688	6b5142b41cdf33306044bceef406725b	CC0-1.0
+batch6_extremes/PALEO_CALC1	TAF018_002.fa	https://edmond.mpg.de/api/access/datafile/195914	3865ca997e14dfa86f7efc3401bc7142	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC001_002.fa	https://edmond.mpg.de/api/access/datafile/195728	7b4c92f233659a0d490c28ad23227a43	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC001_003.fa	https://edmond.mpg.de/api/access/datafile/195928	ab28850b84c7f58ff8fa02ec96a3c348	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC001_004.fa	https://edmond.mpg.de/api/access/datafile/196071	ec8da41cc19a80964004d77ea55066c0	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC001_006.fa	https://edmond.mpg.de/api/access/datafile/196062	1337382cb87172017bb70601e643fd39	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC001_007.fa	https://edmond.mpg.de/api/access/datafile/195802	df991ecc11248786a0fafa76cb5bc7dd	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC001_008.fa	https://edmond.mpg.de/api/access/datafile/195943	45c509ed6922331418ba6695b039d4e1	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC001_010.fa	https://edmond.mpg.de/api/access/datafile/195905	b7d3123f934ab83868323dc1cedeed98	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC001_011.fa	https://edmond.mpg.de/api/access/datafile/195939	70f18909cd6657bd58a76f668cfb0aab	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC001_012.fa	https://edmond.mpg.de/api/access/datafile/195863	063e5f69f9386bcfac9f5a447416460a	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC001_013.fa	https://edmond.mpg.de/api/access/datafile/195875	dc98d45f0250ba125dd946b570918d7e	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC001_015.fa	https://edmond.mpg.de/api/access/datafile/195999	d882f313023904ae1a461b3aa0aea90e	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC001_016.fa	https://edmond.mpg.de/api/access/datafile/196092	6546c16229829d0eb729788d12fafebb	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC001_017.fa	https://edmond.mpg.de/api/access/datafile/195870	67c8224b6b94380563cf157087193061	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC001_019.fa	https://edmond.mpg.de/api/access/datafile/195803	e7b7d92aeef444be149bb096661d65bf	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC001_020.fa	https://edmond.mpg.de/api/access/datafile/195711	38dd18cbc8a46ad67cf43a0c485cf9bd	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC001_021.fa	https://edmond.mpg.de/api/access/datafile/196139	6c4ad7c310660f94a08bb16fb8b13b28	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC001_022.fa	https://edmond.mpg.de/api/access/datafile/195859	b611a85255ab718800a6be8eda904fad	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC001_024.fa	https://edmond.mpg.de/api/access/datafile/195777	63f2c030a46ca761a49974644e8c2b0c	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC001_026.fa	https://edmond.mpg.de/api/access/datafile/196078	4c5cccd91380316787e0c7e0068a886b	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC001_030.fa	https://edmond.mpg.de/api/access/datafile/195923	34ef23f5433ad6031c3e404bd476f4e3	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC001_032.fa	https://edmond.mpg.de/api/access/datafile/196075	edd9069f5935d60a026997379c2d2b24	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC001_035.fa	https://edmond.mpg.de/api/access/datafile/195835	fb23da2cd59f54d8a4af3c676b61e24b	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC001_038.fa	https://edmond.mpg.de/api/access/datafile/195976	f949fb38afe056f19aba83f30f2d583e	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC001_039.fa	https://edmond.mpg.de/api/access/datafile/195815	01fdb6438784760e6df98b9471a40082	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC002_002.fa	https://edmond.mpg.de/api/access/datafile/195732	79473e7ac017057ecd18511aaeac22ed	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC002_004.fa	https://edmond.mpg.de/api/access/datafile/195973	07a60983cb951da2b382757561144645	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC002_006.fa	https://edmond.mpg.de/api/access/datafile/196072	6f7d6fb0fd101c229cb2dc78ffce3c97	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC002_007.fa	https://edmond.mpg.de/api/access/datafile/196064	620d50b44c90445eb347ea9c13400970	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC002_008.fa	https://edmond.mpg.de/api/access/datafile/196023	ff927b4e0ee38685ec26c424835cb1d5	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC003_001.fa	https://edmond.mpg.de/api/access/datafile/195695	bc3ac9afe327d0b96916729d0d96d323	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC003_002.fa	https://edmond.mpg.de/api/access/datafile/196045	b836001c89f759c73b7d6e506851e814	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC003_003.fa	https://edmond.mpg.de/api/access/datafile/195758	5f90dde5b3902666757317d8e3329bce	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC003_004.fa	https://edmond.mpg.de/api/access/datafile/195764	c1f204afd9111509b1fdcbe6e196939f	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC003_005.fa	https://edmond.mpg.de/api/access/datafile/196016	b5ee4e8bdfdd82ae5a0ae380a212df23	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC003_007.fa	https://edmond.mpg.de/api/access/datafile/196113	266eb418eb553fb9afdc07da52809f2b	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC003_008.fa	https://edmond.mpg.de/api/access/datafile/195919	2321da3bb443d58101ab88b6505cb01d	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC003_009.fa	https://edmond.mpg.de/api/access/datafile/195684	5b75627a54b03763d8edbb470ebda2b3	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC003_010.fa	https://edmond.mpg.de/api/access/datafile/195827	45f74850254ae4d67701753336b4c3df	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC003_011.fa	https://edmond.mpg.de/api/access/datafile/196105	8a285f43d20e2d170be1e3e878ee55c4	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC003_012.fa	https://edmond.mpg.de/api/access/datafile/195952	c8061019e23b6898cae85aea46e1fab7	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC003_014.fa	https://edmond.mpg.de/api/access/datafile/195773	1656e41c6a70a43930d871a16a13712b	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC003_015.fa	https://edmond.mpg.de/api/access/datafile/195714	cfb69a0d652b417362344bda16ce4f79	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC004_001.fa	https://edmond.mpg.de/api/access/datafile/195843	a1c21bb81a3d5a51dfe2447b7c8b9d9f	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC004_002.fa	https://edmond.mpg.de/api/access/datafile/195737	540e41cd1b9cd40ca2e75f0384dde0ee	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC004_006.fa	https://edmond.mpg.de/api/access/datafile/195891	0f0dd50f955220f6145de9326e4717e3	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC004_008.fa	https://edmond.mpg.de/api/access/datafile/196044	3617ea3a894a373116286265ba15904a	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC004_009.fa	https://edmond.mpg.de/api/access/datafile/195993	86f3adeea0eb8c0d6803cb7a8d906d2b	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC004_011.fa	https://edmond.mpg.de/api/access/datafile/195821	edb7ccb42f19e13e24c5f39f783ef2fb	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC004_014.fa	https://edmond.mpg.de/api/access/datafile/196090	f9cc45b099421db2d0f154143ef73d18	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC004_017.fa	https://edmond.mpg.de/api/access/datafile/196102	a2665515a0968813a9987c592d9c34cc	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC004_018.fa	https://edmond.mpg.de/api/access/datafile/196030	4a288c5b05cb2f033b19f822f42085a6	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC004_019.fa	https://edmond.mpg.de/api/access/datafile/196141	ba893e34b7687f77741de1214592cab6	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC004_020.fa	https://edmond.mpg.de/api/access/datafile/195693	8cf337de23974aefb58cf4fae3746d01	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC004_023.fa	https://edmond.mpg.de/api/access/datafile/195940	a941468ddf9cd867c3c52e39b9e98c24	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC004_024.fa	https://edmond.mpg.de/api/access/datafile/195878	253c23c2bd4acc5354d326850ad268b8	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC004_025.fa	https://edmond.mpg.de/api/access/datafile/195890	29aec11fa6e6e754bd428706c69682ee	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC004_027.fa	https://edmond.mpg.de/api/access/datafile/195762	63418beee73c61bb7f2d7d792a17daeb	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC004_029.fa	https://edmond.mpg.de/api/access/datafile/195819	a296240509c188e3e4c11729a6629f10	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC004_030.fa	https://edmond.mpg.de/api/access/datafile/196058	7f31365cac64e40684aa0ee94ea9e8fe	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC004_034.fa	https://edmond.mpg.de/api/access/datafile/195708	763d238d5ffa80e5bde1d877d2db5396	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC004_035.fa	https://edmond.mpg.de/api/access/datafile/195961	cf19760cd088e9db2960577547f04668	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC005_003.fa	https://edmond.mpg.de/api/access/datafile/195857	ded35757f1786bc4a99e2f68df331c79	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC005_006.fa	https://edmond.mpg.de/api/access/datafile/196043	910213c6e6911fec9b9b64288c8e6c9f	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC005_007.fa	https://edmond.mpg.de/api/access/datafile/195916	d580f2029865b687ec019c02ae2433ec	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC005_008.fa	https://edmond.mpg.de/api/access/datafile/196142	3555848a14ab7b3b1c01920327e08749	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC005_009.fa	https://edmond.mpg.de/api/access/datafile/195909	4a06a7d3658855ed5afc6b3250a02fa3	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC005_010.fa	https://edmond.mpg.de/api/access/datafile/195840	e24ea22f8a282835b4df8e3c51c7a829	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC005_012.fa	https://edmond.mpg.de/api/access/datafile/196014	5fd75a65d9d29e2c95a7067e5da0a004	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC005_013.fa	https://edmond.mpg.de/api/access/datafile/196112	42b944a17898428d9187de87ad8b800a	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC005_014.fa	https://edmond.mpg.de/api/access/datafile/196094	c8e60d965149fae8d7d9e218f8142336	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC005_015.fa	https://edmond.mpg.de/api/access/datafile/195966	2c12458a33dfde7714bcbb1455095934	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC005_019.fa	https://edmond.mpg.de/api/access/datafile/195725	4c4c60e5b25f9dff2d29e8d428551a29	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC005_020.fa	https://edmond.mpg.de/api/access/datafile/195720	d3692eee6ccf686935244dac3cb66bd2	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC005_022.fa	https://edmond.mpg.de/api/access/datafile/195903	52c475d55f68beb703831ab9d5197ea3	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC005_023.fa	https://edmond.mpg.de/api/access/datafile/196137	0ebac6fe878e67c1db09f1749be47046	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC005_025.fa	https://edmond.mpg.de/api/access/datafile/196119	740316193f33873efeda55a319210ffa	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC005_026.fa	https://edmond.mpg.de/api/access/datafile/195715	cf4e31e03a194ce9f392e73adf468f16	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC005_032.fa	https://edmond.mpg.de/api/access/datafile/196052	cbb32ef1d848f07ad7ac016ef2677fcf	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC005_033.fa	https://edmond.mpg.de/api/access/datafile/195871	d98db20f0c79bf95fe57ac00df10f1a4	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC005_034.fa	https://edmond.mpg.de/api/access/datafile/195719	4e6db7ed84aafa0563e8a317d18d10d1	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC005_035.fa	https://edmond.mpg.de/api/access/datafile/195974	55a57484b9f0fcbdbce6ed6b8df6c6fa	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC008_002.fa	https://edmond.mpg.de/api/access/datafile/195977	0f704a0f2f721b091a93994c811e6246	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC008_004.fa	https://edmond.mpg.de/api/access/datafile/195686	770c3bbe5c7acc5fd2ab50228cdaabb3	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC008_005.fa	https://edmond.mpg.de/api/access/datafile/195839	2bd6d15367b4a74f4b11e63da21c1083	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC008_006.fa	https://edmond.mpg.de/api/access/datafile/195838	5c17ab82bfae7d3534bf057b8624d377	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC008_007.fa	https://edmond.mpg.de/api/access/datafile/196143	398d4638f4b3d84357ee709cf429dca6	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC008_010.fa	https://edmond.mpg.de/api/access/datafile/195811	bf6dc2aec50ea1de43d01ff11b50b499	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC008_011.fa	https://edmond.mpg.de/api/access/datafile/195907	9b7d051b2c2cac98f5ddf9023143ec37	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC008_012.fa	https://edmond.mpg.de/api/access/datafile/196117	e308b61539ba11cc8fa5f77d3339bd19	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC008_013.fa	https://edmond.mpg.de/api/access/datafile/195893	bd15be34df921286b1722bf23aa865a5	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC008_016.fa	https://edmond.mpg.de/api/access/datafile/195851	b8fec9130b36249716c15c138ce6fdeb	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC008_017.fa	https://edmond.mpg.de/api/access/datafile/195967	8d20d7b22144317bee2dbc1fb0f7c883	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC008_019.fa	https://edmond.mpg.de/api/access/datafile/195956	c6c923be0a2b74d914b94d76244f0e9d	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC008_020.fa	https://edmond.mpg.de/api/access/datafile/195738	926f824974720abb2546f99c1321f8e7	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC008_021.fa	https://edmond.mpg.de/api/access/datafile/195795	33a31c55d14ebafcb8884f6455b90cc8	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC008_022.fa	https://edmond.mpg.de/api/access/datafile/196065	46bbcbe6ac98ae670b1e63e0ac6d01d9	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC008_023.fa	https://edmond.mpg.de/api/access/datafile/195736	c9da94c98f9a68732c107f567032b44f	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC008_024.fa	https://edmond.mpg.de/api/access/datafile/195746	d9ca611c9c19a1fc43373e2bba45a620	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC008_025.fa	https://edmond.mpg.de/api/access/datafile/196060	2229d7851c90b7d46c1473c495704d78	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC008_026.fa	https://edmond.mpg.de/api/access/datafile/195721	2833193bc2ef2931c8f9b6e04bc85778	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC008_029.fa	https://edmond.mpg.de/api/access/datafile/196001	d172f636d198cac4bb99143b9e94b4e6	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC008_031.fa	https://edmond.mpg.de/api/access/datafile/196086	200f0c2c9783084e93a33e837a5bd017	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC008_032.fa	https://edmond.mpg.de/api/access/datafile/196145	f661a2c3f39b26616fce5f059c5e542d	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC008_033.fa	https://edmond.mpg.de/api/access/datafile/195889	4dce334cf1a032783d40213a0c488154	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC009_002.fa	https://edmond.mpg.de/api/access/datafile/195931	255d394bcbf12b33ab18d0e616077508	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC009_003.fa	https://edmond.mpg.de/api/access/datafile/196020	065619050a46ea548445caeb5e87fbc8	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC009_004.fa	https://edmond.mpg.de/api/access/datafile/195846	f2263405768f8f1f4625f4242d33055d	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC009_006.fa	https://edmond.mpg.de/api/access/datafile/195935	76eb7a4efa042819d0eec313a75270a9	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC009_009.fa	https://edmond.mpg.de/api/access/datafile/195759	f2aba17d33c5392fe83c0c217a690c1f	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC009_010.fa	https://edmond.mpg.de/api/access/datafile/195855	2fc1b227dd4a9a55ba56507349126953	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC009_011.fa	https://edmond.mpg.de/api/access/datafile/196133	afd994567d6ff8d9124f0f09835b2be6	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC009_012.fa	https://edmond.mpg.de/api/access/datafile/196100	99ddde9fde42ea6ae2df0981cc1023ee	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC009_015.fa	https://edmond.mpg.de/api/access/datafile/196081	5dcbb144aec6ee2953630dd8be4c706b	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC009_016.fa	https://edmond.mpg.de/api/access/datafile/196129	1b9608bc9b170980391761d79f6121de	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC009_018.fa	https://edmond.mpg.de/api/access/datafile/195763	6b0393679457f89a0d7b71982821e823	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC009_023.fa	https://edmond.mpg.de/api/access/datafile/196055	2c8b17d9d802e8394619c34cb90839b3	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC009_024.fa	https://edmond.mpg.de/api/access/datafile/195747	73fa24882f8cffc855e80a0e2d13d4ff	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC009_028.fa	https://edmond.mpg.de/api/access/datafile/195880	c0028fb6ddf8f1891ac0f8acb5aa96aa	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC009_029.fa	https://edmond.mpg.de/api/access/datafile/195818	9173567496d5078b793795b1de6d0aa3	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC009_030.fa	https://edmond.mpg.de/api/access/datafile/195867	aac35fde1e0744f3f252fd4cc5def41f	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC009_032.fa	https://edmond.mpg.de/api/access/datafile/196068	912a5eab651de851b574a17870761987	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC009_033.fa	https://edmond.mpg.de/api/access/datafile/196128	327e2b9455cfb5c842a625eb5b7ef2f6	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC010_001.fa	https://edmond.mpg.de/api/access/datafile/195771	86a0ebb4de7510a323a299ed64950abd	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC010_004.fa	https://edmond.mpg.de/api/access/datafile/196007	84abd501cce218727326a9cc805e5ce2	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC010_005.fa	https://edmond.mpg.de/api/access/datafile/195814	a1a1e2b15cbcc0bd62108d914d24476a	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC010_006.fa	https://edmond.mpg.de/api/access/datafile/195997	7ba1a43d0e9aced58033db9f632b26fb	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC010_007.fa	https://edmond.mpg.de/api/access/datafile/195913	d70727a436cbad28588cbc108fe3d196	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC010_008.fa	https://edmond.mpg.de/api/access/datafile/195816	f76b19eb313d75caddde9fd7b54b291d	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC010_009.fa	https://edmond.mpg.de/api/access/datafile/196003	2e7868e3e33a84eed27881671341ca69	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC010_010.fa	https://edmond.mpg.de/api/access/datafile/195820	8b308aff99390099c44594bcdedc58af	CC0-1.0
+batch6_extremes/PALEO_CALC1	VLC010_013.fa	https://edmond.mpg.de/api/access/datafile/195767	914003dfe706c42f75cc8e47f15fa402	CC0-1.0
+batch6_extremes/PALEO_CALC1	ZAF001_001.fa	https://edmond.mpg.de/api/access/datafile/195947	298a3958e0a870a4bc5e7c169926f96b	CC0-1.0
+
+# batch6_euks_org/ET2_PARABAS - 2026 free-living Parabasalia phylogenomics assemblies/transcriptomes (figshare:33029675, CC BY 4.0)
+#   1 job(s), 903,442,183 bytes by the provider record
+batch6_euks_org/ET2_PARABAS	FigShare.tar.gz	https://ndownloader.figshare.com/files/66851042	d54b6ba216f674e16904863f916eab7b	CC BY 4.0
+
+# batch6_longread_sags/SOIL_TBP_ONT - Terabase-scale ONT single-soil 563 contiguous genomes (206 cMAGs) + 338 NRPS + 30 isolates (zenodo:16782139, cc-by-sa-4.0)
+#   3 job(s), 1,240,879,375 bytes by the provider record
+batch6_longread_sags/SOIL_TBP_ONT	563_contiguous_metagenomic_genomes.tar.gz	https://zenodo.org/api/records/16782139/files/563_contiguous_metagenomic_genomes.tar.gz/content	230aad72942b5c5ac66a9a8981f7712d	cc-by-sa-4.0
+batch6_longread_sags/SOIL_TBP_ONT	genomes_of_30_isolates.tar.gz	https://zenodo.org/api/records/16782139/files/genomes_of_30_isolates.tar.gz/content	1f69e0a06837b6e818000d7b8a6afe03	cc-by-sa-4.0
+batch6_longread_sags/SOIL_TBP_ONT	338_NRPS_assemblies.zip	https://zenodo.org/api/records/16782139/files/338_NRPS_assemblies.zip/content	0efa27c4183c2d43699bd4851ec5ac34	cc-by-sa-4.0
+
+# batch6_mges/GSPR - Global Soil Plasmidome Resource derep FASTA + parquet metadata (98,728 soil plasmids) (zenodo:17136302, cc-by-4.0)
+#   3 job(s), 1,608,120,333 bytes by the provider record
+batch6_mges/GSPR	accessions.txt	https://zenodo.org/api/records/17136302/files/accessions.txt/content	3ce9f2e3fc4dabc50fd2f100c8855ae3	cc-by-4.0
+batch6_mges/GSPR	soil_plasmid_db_parquet.tar.gz	https://zenodo.org/api/records/17136302/files/soil_plasmid_db_parquet.tar.gz/content	c6551e0804550049db08c87b1d298fb5	cc-by-4.0
+batch6_mges/GSPR	all_soil_plasmids_derep.fna.gz	https://zenodo.org/api/records/17136302/files/all_soil_plasmids_derep.fna.gz/content	a2dd075c46ec301959b7f62b79c0d45f	cc-by-4.0
+
+# batch6_longread_sags/HAIMA_LR_SAG - Haima deep-sea cold seep 4,069 SAGs + 568 LR-MAGs (130 cMAGs) + 313 SR-MAGs (figshare:32084286, MIT)
+#   3 job(s), 1,612,093,240 bytes by the provider record
+batch6_longread_sags/HAIMA_LR_SAG	SAGs.zip	https://ndownloader.figshare.com/files/63988411	a7030d0127818b95adedaf5f93a28b3f	MIT
+batch6_longread_sags/HAIMA_LR_SAG	long-read-MAGs.zip	https://ndownloader.figshare.com/files/64110766	45425b74e87e9120dac657361c7af346	MIT
+batch6_longread_sags/HAIMA_LR_SAG	short-read-MAGs.zip	https://ndownloader.figshare.com/files/64110814	1009c1ba62b28a527901666c7f4b21e7	MIT
+
+# batch6_longread_sags/SCHONBUCH_ONT - Schonbuch Forest ultra-deep ONT+Illumina 837 soil MAGs (CC0) (zenodo:15866786, cc-zero)
+#   2 job(s), 1,635,151,644 bytes by the provider record
+batch6_longread_sags/SCHONBUCH_ONT	MAGs.zip	https://zenodo.org/api/records/15866786/files/MAGs.zip/content	1970daba6644be05a90ea9f2ce4d1b61	cc-zero
+batch6_longread_sags/SCHONBUCH_ONT	Ultra_Deep_Soil_MAGs.xlsx	https://zenodo.org/api/records/15866786/files/Ultra%20Deep%20Soil%20MAGs.xlsx/content	1867e44449ca5ec9051b06fec88de8cf	cc-zero
+
+# batch6_longread_sags/MLW_CMAG - Malawian pediatric gut 986 cMAGs + 47 circular-contig assemblies + metadata (zenodo:15327299, cc-by-4.0)
+#   4 job(s), 1,809,532,994 bytes by the provider record
+batch6_longread_sags/MLW_CMAG	Table_S8_MAG_list.csv	https://zenodo.org/api/records/15327299/files/Table_S8_MAG_list.csv/content	cabed682dcb7331f8bcf93656028f05a	cc-by-4.0
+batch6_longread_sags/MLW_CMAG	Table_S30_virus_contig_metadata.csv	https://zenodo.org/api/records/15327299/files/Table_S30_virus_contig_metadata.csv/content	4d0b0648cca4ffb97f7b387357222e7a	cc-by-4.0
+batch6_longread_sags/MLW_CMAG	Hsap_circ_contigs_47_assemblies.tar	https://zenodo.org/api/records/15327299/files/Hsap_circ_contigs_47_assemblies.tar/content	87be06ff6803671f952f369ed630b6c6	cc-by-4.0
+batch6_longread_sags/MLW_CMAG	fasta_986_cMAGs_.taz.gz	https://zenodo.org/api/records/15327299/files/fasta_986_cMAGs_.taz.gz/content	4a2ae62b6a53e4350dc41714122e6991	cc-by-4.0
+
+# batch6_longread_sags/AWIGEN2_AFR - AWI-Gen 2 African human gut 1,005 rep MAGs + rep phages + metadata (zenodo:14929430, cc-by-4.0)
+#   4 job(s), 2,422,708,736 bytes by the provider record
+batch6_longread_sags/AWIGEN2_AFR	MAGs_metadata.tsv	https://zenodo.org/api/records/14929430/files/MAGs_metadata.tsv/content	7c631e72a3d9c562c16dca65aa2f4b74	cc-by-4.0
+batch6_longread_sags/AWIGEN2_AFR	representative_phages.tar.gz	https://zenodo.org/api/records/14929430/files/representative_phages.tar.gz/content	e2c486f4f1c4c1a6de894922010e8163	cc-by-4.0
+batch6_longread_sags/AWIGEN2_AFR	representative_mags.tar.gz	https://zenodo.org/api/records/14929430/files/representative_mags.tar.gz/content	e17ec00e85549cd0861cd41cc173c3ca	cc-by-4.0
+batch6_longread_sags/AWIGEN2_AFR	mq_hq_phage_table.tar.gz	https://zenodo.org/api/records/14929430/files/mq_hq_phage_table.tar.gz/content	61c83675d7106936d293463b21927210	cc-by-4.0
+
+# batch6_euks_org/C60_BBMO - PNAS 2026 Massana Lab 147 curated BBMO marine picoeukaryote SAGs (scaffolds + BRAKER3 + annotations) (zenodo:18786764, cc-by-4.0)
+#   3 job(s), 7,240,961,535 bytes by the provider record
+batch6_euks_org/C60_BBMO	sags_final_bbmo_147_metadata_overview.csv	https://zenodo.org/api/records/18786764/files/sags_final_bbmo_147_metadata_overview.csv/content	4c7f0509e97b96a340edd27b93f4e891	cc-by-4.0
+batch6_euks_org/C60_BBMO	sags_final_bbmo_147_metadata.csv	https://zenodo.org/api/records/18786764/files/sags_final_bbmo_147_metadata.csv/content	0459fc301955f6d0829f89254730b839	cc-by-4.0
+batch6_euks_org/C60_BBMO	sags_final_bbmo_147.tar.gz	https://zenodo.org/api/records/18786764/files/sags_final_bbmo_147.tar.gz/content	51ee4503147f5789428a7401ce2e6bb2	cc-by-4.0
+
+# batch6_longread_sags/RHIZO_HIFI - Korean cucumber rhizosphere PacBio Revio HiFi catalog (6,505 MAGs -> 4,032 ANI95 reps) (zenodo:22077545, cc-by-4.0)
+#   5 job(s), 7,736,393,326 bytes by the provider record
+batch6_longread_sags/RHIZO_HIFI	4-03_ani95_representative_metadata.tsv	https://zenodo.org/api/records/22077545/files/4-03_ani95_representative_metadata.tsv/content	fb6accf7f6d980d89977510fd2a18ca1	cc-by-4.0
+batch6_longread_sags/RHIZO_HIFI	4-01_ani95_cluster_membership.tsv	https://zenodo.org/api/records/22077545/files/4-01_ani95_cluster_membership.tsv/content	381719e4368e47d20a46e69e7c5b5a99	cc-by-4.0
+batch6_longread_sags/RHIZO_HIFI	2-02_mag_metadata.tsv	https://zenodo.org/api/records/22077545/files/2-02_mag_metadata.tsv/content	ddcb0e3e43741f6836d586c08ae7aab8	cc-by-4.0
+batch6_longread_sags/RHIZO_HIFI	3-03_mimag_quality.tsv	https://zenodo.org/api/records/22077545/files/3-03_mimag_quality.tsv/content	f7b1cbcf4a64a6ff586666f35219755b	cc-by-4.0
+batch6_longread_sags/RHIZO_HIFI	2-03_bacterial_MAGs_6505_by_sample.tar.gz	https://zenodo.org/api/records/22077545/files/2-03_bacterial_MAGs_6505_by_sample.tar.gz/content	a6659e03ba5e74eae72251f091068fdf	cc-by-4.0
+
+# batch6_symbionts/WRGM1 - Wild Rodent Gut Microbiome 17,137 genomes (wgs.tar.gz + metagenome.gz) (figshare:28752050, CC BY 4.0)
+#   2 job(s), 11,392,221,131 bytes by the provider record
+batch6_symbionts/WRGM1	wgs.tar.gz	https://ndownloader.figshare.com/files/53538428	f8732782445cc8a38e6cfa79ff4b04a6	CC BY 4.0
+batch6_symbionts/WRGM1	metagenome.gz	https://ndownloader.figshare.com/files/53589167	55170e9f39754d1d417ec275e3a1706c	CC BY 4.0
+
+# batch6_longread_sags/BBSAG20 - Human oral & gut SAG-gel 30,851 SAGs (83 sample tarballs) + 1,544 MAGs + plasmids + summary.tsv (figshare:24473008, CC BY 4.0)
+#   86 job(s), 75,877,683,870 bytes by the provider record
+batch6_longread_sags/BBSAG20	summary.tsv	https://ndownloader.figshare.com/files/43016596	cea08ebc3a35030376563c9547d58cca	CC BY 4.0
+batch6_longread_sags/BBSAG20	mag.tar.gz	https://ndownloader.figshare.com/files/43015624	590fdbecb8d7096551901907d2956732	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLF001sag.tar.gz	https://ndownloader.figshare.com/files/43049572	446ddc2f837893879d4669cbec3074f8	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLF002sag.tar.gz	https://ndownloader.figshare.com/files/43049857	28b2885bccbb884c1937e26df206dbba	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLF003sag.tar.gz	https://ndownloader.figshare.com/files/43049854	37feea956bf9e0a5cd0ee6a848f86a32	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLF005sag.tar.gz	https://ndownloader.figshare.com/files/43059358	759ea402c7b80d6d4092bd044e8e3926	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLF006sag.tar.gz	https://ndownloader.figshare.com/files/43059361	0172991ea135a8182ca1f179481cc485	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLF004sag.tar.gz	https://ndownloader.figshare.com/files/43059364	82834e3bbf270fffbdd98deb9a2124ed	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLF007sag.tar.gz	https://ndownloader.figshare.com/files/43059367	7e7c42ab30c0c7add85ceea2450b7cc8	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLF008sag.tar.gz	https://ndownloader.figshare.com/files/43059370	c16ec81e76bb8e619312c91cffdcd36b	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLF009sag.tar.gz	https://ndownloader.figshare.com/files/43059475	7fbbfa9f27f5e42b43e9492828fcf1c3	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLF010sag.tar.gz	https://ndownloader.figshare.com/files/43059478	bd910a9d1e3899a39be6c3193c1a7acf	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLF011sag.tar.gz	https://ndownloader.figshare.com/files/43059481	b396e3c45389b4ccf94e60eaccbc9e0f	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLF012sag.tar.gz	https://ndownloader.figshare.com/files/43059496	67a3c6b8d26c973abda19f4f1a0aeabf	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLF013sag.tar.gz	https://ndownloader.figshare.com/files/43059529	a52b1e2f49818d1645352124bede0434	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLF014sag.tar.gz	https://ndownloader.figshare.com/files/43059634	345ff927c4dae603cbabced448d83ea8	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLF015sag.tar.gz	https://ndownloader.figshare.com/files/43059637	ffee3fe8955b62cfa7b4ef661d3ae44e	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLF016sag.tar.gz	https://ndownloader.figshare.com/files/43059640	ecbd2cb629600f0006ff98d10c04354c	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLF017sag.tar.gz	https://ndownloader.figshare.com/files/43059685	09cf6528af9526e19f31120b67281ff1	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLF018sag.tar.gz	https://ndownloader.figshare.com/files/43059694	d1eace1d74228263e823d8f3e74c146c	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLF019sag.tar.gz	https://ndownloader.figshare.com/files/43059790	bd102ce9618baa2255cf52f3e745eef1	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLF020sag.tar.gz	https://ndownloader.figshare.com/files/43059808	1525bd352e4ce22bf5699df1864be1c2	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLF021sag.tar.gz	https://ndownloader.figshare.com/files/43059832	a313fd83e373ec37f66c43face54dad2	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLF022sag.tar.gz	https://ndownloader.figshare.com/files/43059835	bec99086f1979ab42ce634a9d28a6c54	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLF023sag.tar.gz	https://ndownloader.figshare.com/files/43059874	15a83d10a3e8cfedf69a8b79f79fbd88	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLF024sag.tar.gz	https://ndownloader.figshare.com/files/43059925	8a172159f2acd182bbfecc1db3db6022	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLF025sag.tar.gz	https://ndownloader.figshare.com/files/43059940	53f16848fe39e7d681c941fa4bdffced	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLF027sag.tar.gz	https://ndownloader.figshare.com/files/43059946	5d8fb18c6029725e3706d1cc20db574b	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLF028sag.tar.gz	https://ndownloader.figshare.com/files/43060105	1a82dcd5a161308d0d291daebe18e984	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLF029sag.tar.gz	https://ndownloader.figshare.com/files/43060243	dcf602a2a438cddc9989a45d7116605e	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLF030sag.tar.gz	https://ndownloader.figshare.com/files/43060711	f9644e5a50eb3fc7281723290b7ba1e6	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLF031sag.tar.gz	https://ndownloader.figshare.com/files/43060792	83b7aed707ab4df0a6491635a4520bcb	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLF032sag.tar.gz	https://ndownloader.figshare.com/files/43060951	98d76ddc27bde90cc6ddab25746dc175	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLF033sag.tar.gz	https://ndownloader.figshare.com/files/43060954	c87c49518aca37295d3e128bbcc419a5	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLF046sag.tar.gz	https://ndownloader.figshare.com/files/43060963	80499f4f0688521ef51cd070fdb08902	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLF047sag.tar.gz	https://ndownloader.figshare.com/files/43061008	323f4d72a759a8cd57745ee90f7bc031	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLF048sag.tar.gz	https://ndownloader.figshare.com/files/43061038	2786bbb6af45f153f96d265c2ca28660	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLF049sag.tar.gz	https://ndownloader.figshare.com/files/43061071	6942c0bb0216ab1da19c2120b77d8f8f	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLF050sag.tar.gz	https://ndownloader.figshare.com/files/43061080	c010e615e65ecefb8d0135b03bd39bf1	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLF051sag.tar.gz	https://ndownloader.figshare.com/files/43061131	0de2b9af47679933f1681b55677ce4d1	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLF052sag.tar.gz	https://ndownloader.figshare.com/files/43061290	0b3443c6dbbcae77f7543f28dcba35d6	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLF053sag.tar.gz	https://ndownloader.figshare.com/files/43061287	feae437a3ca8bba419b0e1d88d548e86	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLF054sag.tar.gz	https://ndownloader.figshare.com/files/43061329	24ed101ed19393dfc1aefb63a6d271a7	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLF055sag.tar.gz	https://ndownloader.figshare.com/files/43061365	e31753c619ba22836037497538f634c2	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLF056sag.tar.gz	https://ndownloader.figshare.com/files/43061371	b0f48d66ece20824032007415379f1f8	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLF057sag.tar.gz	https://ndownloader.figshare.com/files/43061395	4e220b658376c3a5302873a7a7444db1	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLF058sag.tar.gz	https://ndownloader.figshare.com/files/43061440	df13925a5a42f44fde954a495f695a33	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLF059sag.tar.gz	https://ndownloader.figshare.com/files/43061470	2482ac2e0e1a99c6e53f9fff6e32a4dc	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLF060sag.tar.gz	https://ndownloader.figshare.com/files/43061518	ea3396d55aba0e7ab1e88026ab6d63b3	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLF061sag.tar.gz	https://ndownloader.figshare.com/files/43061542	c93c194b6980082cd011dfa95dbc91e4	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLF062sag.tar.gz	https://ndownloader.figshare.com/files/43061569	54ca77a5c527bab757d0a6a432177b98	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLF063sag.tar.gz	https://ndownloader.figshare.com/files/43061599	fa65be733c57983b9e8487a3c684dff1	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLF064sag.tar.gz	https://ndownloader.figshare.com/files/43061611	07490a6933c11e8caa0c8ec26dfd7241	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLS001sag.tar.gz	https://ndownloader.figshare.com/files/43062304	b6d5c662745914129dcb412f8ec792a4	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLS002sag.tar.gz	https://ndownloader.figshare.com/files/43073179	9daeca4a09b865f78fe09d8a9dce3ddf	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLS003sag.tar.gz	https://ndownloader.figshare.com/files/43073182	c946f5d40785af65f21a5b44eb65f5bd	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLS004sag.tar.gz	https://ndownloader.figshare.com/files/43062292	9ea6ea1a07cb1738531aa4b16bf1bd59	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLS005sag.tar.gz	https://ndownloader.figshare.com/files/43062301	44a775a7c6cc7e21d6fe262933936526	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLS006sag.tar.gz	https://ndownloader.figshare.com/files/43062337	212639f929f4a5e5b8658484ed6725ff	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLS007sag.tar.gz	https://ndownloader.figshare.com/files/43062340	e3ac02c274f304216f471947c8415d21	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLS008sag.tar.gz	https://ndownloader.figshare.com/files/43062601	ccfb45b234630aca72193f43bf86c971	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLS009sag.tar.gz	https://ndownloader.figshare.com/files/43062679	5bba23d378257ee80c3940d0f6f3c014	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLS010sag.tar.gz	https://ndownloader.figshare.com/files/43062685	219cd001aa536dad785bf8231c50c5b0	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLS011sag.tar.gz	https://ndownloader.figshare.com/files/43062691	5c164fc2d596996de9e0145f58f8d62b	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLS012sag.tar.gz	https://ndownloader.figshare.com/files/43062697	4ed9161b8b437f05d1638946d4212076	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLS013sag.tar.gz	https://ndownloader.figshare.com/files/43063270	80355faa17eb573afce73fa8a75983b9	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLS014sag.tar.gz	https://ndownloader.figshare.com/files/43063408	ff90e329ed4d0e913a480bb0c2f4e11f	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLS015sag.tar.gz	https://ndownloader.figshare.com/files/43063417	f546601df163345797f4c6e4595f7201	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLS016sag.tar.gz	https://ndownloader.figshare.com/files/43063444	7d32b33ca3472bc998968d21243da505	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLS017sag.tar.gz	https://ndownloader.figshare.com/files/43063492	af09c78b491feda0d3735881df450ecb	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLS018sag.tar.gz	https://ndownloader.figshare.com/files/43063624	6e8b6c79bc6961eb8bee92d5bb2c94e0	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLS019sag.tar.gz	https://ndownloader.figshare.com/files/43064203	972931f134bc6db4c806a18720d0a1a0	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLS020sag.tar.gz	https://ndownloader.figshare.com/files/43064212	3f6a2bf4324b2799665b3935311fed9a	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLS021sag.tar.gz	https://ndownloader.figshare.com/files/43064248	45d15426ed970f12619e06d81ca16623	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLS022sag.tar.gz	https://ndownloader.figshare.com/files/43064278	aca41cdf93acaff8c683fda4330ac62d	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLS023sag.tar.gz	https://ndownloader.figshare.com/files/43064287	62aa99c430f5d61d2f79e0cc33a6e261	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLS024sag.tar.gz	https://ndownloader.figshare.com/files/43064371	49ba2038549fdfc1c528511248528b9e	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLS025sag.tar.gz	https://ndownloader.figshare.com/files/43064581	ffb9266ee0ba073da5df67889868cee9	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLS027sag.tar.gz	https://ndownloader.figshare.com/files/43064695	fecb1ebf077269f8efffb9e459b81619	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLS028sag.tar.gz	https://ndownloader.figshare.com/files/43064710	50b3f1c636aaf0824b177f04beeea99d	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLS029sag.tar.gz	https://ndownloader.figshare.com/files/43064722	3df8fd2ba400954d995932b496e32efe	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLS030sag.tar.gz	https://ndownloader.figshare.com/files/43064761	d88e374dadb7f46a402b735d7253e994	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLS031sag.tar.gz	https://ndownloader.figshare.com/files/43064764	60745a85898dd607c72a687137f7d588	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLS032sag.tar.gz	https://ndownloader.figshare.com/files/43064797	58bfbd1b11098b63516cb8e3f8152067	CC BY 4.0
+batch6_longread_sags/BBSAG20	QLS033sag.tar.gz	https://ndownloader.figshare.com/files/43064821	9673e61eb0c03765713c336b9abb0e9d	CC BY 4.0
+batch6_longread_sags/BBSAG20	bbsag20_plasmid.fna.gz	https://ndownloader.figshare.com/files/44869819	f8655d9a090395912536c0cc3c39d80e	CC BY 4.0
