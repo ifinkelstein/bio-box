@@ -68,6 +68,17 @@ The order that follows (the orchestrator's, 2026-11-20, for the PI to change):
 5. RNA viruses, Obelisks, and viroid-like circular RNAs (`LucaProt`, `Serratus`, `RVMT`, `Obelisks`, `Ambiviruses`, `ViroidDB`, `ELGV` RNA) once card C-50 settles RNA genome calling/tokens, and microbial eukaryotes (`IMG-UMAG` `E1`/`E2`, `Tara` `SMAGs`, `TOPAZ`, `OMD` `148` eMAGs, `Tagirdzhanova` `325` lichen eMAGs, `Parabasalia` hosts, `EukProt`, `PhycoCosm`, `MycoCosm`) once card C-60 settles intron-aware eukaryotic calling.
 6. Then the strain-rich and less diverse remainder of every source, in full (`C1`..`C4` and `C6`, plus §4).
 
+Decided 2026-11-26 (DEC-79, card C-72), where it differs from items 2 to 4 above:
+- **`r26.11.5`**, in order of staging: `G-RARE1..3` (GlobDB r226 rare phyla, unclassified and remaining archaea, from
+  `/stor`); `LR2` + `SAG1` + `NX1`; `GV1` + `EGV1` + `ECE2` + `MIR1` + `ASG1`; `SAG2`; `DPN1`, `SYM2`, `LRP1`, `MIR2`,
+  `MGE4`; `MV2` + `MV-EUKV`; `KAV-HIFI` + `INPHARED-2604`; and three sources new on 2026-11-26, `GWV1` (groundwater
+  virome), `SAG3` (single cells of oxygen-deficient waters) and `WET1` (wetland MAGs). About 96 to 108 Gbp new
+  (*derived* from estimates, `2026-11-26_missed_diversity_sources.md` §5.4). Each member enters with the catches of
+  that note's §5.5 applied, or moves to `r26.11.6`.
+- **`r26.11.6`** begins with `SPX2`, then `RMD1`, `O4`, `LGRT2`, `REFSEQ-NEW`, the long-read sets on `tower` (`LR3`)
+  and the first cut of GlobDB r232 (`G232-A`); `GBR_MGD` waits for a stated licence.
+- GlobDB r232 and GTDB R232 are the bases of every cut and every "absent from" test after `G-RARE1..3` (§4.3).
+
 ## 3. What is in, and what is on disk and queued
 
 | Source | State on 2026-11-23 | Stage |
