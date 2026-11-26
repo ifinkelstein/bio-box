@@ -9,29 +9,30 @@ inputs: the micro-S0 fixture's proteins (as tests/r2/test_cluster_split.py build
 clusters (`remote_root`, seed 2). Every MMseqs2 call uses 2 threads; the database is made as the builder makes its
 own (FASTA sorted by uid, `createdb --shuffle 0`), from the proteins read here.
 
-What each check is:
+Open question (for the PI, card R-03): plain `mmseqs linclust` with the level's parameters differs from the build in
+exactly the three flags `DECOMPOSITION_FLAGS["nr90"]`: the build has 857 NR90 clusters against plain linclust's 859
+on the fixture and 240 against 239 on the planted set (measured on wilkcomp02, 2026-11-25, MMseqs2 18.8cc5c, through
+`scripts/pod_pytest.sh`). The tests of that difference are in
+tests/r2/test_r03_nr90_plain_linclust.py on branch task/R-03, pending the PI's decision. Card C-38c's measurement,
+on which DEC-77 rests, ran `l2/cluster.workflow`'s own ten calls (`scripts/stress/c38c_linclust_vs_cascade.py`,
+`linclust_redundancy_calls`), not plain `mmseqs linclust`.
 
-- NR90, all three modes (one workflow): independent oracle, one `mmseqs linclust` call with the parameters
-  `LEVELS["nr90"]` and `COMMON` name. **It differs** (measured on wilkcomp02, 2026-11-25, this file through
-  `scripts/pod_pytest.sh`): on the fixture the build has 857 clusters and linclust 859 (6 proteins placed otherwise),
-  on the planted set 240 and 239 (8 proteins); on the near-threshold set, where no two proteins are within 90%,
-  they agree. The cause is three flags: `workflow()` copied the linclust step that
-  `mmseqs cluster` runs inside itself, where MMseqs2 sets `kmermatcher --spaced-kmer-mode 1` and `align
-  --alignment-mode 3 --comp-bias-corr 0`, while `mmseqs linclust` with the same level parameters runs
-  `--spaced-kmer-mode 0`, `--alignment-mode 2` and `--comp-bias-corr 1` (the module-call test names them). The
-  smallest inputs that show it are two proteins each (`SMALLEST`): on the fixture's pair `--spaced-kmer-mode` alone
-  decides (the build joins a 77-residue fragment that linclust leaves apart); on the planted pair `--alignment-mode`
-  alone decides (linclust, judging identity from the score, joins two proteins 85.6% identical at NR90; the build
-  keeps them apart). These tests assert equality and are left red: a finding for the PI, not a test to bend.
-- NR90 diagnostic: `mmseqs linclust` with those three flags at `workflow()`'s values (`PRESTEP`) gives the build's
-  clusters on both inputs: the 10 calls are linclust's own call structure; only the flags differ.
+What each check here is:
+
+- NR90, all three modes (one workflow): independent oracle, one `mmseqs linclust` call with the level's parameters
+  and the three flags the decomposition uses, stated explicitly (`--spaced-kmer-mode 1 --alignment-mode 3
+  --comp-bias-corr 0`, the values `mmseqs cluster` gives its own linclust step). Equal on all three inputs: the 10
+  calls are linclust's call structure with those flags. On the near-threshold set, where no two proteins are within
+  90%, plain `mmseqs linclust` agrees as well.
 - NR50, `hybrid-b1`: a single MMseqs2 command reproduces the decomposition, `mmseqs cluster rep90 clu50r tmp
   --min-seq-id 0.5 -c 0.8 --cov-mode 1 --cluster-mode 2 -s 2 --cluster-steps 2`: its `-v 3` log is the 19 calls of
   `workflow("nr50", "hybrid-b1")` argument for argument, and its clusters, on the build's own rep90, are the build's.
 - NR50, `hybrid-a`: the default `mmseqs cluster` with the level's parameters (MMseqs2 picks `-s 3` in 3 steps at
-  50% identity), the same two checks, all 23 calls.
-- NR50, `linclust` mode: one `mmseqs linclust` at the level's parameters; it differs by `--spaced-kmer-mode` and
-  `--alignment-mode` as NR90 does, and equals the build with those two flags set (diagnostic).
+  50% identity), the same two checks, all 23 calls. On the fixture and the planted set 1, 2 and 3 cascade steps
+  give the same NR50 clusters; on the near-threshold set one step gives other clusters than two, so a dropped or
+  added step shows there; two against three steps is told apart only by the call checks.
+- NR50, `linclust` mode: one `mmseqs linclust` with the level's parameters and `--spaced-kmer-mode 1
+  --alignment-mode 3` (the decomposition's flags at NR50).
 - Planted truth (constructed, not an MMseqs2 output): NR90 groups whole and never two in one cluster, NR50 never
   joins unrelated bases, and the cascaded NR50 of `hybrid-a` and `hybrid-b1` keeps each planted family whole.
 
@@ -82,33 +83,12 @@ LEVEL_ARGS = {lvl: ["--min-seq-id", str(p["min_seq_id"]), "-c", str(p["coverage"
 NR50_ORACLE = {
     "hybrid-b1": ("cluster", "-s", "2", "--cluster-steps", "2"),
     "hybrid-a": ("cluster",),
-    "linclust": ("linclust",),
 }
-# The flags whose values `workflow()` takes from the linclust step inside `mmseqs cluster` (its `-v 3` log) and
-# `mmseqs linclust` sets otherwise (`test_r03_the_decomposition_is_the_module_calls_mmseqs2_makes`). Used only by the
-# diagnostic oracles that say which flag a difference comes from.
-PRESTEP = {"nr90": ["--spaced-kmer-mode", "1", "--alignment-mode", "3", "--comp-bias-corr", "0"],
-           "nr50": ["--spaced-kmer-mode", "1", "--alignment-mode", "3"]}
-PRESTEP_VALUE = dict(zip(PRESTEP["nr90"][::2], PRESTEP["nr90"][1::2]))
-# The smallest inputs found that show the NR90 difference, and the flag that alone decides each (see the test).
-SMALLEST = {
-    "fragment": ((
-        "MKTPTIPTLLGPDGMTSLREYAGYHGGGSGFGGQLRSWNPPSESVDAALLPNFTRGNARADDLVRNNGYAANAIQLHQDHIVGSFFRLSHRPSWRYLGIGEEEARA"
-        "FSREVEAAWKEFAEDDCCCIDVERKRTFTMMIREGVAMHAFNGELFVQATWDTSSSRLFRTQFRMVSPKRISNPNNTGDSRNCRAGVQINDSGAALGYYVSEDGYPG"
-        "WMPQKWTWIPRELPGGRASFIHVFEPVEDGQTRGANVFYSVMEQMKMLDTLQNTQLQSAIVKAMYAATIESELDTQSAMDFILGANSQEQRERLTGWIGEIAAYYAAA"
-        "PVRLGGAKVPHLMPGDSLNLQTAQDTDNGYSVFEQSLLRYIAAGLGVSYEQLSRNYAQMSYSTARASANESWAYFMGRRKFVASRQASQMFLCWLEEAIVRRVVTLP"
-        "SKARFSFQEARSAWGNCDWIGSGRMAIDGLKEVQEAVMLIEAGLSTYEKECAKRGDDYQEIFAQQVRETMERRAAGLKPPAWAAAAFESGLRQSTEEEKSDSRAA",
-        "MFLCWQEGAIVRRLVALPSKARFSLQEARSAWGNCDWIGSGRMGIDGLKEVQEAVMLIEAGLSTYEKECAKRGDDYQ",
-    ), "--spaced-kmer-mode"),
-    "estimated-identity": ((
-        "MLFGDNFLMPHRWEAGKGNVSMALGPQFNFRYHKKNPNDFNYVIAYNFMVSQIVTCRQGNLINCWMDCIASKWRHPMVLKCGHGGNSCTFRNNQYARGTMWPWEII"
-        "IGMKIDSYSMMINCVRENPHLYDPWWSWESIMIHIIMGFR",
-        "MLFGGNFLMPHNWEAGKGNMGMALGPNFNFRTHKKYPNDFNYVIAYNFMVMRIVTCRQCNTINCSHDCIASPWPHPMVLKCGHGGHSCVFRNNQYARGTMWPWEII"
-        "IGGKIESYSMMIMCVRENPHLYDPWWSWESIMIHIIMGWRPHG",
-    ), "--alignment-mode"),
-}
-SMALLEST_UIDS = {"fragment": ["265373fae12d768f7aabeccf9b45d634", "a024462b0e6be4a34fe85622fcbf57a8"],
-                 "estimated-identity": ["7f01129eb212025368fa9abccbc3a635", "d5b91b9961a08b00513b3e7714bb2ef3"]}
+# The flags whose values `workflow()` takes from the linclust step inside `mmseqs cluster` (its `-v 3` log) where
+# plain `mmseqs linclust` with the same level parameters runs `--spaced-kmer-mode 0 --alignment-mode 2
+# --comp-bias-corr 1` (NR90) and `--spaced-kmer-mode 0 --alignment-mode 2` (NR50).
+DECOMPOSITION_FLAGS = {"nr90": ["--spaced-kmer-mode", "1", "--alignment-mode", "3", "--comp-bias-corr", "0"],
+                       "nr50": ["--spaced-kmer-mode", "1", "--alignment-mode", "3"]}
 AA = "ACDEFGHIKLMNPQRSTVWY"
 
 
@@ -142,9 +122,10 @@ def planted_root(root: Path, bases: int = 60, seed: int = 20261125) -> tuple[Pat
 def remote_root(root: Path, bases: int = 100, seed: int = 2) -> Path:
     """A set near the NR50 threshold, written as stage S0's `protein_seq`: `bases` random hubs of 150 to 300
     residues, each with 6 variants at 40 to 50% substitution (50 to 60% identity to the hub) cut by 3 residues. Here
-    the cascade's second step changes NR50 (measured on wilkcomp02, 2026-11-25, through `scripts/pod_pytest.sh`: 700
-    proteins; `mmseqs cluster` at the level's parameters gives 166 clusters with `-s 1 --cluster-steps 1`, 163 with
-    `-s 2 --cluster-steps 2` and 163 at its default), so the NR50 checks see a step dropped or added."""
+    the cascade's second step changes NR50 (measured on wilkcomp02, 2026-11-25, MMseqs2 18.8cc5c, through
+    `scripts/pod_pytest.sh`: 700 proteins; `mmseqs cluster` at the level's parameters gives 166 clusters with `-s 1
+    --cluster-steps 1`, 163 with `-s 2 --cluster-steps 2` and 163 at its default), so the NR50 checks see a step
+    dropped or added."""
     rng = random.Random(seed)
 
     def mutate(s: str, rate: float) -> str:
@@ -245,90 +226,67 @@ def same_clustering(got: dict[str, frozenset[str]], want: dict[str, frozenset[st
     pytest.fail("\n".join(lines))
 
 
+def linclust_nr90(prot: dict[str, str], w: Path, *flags: str) -> dict[str, frozenset[str]]:
+    """One `mmseqs linclust` call at NR90 with the level's parameters and `flags`, on the proteins' database."""
+    w = oracle_db(w, prot)
+    mm(w, "linclust", "db", "clu90", "tmp90", *LEVEL_ARGS["nr90"], *flags)
+    return tsv_sets(w, "db", "clu90")
+
+
 # --- the builds and their oracles -------------------------------------------------------------------------
 
 
 @pytest.fixture(scope="module")
 def built(tmp_path_factory):
-    """For each input: its proteins, the build of each mode (`cluster.run`, one process, `THREADS`) as member sets
-    per level, and the oracle's NR90: one `mmseqs linclust` call with the level's parameters."""
+    """For each input: its proteins and the build of each mode (`cluster.run`, one process, `THREADS`) as member
+    sets per level."""
     base = tmp_path_factory.mktemp("r03")
     roots = {"fixture": b41.fixture_root(base / "fixture" / "root")}
     roots["planted"], truth = planted_root(base / "planted" / "root")
     roots["remote"] = remote_root(base / "remote" / "root")
     out = {}
     for name, root in roots.items():
-        d = {"prot": proteins(root), "runs": {}}
+        d = {"prot": proteins(root), "runs": {}, "base": base / name}
         for mode in MODES:
             (base / name / f"tmp-{mode}").mkdir()
             cluster.run(root, REL, V, ["S0"], threads=THREADS, tmp=base / name / f"tmp-{mode}",
                         out=base / name / f"out-{mode}", mode=mode)
             d["runs"][mode] = built_sets(base / name / f"out-{mode}")
-        w = oracle_db(base / name / "oracle", d["prot"])
-        mm(w, "linclust", "db", "clu90", "tmp90", *LEVEL_ARGS["nr90"])
-        d["nr90"] = tsv_sets(w, "db", "clu90")
-        mm(w, "linclust", "db", "clu90p", "tmp90p", *LEVEL_ARGS["nr90"], *PRESTEP["nr90"])
-        d["nr90_prestep"] = tsv_sets(w, "db", "clu90p")
         out[name] = d
     out["planted"]["truth"] = truth
     return out
 
 
-# --- NR90: one `mmseqs linclust` call ---------------------------------------------------------------------
+# --- NR90: one `mmseqs linclust` call with the decomposition's flags ------------------------------------------
+
+
+@pytest.mark.parametrize("name", INPUTS)
+def test_r03_nr90_decomposition_equals_mmseqs_linclust_with_its_three_flags(built, name, tmp_path):
+    """Oracle (independent implementation): `mmseqs linclust db clu90 tmp --min-seq-id 0.9 -c 0.8 --cov-mode 1
+    --cluster-mode 2 --spaced-kmer-mode 1 --alignment-mode 3 --comp-bias-corr 0`, the level's parameters with the
+    three flags the decomposition uses stated explicitly, on the same database. Equal in all three modes (one
+    workflow): the 10 calls are linclust's call structure with those flags."""
+    b = built[name]
+    want = linclust_nr90(b["prot"], tmp_path, *DECOMPOSITION_FLAGS["nr90"])
+    for mode in MODES:
+        assert sum(map(len, b["runs"][mode]["nr90"].values())) == len(b["prot"])
+        same_clustering(b["runs"][mode]["nr90"], want,
+                        f"{name} {mode} NR90 against mmseqs linclust {shlex.join(DECOMPOSITION_FLAGS['nr90'])}")
 
 
 @pytest.mark.parametrize("mode", MODES)
-@pytest.mark.parametrize("name", INPUTS)
-def test_r03_nr90_equals_one_mmseqs_linclust_call_with_the_levels_parameters(built, name, mode):
-    """Oracle (independent implementation): `mmseqs linclust db clu90 tmp --min-seq-id 0.9 -c 0.8 --cov-mode 1
-    --cluster-mode 2`, the parameters `LEVELS["nr90"]` and `COMMON` name, on the same database."""
-    b = built[name]
-    assert sum(map(len, b["runs"][mode]["nr90"].values())) == len(b["prot"])
-    same_clustering(b["runs"][mode]["nr90"], b["nr90"], f"{name} {mode} NR90 against mmseqs linclust")
-
-
-@pytest.mark.parametrize("name", INPUTS)
-def test_r03_nr90_equals_mmseqs_linclust_with_the_flags_mmseqs_cluster_gives_its_prestep(built, name):
-    """Diagnostic oracle (one parameter set changed on purpose): `mmseqs linclust` with the level's parameters and
-    `PRESTEP["nr90"]`, the three flags whose values `mmseqs cluster` gives its own linclust step. Equal: the 10 calls
-    are linclust's call structure, and the difference of the test above is those three flags and nothing else."""
-    b = built[name]
-    for mode in MODES:
-        same_clustering(b["runs"][mode]["nr90"], b["nr90_prestep"],
-                        f"{name} {mode} NR90 against mmseqs linclust {shlex.join(PRESTEP['nr90'])}")
-
-
-@pytest.mark.parametrize("pair", sorted(SMALLEST))
-def test_r03_smallest_input_that_shows_the_nr90_difference(pair, tmp_path):
-    """The smallest inputs found (greedy deletion from the differing clusters of each set, on the pod, 2026-11-25):
-    two proteins each. `fragment` (the fixture): the build joins a 77-residue fragment to a 533-residue protein,
-    `mmseqs linclust` leaves them apart; `--spaced-kmer-mode` alone decides it. `estimated-identity` (the planted
-    set): a hub copy and a variant of one planted family, substitutions only, 146 aligned positions of which 85.6%
-    are identical (computed here); `mmseqs linclust` puts them in one NR90 cluster, its `--alignment-mode 2` judging
-    identity from the score, and the build, at `--alignment-mode 3`, keeps them apart; `--alignment-mode` alone
-    decides it. Oracle: one `mmseqs linclust` call with the level's parameters."""
-    seqs, flag = SMALLEST[pair]
-    assert [ids.protein_uid(s).hex() for s in seqs] == SMALLEST_UIDS[pair]  # as found in the sets above
-    if pair == "estimated-identity":
-        a, c = seqs
-        assert sum(x == y for x, y in zip(a, c)) / min(len(a), len(c)) < cluster.LEVELS["nr90"]["min_seq_id"]
-    root = write_proteins(tmp_path / "root", seqs)
-    (tmp_path / "tmp").mkdir()
-    cluster.run(root, REL, V, ["S0"], threads=THREADS, tmp=tmp_path / "tmp", out=tmp_path / "out", mode="hybrid-b1")
-    got = built_sets(tmp_path / "out")["nr90"]
-    w = oracle_db(tmp_path / "oracle", proteins(root))
-    mm(w, "linclust", "db", "clu90", "tmp90", *LEVEL_ARGS["nr90"])
-    mm(w, "linclust", "db", "clu90f", "tmp90f", *LEVEL_ARGS["nr90"], flag, PRESTEP_VALUE[flag])
-    # the one flag at the value `workflow()` gives it makes linclust agree: it is the flag that decides
-    same_clustering(got, tsv_sets(w, "db", "clu90f"), f"{pair}: NR90 against mmseqs linclust {flag} "
-                                                      f"{PRESTEP_VALUE[flag]}")
-    same_clustering(got, tsv_sets(w, "db", "clu90"), f"{pair}: NR90 against mmseqs linclust")
+def test_r03_nr90_on_the_near_threshold_set_equals_plain_mmseqs_linclust(built, mode, tmp_path):
+    """Oracle (independent implementation): plain `mmseqs linclust` with the level's parameters only, on the
+    near-threshold set, where no two proteins are within 90% identity: there the three flags change nothing."""
+    b = built["remote"]
+    same_clustering(b["runs"][mode]["nr90"], linclust_nr90(b["prot"], tmp_path),
+                    f"remote {mode} NR90 against plain mmseqs linclust")
 
 
 # --- NR50: one MMseqs2 command on the same rep90 ----------------------------------------------------------
 
 
-@pytest.mark.parametrize("mode", MODES)
+@pytest.mark.parametrize("mode", sorted(NR50_ORACLE))
 @pytest.mark.parametrize("name", INPUTS)
 def test_r03_nr50_equals_one_mmseqs_command_on_the_builds_rep90(built, name, mode, tmp_path):
     """Oracle (independent implementation): `NR50_ORACLE[mode]` with `LEVELS["nr50"]` and `COMMON`, run on the
@@ -339,11 +297,10 @@ def test_r03_nr50_equals_one_mmseqs_command_on_the_builds_rep90(built, name, mod
 
 
 @pytest.mark.parametrize("name", INPUTS)
-def test_r03_nr50_of_linclust_mode_equals_mmseqs_linclust_with_the_prestep_flags(built, name, tmp_path):
-    """Diagnostic oracle (one parameter set changed on purpose): the `linclust` mode's NR50 against `mmseqs linclust`
-    with `PRESTEP["nr50"]` added. Equal: the 10 calls are linclust's own call structure, and the difference the test
-    above reports is those flags alone."""
-    nr50_check(built[name], built[name]["runs"]["linclust"], ("linclust", *PRESTEP["nr50"]), tmp_path,
+def test_r03_nr50_of_linclust_mode_equals_mmseqs_linclust_with_its_two_flags(built, name, tmp_path):
+    """Oracle (independent implementation): the `linclust` mode's NR50 against one `mmseqs linclust` call with the
+    level's parameters and `--spaced-kmer-mode 1 --alignment-mode 3`, the decomposition's flags at NR50."""
+    nr50_check(built[name], built[name]["runs"]["linclust"], ("linclust", *DECOMPOSITION_FLAGS["nr50"]), tmp_path,
                f"{name} linclust")
 
 
@@ -396,23 +353,21 @@ def logged_calls(log: str, tmp: str, linclust_only: bool) -> list[list[str]]:
     return out
 
 
-CHECKS = {  # (level, mode): the command whose module calls workflow(level, mode) replays
-    ("nr90", "hybrid-b1"): ("linclust",),
-    ("nr50", "linclust"): NR50_ORACLE["linclust"],
-    ("nr50", "hybrid-b1"): NR50_ORACLE["hybrid-b1"],
-    ("nr50", "hybrid-a"): NR50_ORACLE["hybrid-a"],
-}
+def split_argv(argv: list[str]) -> tuple[list[str], dict[str, str]]:
+    """(the module and its positional arguments, {flag: value}): every flag of these calls takes one value, and a
+    value may itself start with '-' (`--realign-score-bias -0.2`)."""
+    pos = [argv[0], *itertools.takewhile(lambda a: not a.startswith("-"), argv[1:])]
+    rest = argv[len(pos):]
+    return pos, dict(zip(rest[::2], rest[1::2]))
 
 
-@pytest.mark.parametrize("level,mode", sorted(CHECKS))
-def test_r03_the_decomposition_is_the_module_calls_mmseqs2_makes(built, tmp_path, level, mode):
-    """`workflow(level, mode)` against the module calls the one command (`CHECKS`) logs at `-v 3` on the fixture,
-    call for call and argument for argument. NR90 is the same 10 calls in all three modes, so `hybrid-b1` stands for
-    them. This names the parameter where a clustering differs; the clusterings above are the evidence."""
-    w = oracle_db(tmp_path, built["fixture"]["prot"])
+def call_check(prot: dict[str, str], w: Path, level: str, mode: str, command: tuple[str, ...]) -> None:
+    """`workflow(level, mode)` against the module calls `command` logs at `-v 3` on `prot`, call for call and
+    argument for argument; a difference names the flags."""
+    w = oracle_db(w, prot)
     mm(w, "linclust", "db", "clu90", "tmp90", *LEVEL_ARGS["nr90"])
     mm(w, "createsubdb", "clu90", "db", "rep90", threads=False)
-    cmd, *extra = CHECKS[(level, mode)]
+    cmd, *extra = command
     db, out, tmp = ("db", "clu90", "tmp90") if level == "nr90" else ("rep90", "clu50r", "tmp50")
     log = mm_log(w, cmd, db, f"{out}-log", tmp, *LEVEL_ARGS[level], *extra)
     got = [[a if a != f"{out}-log" else out for a in c] for c in logged_calls(log, tmp, cmd == "linclust")]
@@ -430,12 +385,11 @@ def test_r03_the_decomposition_is_the_module_calls_mmseqs2_makes(built, tmp_path
     assert not diffs, f"{len(diffs)} of {len(want)} calls differ\n" + "\n".join(diffs)
 
 
-def split_argv(argv: list[str]) -> tuple[list[str], dict[str, str]]:
-    """(the module and its positional arguments, {flag: value}): every flag of these calls takes one value, and a
-    value may itself start with '-' (`--realign-score-bias -0.2`)."""
-    pos = [argv[0], *itertools.takewhile(lambda a: not a.startswith("-"), argv[1:])]
-    rest = argv[len(pos):]
-    return pos, dict(zip(rest[::2], rest[1::2]))
+@pytest.mark.parametrize("mode", sorted(NR50_ORACLE))
+def test_r03_the_nr50_decomposition_is_the_module_calls_of_one_mmseqs_cluster_call(built, tmp_path, mode):
+    """`workflow("nr50", mode)` against the module calls `NR50_ORACLE[mode]` logs at `-v 3` on the fixture, call for
+    call and argument for argument (19 calls for `hybrid-b1`, 23 for `hybrid-a`)."""
+    call_check(built["fixture"]["prot"], tmp_path, "nr50", mode, NR50_ORACLE[mode])
 
 
 # --- planted truth (constructed, not an MMseqs2 output) ------------------------------------------------------
