@@ -5,7 +5,85 @@ The running record of the cards in [`TASKS.md`](TASKS.md). Updated at every merg
 by an agent on its own branch `task/<ID>`, audited by the orchestrating session, and merged after its
 tests passed on the merged tree.
 
-## Handoff, 2026-11-26 07:15 CST (Antigravity orchestrator closing; supersedes earlier sections where they differ)
+## Orchestrator active, from 2026-11-26 07:25 CST (the auditing session, Claude; current, supersedes the sections below where they differ)
+
+The Antigravity orchestrator closed with the handoff below. The PI gave the restart to this session: "coordinate this
+restart using your judgement. since its holidays night limits apply during day today" (2026-11-26, about 07:25 CST, in
+answer to the guard record of W1), then "make sure to keep updating project progress in documentation accordingo to
+established discipline as you keep going".
+
+**W0. What is running** (*measured*, `wilkcomp02`, 2026-11-26 07:32 CST, `systemctl --user list-units --type=service
+--state=active` and the lines of that day in `/tmp/if2453/stages/v2/driver.log`):
+- Unit `r26-11-4-wave-4.service`, launched 07:31:03 CST as RUNBOOK "A wave of stages" gives it, with
+  `--setenv=SCAN_JOBS=10`: `stage_wave.sh --resume-at V2 --from-mode run /tmp/if2453/stages/r26-11-4-wave-4.log V2`.
+  The stage list is `V2` alone; the other 18 stages of `r26.11.4` are not launched (W3).
+- Mirror `/tmp/if2453/ci/rel1126a`, one `rsync` of the clean checkout at `4a410f0` (the excludes of `pod_pytest.sh`),
+  not synced again. Against the mirror of wave-3 (`rel1125f`) the stage scripts differ in `r50_watch.py` only (card
+  R-05b; `diff -r -q`), and `src` in `l2/cluster.py` only (card R-02; `git diff --stat 9b28770 HEAD`).
+- Build unit `v2-4`, launched by the driver at 07:31:38: `build-stage ... --threads 6 --scan-jobs 10 --scan-cpus 4`.
+  It passes over the 13 published records and runs the 72 Pfam scan shards of the published plan, ten at a time.
+- Before the launch `run/FAILED` was moved aside to `run/FAILED.v2-3` (`mv -n`), as the two earlier stops were. No conf
+  was edited and no `ACCEPTED` line added: no record of the stopped scan was published, so there is none to accept.
+  The 20 staging directories of the stopped shards were left for `run-step`, which removes an earlier attempt's.
+- To read its state: `ssh if2453@wilkcomp02.ccbb.utexas.edu "tail -n 3 /tmp/if2453/stages/r26-11-4-wave-4.log"`, then
+  `ls /tmp/if2453/r10/root/runs/stage=V2/` for the shard records and `/tmp/if2453/stages/v2/run/` for `FAILED`.
+- No test suite is run on the pod while it builds (W1). The profile counts today, a Thursday, as a weekday, so its cap
+  is 40 threads from 08:00 to 20:00; that is the ten shards of four threads the launch asks for, and nothing was
+  changed to use the night cap by day.
+- `tower`: batch 4 is fetching; batches 5, 6, 6b and 7 wait behind it (`pgrep -af batch`, 07:30); 278 GB in
+  `sources_incoming/` (`du -sh`). Not touched by this session. Card R-11 (below, W2) reads it.
+
+**W1. The guard record of wave-3, as read on 2026-11-26** (put to the PI at about 07:20 CST):
+- Nine shards, not four: `V2.domains-pfam-38.2.shard-00000` to `00008` had used 283.3 to 280.4 CPU-minutes, over the
+  280 of the process guard, unfinished (*measured*, the last line of `/tmp/if2453/stages/v2/run/guard.jsonl`; the
+  driver's log line is cut after the fourth, which is where R0's "four" came from). All 20 running shards were ended
+  and nothing was published.
+- It was the first Pfam scan at the night cap of 80 threads (DEC-74, 2026-11-23): 20 shards of 4 threads on 56
+  physical cores (`lscpu`: 4 sockets of 14 cores, 2 threads a core). Shards are cut at 30.15 million residues, 240
+  CPU-minutes at `SCAN_CPU_MIN_PER_M` = 7.96, which was fitted with at most ten shards running. Full shards of the
+  earlier stages (*measured*, `wilkcomp02`, 2026-11-26, every `runs/stage=*/domains-*.shard-*.json` read by a script
+  that counts the shards running at once from `started_at` and `wall_s`):
+
+  | Shards at once | Stages | CPU-minutes of a full shard |
+  |---|---|---|
+  | 4 to 10 (at most 40 threads) | S1, P1 to P6, H1, PL1, C5, V1 | medians 215.9 to 250.9, largest 254.4 (P2) |
+  | 14 (56 threads) | G1 (99 shards) | median 257.6, largest 269.8; 25 shards over 260 |
+  | 20 (80 threads) | V2, wave-3 | over 283 when stopped, unfinished |
+
+  The stopped shards had their CPU (283.2 CPU-minutes in 4,359 s of wall, 3.9 CPUs; `shard-00000.failed.json`); each
+  CPU-second did less. So the cost of a shard rises with the fan-out, and 80 threads on 56 cores passes the guard. The
+  8-shard test run of this session beside it (R0) added load; the table says the scan would very probably have passed
+  280 without it (*estimate*; not measured).
+- Two statements of the handoff below do not hold. V1 never ran 14 shards at once: its peak was 10, and the one stage
+  at 14 is G1, whose largest shard came within 10.2 CPU-minutes of the guard, so "56 threads, about 245 CPU-minutes"
+  is not supported and 56 threads with shards of this size has little margin. And its step 3 lists the URLs of batches
+  6, 6b and 7 in `sources.yaml` after their fetch, where AGENTS §8 needs the listing first (card R-11 reads this).
+- Gene calling has the same exposure at night: its batches are cut at about 200 to 215 CPU-minutes and at most 11 have
+  run at once (SPX1, 212.1 to 215.5; same script over `genecall.batch-*.json`). `SCAN_JOBS` does not bound them.
+
+**W2. Done before the launch, and running beside it:**
+- Card B-74 (`9b28770`, `src/biobox/l1/domains.py`), which R2 (10) named as read by no one but its author, was read
+  by this session before the launch: the two merges of sorted streams (`_merge_uid_lengths`, `_merge_uids`) keep the
+  earlier query's result (smallest length on an equal uid, each uid once); the streamed own files must be in strictly
+  increasing uid order across files, which the path without an `owned` block already required and checks; and
+  `preserve_insertion_order = false` is safe in each of the five uses of `_duck()` (four end in `ORDER BY` or are
+  counts; the fifth, the shard's read of owned proteins, fills a dict whose keys are sorted before use). No defect
+  found. Its merge step runs at scale for the first time when the 72 shards are in.
+- Card R-11 (`TASKS.md`, Phase R), at the PI's words of about 07:30 CST: one worker reads what the Antigravity
+  sessions staged on `tower` and for the 19 stages on the pod, read-only, and prepares the corrections of
+  `sources.yaml` on branch `task/R-11`. Not merged.
+
+**W3. Next, in order:**
+1. Look at the first ten shard records (due about 08:35 CST: 61 minutes of wall each on the earlier stages); they
+   should hold 216 to 255 CPU-minutes each. The scan is 72 shards, about 7.3 h of wall (*derived*: 72 / 10 × 61 min),
+   then the merge, the second CRISPR producer, and the modes `after`, `check` and `backup`.
+2. The other 18 stages are launched as a wave of their own when `V2` has its `backup/DONE`, with `SCAN_JOBS=10`.
+   Before that launch, decide how gene calling is kept from 20 batches at once at night (W1, last point): the
+   profile's night cap is the PI's (DEC-74), and a bound on the fan-out in the code is a card.
+3. The release train of `r26.11.4` is not launched: DEC-77 (5) needs the PI's review of cards B-71, B-72 and A-27,
+   which now includes R-02, R-03 and R-05.
+
+## Handoff, 2026-11-26 07:15 CST (Antigravity orchestrator closing; superseded where it differs from the section above)
 
 Written at the PI's instruction ("draft handoff and update docs.") to close the 2026-11-21–26 Antigravity orchestrating
 session cleanly. **Zero swarm workers are running (`r4-wave` and all scouts/stagers retired).** Every measurement below
