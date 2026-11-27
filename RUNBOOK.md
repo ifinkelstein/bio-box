@@ -1188,19 +1188,20 @@ published nothing is launched again as a first launch, under a new unit name.
 
 At every release closeout, once the new release passes `release verify`, `c35_check.py`, and worked examples:
 
-1. Update [`planning/measurements/release_diversity.json`](planning/measurements/release_diversity.json):
-   - Convert the completed release entry from `status: "queued"` to `status: "measured"` with its verified stored Gbp per
-     source category, distinct protein count, NR90/NR50 cluster counts, release date label, and measurement-note citation.
-   - Append measured per-stage novelty yields (`new NR50 / stored Gbp` from `c35_check.py`) to `stage_novelty_nr50_per_gbp_k`.
-   - Append the next queued release as `status: "queued"` with staged Gbp and central protein/NR50 estimates (and update the
-     footnote and benchmark versions if refreshed).
-2. Render the 4-panel Claus Wilke / Okabe-Ito release figure (300-DPI PNG + editable SVG) beside the release measurement note:
+1. Update [`planning/measurements/release_diversity.json`](planning/measurements/release_diversity.json) (schema 3; card
+   A-31's note `planning/measurements/2026-11-27_release_diversity.md` §7 says how): the release's stages move to
+   `state: "released"`, its record gets `status: "released"` with `stored_bases`, `proteins`, `nr50`, `nr90`, each with
+   its label and source; run `plot_release_diversity.py root --root /tmp/if2453/r10/root --out <audit.json>` read-only on
+   the pod and copy its values into the `audit` section; add the stages' `c35_check.py` yields to `stage_novelty`.
+2. On the pod, in the image, one thread, with the tree mirrored to `$TREE`: `python $TREE/scripts/plot_release_diversity.py
+   fill`, then `check` (exit 0 with `checks: all pass`), then
 
 ```bash
-uv run --project /Users/ilya/projects/dataviz-python python3 scripts/plot_release_diversity.py \
-  --out planning/measurements/<YYYY-MM-DD>_release_<REL>/source_diversity_<REL>
+python $TREE/scripts/plot_release_diversity.py render \
+  --out $TREE/planning/measurements/<YYYY-MM-DD>_release_<REL>/source_diversity_<REL>
 ```
 
+   and copy the `.png` and `.svg` back with `scp`. Nothing is rendered on the laptop (AGENTS §5.5).
 3. Visually inspect the rendered `.png` for label clarity and zero overlaps, then link/embed it in
    `planning/measurements/<YYYY-MM-DD>_release_<REL>.md` and present it with the release announcement.
 
