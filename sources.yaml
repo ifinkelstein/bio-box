@@ -5619,6 +5619,22 @@ sources:
     fetched: >-
       nothing yet: 3 files named in 2026-11-26_c72_part1.tsv, listed here before the fetch (card C-72, part 1)
     stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/GWV1/
+    fetched_pod: >-
+      3 of 3 files copied from tower:/mnt/user/research-bulk/bio-box/sources_incoming/GWV1/ to wilkcomp02 by
+      scripts/orchestrator/relay_to_pod.sh (card C-73), 2026-11-26 18:53 to 18:56 CST, each sha256 equal to tower's
+      SHA256SUMS (the provider was not asked again): GWVC.vOTUs.fna.gz (1,166,850,604 bytes, sha256
+      377d5f59b3d28a8a9f2218009042f673b54fdb86a5cf20dcc41c87484e26bef0) to
+      /stor/scratch/Wilke/if2453/bio-box-staging/GWV1/dl/; GWVC.vOTUs.information.txt (62,086,246, sha256
+      82e33893eaaf0b4f03e686fd1fd848d764e7243da818ee5e5cf5000eac563264) and GWVC.vOTUs.virus-host.linkage.txt
+      (59,543,590, sha256 24126ef80ef19463f7232a30549e31902f3572c80a1574ab9228aafa9e381bb3) to /tmp/if2453/c81/dl/GWV1/
+    staged: >-
+      card C-81, 2026-11-26: all 280,420 vOTU records (3,741,506,338 bp; DEC-65 (1): 5,210 exact DTRs trimmed by
+      710,277 bp and staged circular; 3,740,796,061 bp staged; 70 contigs held by H1, none by MV1, V2, V3, MV2) as stage
+      GWV1 in /tmp/if2453/c81/meta/GWV1/ and /stor/scratch/Wilke/if2453/bio-box-staging/GWV1/ (gwv1_gwvc.fna.gz and the
+      78 MB records.tsv) on wilkcomp02, then to tower:/mnt/user/research-bulk/bio-box/sources/GWV1/; a 2.9 % sample
+      share meets the vOTU threshold with MV1, V2, V3 or MV2 (recorded, not cut);
+      planning/measurements/2026-11-26_gwv1_sag3_wet1_inputs.md. redistributable: true (DEC-80 (3): the record states
+      cc-by-4.0)
     note: >-
       CPR.DPANN.genomes.tar.gz (43,339,586 bytes) is not taken: the record's description does not say what the
       archive holds (it points to 0README.txt, which was not read); DEC-79 (4) names it only if the description shows
@@ -5638,6 +5654,21 @@ sources:
     fetched: >-
       nothing yet: 2 files named in 2026-11-26_c72_part1.tsv, listed here before the fetch (card C-72, part 1)
     stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/SAG3/
+    fetched_pod: >-
+      2 of 2 files copied from tower:/mnt/user/research-bulk/bio-box/sources_incoming/SAG3/ to wilkcomp02 by
+      scripts/orchestrator/relay_to_pod.sh (card C-73), 2026-11-26 18:56 to 18:57 CST, each sha256 equal to tower's
+      SHA256SUMS (the provider was not asked again): OMZ_Compendium_SAGs_Full.tar.gz (747,416,178 bytes, sha256
+      a2a89c5de07a9045e283fc214b1322384873d3e030c810f748eded9a67a4351b) to
+      /stor/scratch/Wilke/if2453/bio-box-staging/SAG3/dl/;
+      Table_S1_Metadata-template-Bio-Med-SAGdescriptor-OMZ_May_23_2023.xlsx (4,433,905, sha256
+      9f6d87f2528a1863f23461d7453fbebc8b829d5648ae3ff17caa62d574a64e64) to /tmp/if2453/c81/dl/SAG3/
+    staged: >-
+      card C-81, 2026-11-26: all 3,570 assembled single cells of the archive (301,688 records, 299,181 distinct contigs,
+      2,408,106,251 bp; 3,568 genomes after DEC-27; 574 in GTDB R232 by WGS project, none removed on r232 status;
+      1,100 are GORG-Tropics cells whose contigs SAG1 holds, 50,613 contigs) as stage SAG3 in
+      /tmp/if2453/c81/meta/SAG3/ and /stor/scratch/Wilke/if2453/bio-box-staging/SAG3/sag3_omz.fna.gz on wilkcomp02, then
+      to tower:/mnt/user/research-bulk/bio-box/sources/SAG3/; planning/measurements/2026-11-26_gwv1_sag3_wet1_inputs.md.
+      redistributable: true (DEC-80 (3): both articles state CC BY 4.0)
     approved: "by the PI, 2026-11-26 about 08:03 CST: \"for each of the four decisions, go ahead with your recommendations\" (DEC-79 (4))"
   - name: tower_wet1
     what: >-
@@ -5654,6 +5685,10 @@ sources:
     fetched: >-
       nothing yet: 2 files named in 2026-11-26_c72_part1.tsv, listed here before the fetch (card C-72, part 1)
     stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/WET1/
+    fetched_pod: >-
+      nothing (card C-81, 2026-11-26): scripts/orchestrator/relay_to_pod.sh refuses the name "Dereplicated genomes.zip"
+      (a space) before any remote call, so WET1 waits for a change to that script; nothing on tower was renamed or
+      linked, nothing was copied by hand (planning/measurements/2026-11-26_gwv1_sag3_wet1_inputs.md §5)
     approved: "by the PI, 2026-11-26 about 08:03 CST: \"for each of the four decisions, go ahead with your recommendations\" (DEC-79 (4))"
   - name: tower_globdb_r232_tables
     what: >-
