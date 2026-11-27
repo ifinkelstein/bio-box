@@ -45,6 +45,11 @@ manifests' `base_count` or the worker's `total_bp`. The 4.44 GB is an *estimate*
 | `20_later_licence_released.tsv` | 6 and 6b: the 25 jobs R-12 held on licence, released by DEC-80 (card R-14) | 25 | 34,603,814,116 bytes for 12 of 25 jobs; no record of size for 13 (about 23.0 GB by the workers' statements, *estimate*, for 7 of them) | not run; its `RMD1` line is `r26.11.6`; licence fields unchanged; `redistributable: false` (DEC-80 (3)) |
 | `21_later_batch7_GPB_PHAGE.tsv` | 7, `_batch7_cngb_urls.tsv`, `GPB_PHAGE` (CNGBdb CNP0004979), released by DEC-81 (5) (card R-15) | 104 | 6,518,982 bases in 102 assemblies; no byte size recorded | not run; `ftp://` (no https route); licence field `CNGBdb-open` as listed; `redistributable: false` (DEC-80 (3)) |
 | `22_later_batch7_EEMC1.tsv` | 7, `_batch7_cngb_urls.tsv`, `EEMC1` (CNGBdb CNP0007106), released by DEC-81 (5) (card R-15) | 75,085 | 181,337,158,637 bases in 75,082 assemblies; no byte size recorded (about 52 GB by the batch-7 worker, *estimate*) | not run; `ftp://`; **75,085 files: run with `--pause 0`, and after lists 01 to 21**; licence field `CNGBdb-CC-BY-4.0` as listed; `redistributable: false` |
+| `23_r26_11_6_asg1_fna.tsv` | card C-85 (DEC-88, card C-82), `ASG1` `00_ThisStudy.tsv` mapped to GenBank (`PRJNA1112871`, `PRJNA692327`, `PRJNA743900`) | 403 | 1,262,845,012 bases (*derived* from NCBI `assembly_summary.txt` `genome_size`); `403/404` (`99.75%`) study bins mapped | not run; gentle queue (`--jobs 2 --pause 1`); `INSDC`, `redistributable: true` |
+| `24_r26_11_6_dsv70_prjna1244896.tsv` | card C-85 (DEC-88, card R-24), `DSV70` MAGs in GenBank `PRJNA1244896` (replaces corrupt EBI `DSV70_mag.tar.gz`) | 2,937 | 6,648,188,839 bases (*derived* from NCBI `assembly_summary.txt` `genome_size`; `552` archaea + `2,385` bacteria) | not run; gentle queue (`--jobs 2 --pause 1`); `INSDC`, `redistributable: true` |
+| `25_r26_11_6_mgnify_nonhuman_reps.tsv` | card C-85 (DEC-88, DEC-80 (5)), `MGNIFY2` 10 non-human catalogues filtered against GTDB R226/R232 + GlobDB r226/r232 | 22,858 | 57,485,187,511 bases (*derived* from `genomes-all_metadata.tsv` `Length`); EBI `.gff.gz` (`GFF3` + `##FASTA`) | not run; gentle queue (`--jobs 2 --pause 1`); licence `-` (not stated in READMEs), `redistributable: false` |
+| `26_r26_11_6_globdb_r232.tsv` | card C-85 (DEC-88, DEC-79), `GlobDB r232` `globdb_r232_genome_fasta.tar.gz` (`346,233` reps incl. `46,920` new-resource non-GTDB species = `110,310,705,273` bases, *derived*) | 1 | 292,068,313,974 bytes (*measured*, `tower` HTTP `HEAD` `Content-Length`, 2026-11-27); provider MD5 verified | not run; gentle queue (`--jobs 1 --pause 1`); stream-slice via `c85_prepare_tower_queues.py extract-globdb-subset`; `redistributable: false` |
+| `27_r26_11_6_gtdb_r232_delta.tsv` | card C-85 (DEC-88, DEC-79, DEC-85 (4)), `GTDB R232` priority new species reps (`9,448`: Archaea + Complete/Chromosome + isolates + SAGs) + post-R232 Complete/Chromosome `REFSEQ-NEW` delta (`5,487`) | 14,935 | 62,555,870,414 bases (*derived* from NCBI `assembly_summary.txt` `genome_size`: `36.18 Gbp` + `26.38 Gbp`) | not run; gentle queue (`--jobs 2 --pause 1`); remaining `47,294` bacterial draft MAG reps of GTDB R232 are inside list `26`; `INSDC`, `redistributable: true` |
 
 Lists 21 and 22 (card R-15) are batch 7, the two CNGBdb sets. `ftp.cngb.org` refuses https (port 443, measured
 2026-11-26), so their URLs are `ftp://`, which `fetch_to_tower.sh` takes only where the `sources.yaml` form a URL matches
@@ -96,3 +101,13 @@ with `SIGKILL` also leaves its temporary directory (`fetch_to_tower.XXXXXX` unde
 A job already in its directory's `SHA256SUMS` is skipped. Two lists write into directories that already hold landed
 files: `12_later_batch6b_direct.tsv` (`RNA_VIROID/`) and `18_later_rescue.tsv` (`DSV70/`, `EUK_Y1000/`). None of
 their jobs has landed. The lock of `fetch_to_tower.sh` does not see the old `_fetch_batch2.sh` runs of batches 4 and 5.
+
+### Gentle next-wave chain (`DEC-88 (1)`, card C-85)
+
+Lists `23` to `27` (`41,134` jobs, *measured*, 2026-11-27; details in
+[`planning/measurements/2026-11-27_c85_tower_fetch_queues.md`](../../../planning/measurements/2026-11-27_c85_tower_fetch_queues.md))
+are run serially behind `after_chain_retry20.sh` via
+[`../after_retry20_gentle_chain.sh`](../after_retry20_gentle_chain.sh) so `tower` stays responsive to other services:
+every `fetch_to_tower.sh` call runs under `ionice -c 3` and `nice -n 19`, capped at `--jobs 2 --pause 1` for
+multi-file lists (`23, 24, 25, 27`) and `--jobs 1 --pause 1` for `26_r26_11_6_globdb_r232.tsv`, checking `$DEST/STOP`
+before each list.
