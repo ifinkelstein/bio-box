@@ -1,0 +1,276 @@
+# Groundwater viruses (`GWV1`), OMZ single cells (`SAG3`) and wetland MAGs (`WET1`): relay, contents, staging (card C-81, DEC-79)
+
+- **Date and host:** 2026-11-26, `wilkcomp02`. Every number carries a label (AGENTS §6): *measured* (on `wilkcomp02`,
+  2026-11-26, by the command or file named), *derived* (formula and inputs), *estimate*, or *published*.
+- **Script:** `scripts/stress/build_stage_pod/c81_gwv1_sag3_wet1.py` (`gwv1-stage`, `gwv1-ani`, `sag3-census`,
+  `sag3-stage`, `sag3-ani`); tests `tests/r1/test_c81_gwv1_sag3_wet1.py`; templates
+  `scripts/stress/build_stage_pod/stages/templates/GWV1.conf` and `SAG3.conf`. No `WET1.conf`: `WET1` waits (§5).
+- **Read only:** the relayed files (§1), card C-74's index `/tmp/if2453/c74/index/` and GTDB R232's metadata
+  `/tmp/if2453/c74/GTDB_R232_META/`, the data root `/tmp/if2453/r10/root`, `/tmp/if2453/s2/inputs/` (the `r26.11.4`
+  stages and `GV1`), and the staged metadata of the `r26.11.5` stages on the pod (§2.3). Nothing was written to the
+  root or to `/tmp/if2453/s2/inputs/`; nothing under `/stor` was overwritten; the GlobDB r226 archive was not read.
+- **Written:** `gwv1_gwvc.fna.gz` and `sag3_omz.fna.gz` (each over 64 MB) to
+  `/stor/scratch/Wilke/if2453/bio-box-staging/{GWV1,SAG3}/`; metadata to `/tmp/if2453/c81/meta/{GWV1,SAG3}/`; reports,
+  ANI tables and inspection files to `/tmp/if2453/c81/work/`.
+
+## 0. Summary
+
+| | `GWV1` | `SAG3` | `WET1` |
+|---|---:|---:|---:|
+| Set | Groundwater Virome Catalogue, 280,420 vOTUs of 5 kb and more | OMZ single-cell compendium, 3,570 assembled SAGs | GWM wetlands, 4,164 dereplicated MAGs |
+| Genomes staged | 280,420 | @@S3_G@@ | **waits** (§5) |
+| Contigs (distinct) | 280,420 | @@S3_C@@ | |
+| bp staged | 3,740,796,061 | @@S3_BP@@ | |
+| Held by the root or `r26.11.4` (exact `contig_uid`) | 70 contigs, 18,912,716 bp (all `H1`) | @@S3_HELD@@ | |
+| Held by the `r26.11.5` stages on the pod before it | 0 | @@S3_LATER@@ | |
+| New bp (after both) | 3,721,883,345 | @@S3_NEW@@ | |
+| Left out | nothing (no repeat, no refusal) | @@S3_OUT@@ | the whole set, for now |
+| `s2_check_inputs.py` | exit 0, `problems: []`, `gene_call_mode` `{"virus": "gv-meta"}` | @@S3_CHECK@@ | |
+| Template | `DEPTH=called`, `CRISPR=yes`, `AFTER=INPH2604`, `EXPECT=held_by H1 70` | `DEPTH=called`, `CRISPR=yes`, `AFTER=GWV1` | none |
+
+All *measured* (the scripts' reports `/tmp/if2453/c81/work/{gwv1,sag3}_report.json`). Against the C-72 note's
+estimates (*estimate*: `GWV1` 3.6 to 4.0 Gbp, `SAG3` 2.3 to 2.5 Gbp): `GWV1` 3.741 Gbp is inside; @@S3_EST@@.
+
+## 1. The bytes on the pod
+
+`scripts/orchestrator/relay_to_pod.sh` (card C-73) from the laptop, `--dry-run` first, each list cut from the
+directory's `SHA256SUMS` on `tower` (taken to the laptop with `scp`), files of 64 MiB and more to `/stor`, the rest
+to `/tmp` (*measured*, the script's output, 2026-11-26 CST; every sha256 equal to `tower`'s record, which `tower`
+took after the provider's md5 matched, card C-72 part 1):
+
+| File | Bytes | Where on the pod | Time | sha256 |
+|---|---:|---|---|---|
+| `GWVC.vOTUs.fna.gz` | 1,166,850,604 | `/stor/scratch/Wilke/if2453/bio-box-staging/GWV1/dl/` | 130 s (8.98 MB/s), 18:55 | `377d5f59b3d28a8a9f2218009042f673b54fdb86a5cf20dcc41c87484e26bef0` |
+| `GWVC.vOTUs.information.txt` | 62,086,246 | `/tmp/if2453/c81/dl/GWV1/` | 18:55 | `82e33893eaaf0b4f03e686fd1fd848d764e7243da818ee5e5cf5000eac563264` |
+| `GWVC.vOTUs.virus-host.linkage.txt` | 59,543,590 | `/tmp/if2453/c81/dl/GWV1/` | 3 s, 18:55 | `24126ef80ef19463f7232a30549e31902f3572c80a1574ab9228aafa9e381bb3` |
+| `OMZ_Compendium_SAGs_Full.tar.gz` | 747,416,178 | `/stor/scratch/Wilke/if2453/bio-box-staging/SAG3/dl/` | 79 s (9.46 MB/s), 18:57 | `a2a89c5de07a9045e283fc214b1322384873d3e030c810f748eded9a67a4351b` |
+| `Table_S1_Metadata-template-Bio-Med-SAGdescriptor-OMZ_May_23_2023.xlsx` | 4,433,905 | `/tmp/if2453/c81/dl/SAG3/` | 1 s, 18:57 | `9f6d87f2528a1863f23461d7453fbebc8b829d5648ae3ff17caa62d574a64e64` |
+
+## 2. `GWV1`
+
+### 2.1 What the files hold
+
+Read before staging (*measured*, a read-only pass `/tmp/if2453/c81/bin/inspect.py`, `work/inspect/inspect.json`):
+
+- `GWVC.vOTUs.fna.gz`: **280,420 records, 3,741,506,338 bp**, no repeated name; one record per vOTU representative;
+  names are MEGAHIT contig names with the well (`k141_2088200_length_42584_cov_21.0005_B10`). By length: 172,810
+  records of 5 to 10 kb, 45,709 of 10 to 15 kb, 208 of 200 kb and more. The publication's 280,420 vOTUs of 5 kb and
+  more (*published*, C-72 note §2.4): equal.
+- `GWVC.vOTUs.information.txt`: one row per record (280,420 rows; every record has exactly one row, checked by the
+  stager): CheckV quality (Complete 5,366, High 6,092, Medium 15,669, Low 210,488, Not-determined 42,805),
+  MIUViG quality, completeness and its method (`DTR (high-confidence)` 4,615, `DTR (medium-confidence)` 676, ITR 33,
+  provirus 42, AAI-based 139,477, HMM-based 92,772, NA 42,805), geNomad taxonomy (*Caudoviricetes* 239,998 of
+  280,420; *Nucleocytoviricota* about 6,500), lifestyle, well, zone, BioProject `PRJNA858913`, BioSample and run.
+- `GWVC.vOTUs.virus-host.linkage.txt`: virus-host links (vOTU, MAG, method such as `[CRISPR]`, GTDB r207 lineage of
+  the host). It describes hosts, not sequence: relayed and recorded, not staged.
+- `CPR.DPANN.genomes.tar.gz` of the same record was not fetched by card C-72 part 1 (its `sources.yaml` note), so it is
+  not on `tower` and not read here; it stays in `CATALOG_GOAL.md` §4.
+
+### 2.2 Staging (`c81_gwv1_sag3_wet1.py gwv1-stage`, report `work/gwv1_report.json`)
+
+Rule: every record, in the file's order, `kind="virus"`, `genetic_code` 11 (pyrodigal-gv chooses its own),
+`assembly_quality` `vOTU`; **DEC-65 (1)**, as card C-79 applied it to MetaVR (`c62_metavr_inputs.apply_dec65`): the
+5,291 records whose CheckV completeness method is a direct terminal repeat were classified by their ends.
+
+| | Records | bp | Label |
+|---|---:|---:|---|
+| DTR records, `exact` 20 to 1,000 bp repeat: second copy trimmed, staged circular | 5,210 | 710,277 trimmed | *measured* |
+| DTR records, `partial` (a near repeat too): linear, untrimmed | 79 | | *measured* |
+| DTR records, `low_complexity`: linear, untrimmed | 2 | | *measured* |
+| Every other record (ITR, provirus, AAI, HMM, NA): linear, untrimmed | 275,129 | | *derived*: 280,420 − 5,291 |
+| Genomes listed (DEC-27 repeated contig sets) | 280,420 (0) | 3,740,796,061 | *measured* |
+
+`s2_check_inputs.py GWV1` on `objects_staging.json`: exit 0, `problems: []`, 280,420 genomes and `genome_input` rows,
+codes `[11]`, kinds `["virus"]`, `gene_call_mode` `{"virus": "gv-meta"}` (*measured*). The licence is the Zenodo
+record's `cc-by-4.0` (read 2026-11-26 by card C-72 part 1), so the objects carry `redistributable: true` (DEC-80 (3)).
+
+### 2.3 Overlap by exact `contig_uid`
+
+Owners in build order (the method of cards C-77 and C-79): the root's 13 stored stages `S1, P1..P6, H1, PL1, C5, V1,
+G1, SPX1` (`contig_index`, default variants), then the 19 `r26.11.4` stages from their `genomes.json` under
+`/tmp/if2453/s2/inputs/` in `a26_r26_11_4_chain.R26_11_4_CHAIN` order (so `V2`, `MV1` and `V3` among them); then, as
+later holders, the `r26.11.5` stages on the pod before `GWV1` in plan §5's order: `GRARE1..3`
+(`/tmp/if2453/c75/meta/`), `LR2`, `NX1` (`/tmp/if2453/c66/`), `SAG1` (`/tmp/if2453/c58/SAG1/`), `GV1`, `EGV1`
+(`/tmp/if2453/c69/EGV1/`), `SAG2` (`/tmp/if2453/c77/meta/SAG2/`), `MV2`, `MVEUKV` (`/tmp/if2453/c79/`), `KAVHIFI`,
+`INPH2604` (`/tmp/if2453/c80/`). `ECE2`, `MIR1`, `ASG1`, `DPN1`, `SYM2`, `LRP1`, `MIR2`, `MGE4` were not staged on the
+pod when this ran: their overlap is card A-29's.
+
+| Holder | Contigs | bp |
+|---|---:|---:|
+| `H1` (the huge phages, root) | **70** | 18,912,716 |
+| `MV1`, `V2`, `V3` (`r26.11.4`) | **0** | 0 |
+| Every other root and `r26.11.4` stage | 0 | 0 |
+| `MV2` and every other `r26.11.5` stage listed above | **0** | 0 |
+| **New** | **280,350** | **3,721,883,345** |
+
+All *measured*. The 70 contigs `H1` holds (`shared_records.tsv`) are the template's only `EXPECT` line; since `MV2`
+holds none of `GWV1`, no `EXPECT=held_by MV2` line is written (the line would read 0, which `stage_est.py` does not
+take as a holder). The catch of C-72 §5.5 ("`GWV1` against `MV1`, `V2`, `V3`") finds no byte-identical vOTU: the reads
+of `PRJNA858913` were released with the paper (2024), after IMG/VR v4.1 and before MetaVR; the vOTU-level test is §2.4.
+
+### 2.4 The vOTU threshold on a sample (card C-48c's method)
+
+@@GWV1_ANI@@
+
+## 3. `SAG3`
+
+### 3.1 What the archive and Table S1 hold
+
+- `OMZ_Compendium_SAGs_Full.tar.gz` (*measured*, `sag3-census` and the read-only pass of §2.1,
+  `work/inspect/sag3_tar_members.tsv`): **3,570 entries, all `Final_Catalog/<name>.fna`, 2,469,972,902 bytes**
+  uncompressed; no directory entry, no other member. The publication's 3,570 sequenced, assembled and decontaminated
+  SAGs (of 5,129 sorted, *published*, C-72 note §2.6): equal. Member names carry the cell's name and the steps that
+  made the file: 3,497 plain `<name>.fna`, 43 `_output_clean`, 18 `_contigs`, 10 `_contigs_output_clean`, one
+  `_contigs_output_clean_output_clean`, one `_contigs_output_clean_2000`, and `<cell>_AB-905_clean`/`_AB-908_clean`
+  pairs. Contig names come in two forms: `<cell>_NODE_...` or `<cell>_<...>contig...`, and IMG's
+  `<taxon oid>_Ga<...>_<n>_..._SCGC_<cell>...` with no cell name in front.
+- Table S1 (12 sheets, read with `zipfile` and `xml.etree`): `Outputs-Genome_Sequencing` names 3,571 cells and gives
+  BioSample (3,525 rows) and GenBank WGS (2,440 rows) accessions and IMG ids; `Outputs_GTDB-TK` holds GTDB-Tk v2.1.0's
+  classification (R207) of 3,570 genomes; `Outputs-Genome_CheckM_Statistic` and `Outputs-Genome_Quality_Classifi` the
+  CheckM 1.2.1 completeness and the quality class. **The GTDB-Tk sheet cuts six pairs of names**: `AB-754_C22`,
+  `AB-754_D02`, `AB-754_D23`, `AB-754_E20`, `AB-754_G03` and `AB-754_G05` each appear twice, for the cells
+  `<name>_AB-905` and `<name>_AB-908` that the Sequencing sheet and the archive name in full. The stager therefore takes
+  names from both sheets and gives a GTDB-Tk classification only to a name that sheet lists once; the 12 cells of those
+  pairs carry none (their code screen runs without a taxonomic hint).
+
+### 3.2 Matching members to Table S1, and the accession test (`sag3-stage`, report `work/sag3_report.json`)
+
+| | Cells | Label |
+|---|---:|---|
+| Member stem equal to a Table S1 name (`exact`) | 3,036 | *measured* |
+| Longest Table S1 name followed in the stem by `_` (`prefix`: `_output_clean`, `_contigs`, `_AB-905_clean`, ...) | 505 | *measured* |
+| A name two members would take (`tie`) | 0 | *measured* |
+| No name fits (`none`; staged under the member's stem, not visible to the test) | 29 | *measured* |
+| Table S1 names no member took | 101 of 3,642 | *measured* (the six short GTDB-Tk names, and Sequencing rows of cells not in the archive) |
+| Cells with a BioSample in Table S1 / with a WGS accession | 3,429 / 2,384 | *measured* |
+| Cells without a GTDB-Tk classification | 41 | *measured* |
+
+The accession test cannot use C-74's `lookup` directly: Table S1 gives WGS project accessions (`AFHZ00000000`,
+`CABWYC000000000`) and BioSamples, not `GCA_` assemblies. GTDB R232's own metadata (`ar53`, `bac120`, columns
+`ncbi_wgs_master` and `ncbi_biosample`, read from `/tmp/if2453/c74/GTDB_R232_META/`) maps the WGS project's letters,
+then the BioSample, to a GTDB R232 genome, and `lookup` places that accession. GlobDB r232 is then seen only through
+GTDB R232 (its GTDB resource); for a cell GTDB R232 does not hold there is no `GCA_` to ask GlobDB with. **No cell is
+removed for its status** (the standing rule of 2026-11-26); `r232_status.tsv` holds it for every cell, with GTDB-Tk's
+R207 classification and fastANI reference from Table S1 beside it.
+
+| r232 status | Cells | bp | Label |
+|---|---:|---:|---|
+| in GTDB R232 and GlobDB r232 (`in_gtdb_and_globdb_r232`) | 439 | 503,430,519 | *measured* |
+| in GTDB R232 only (`in_gtdb_r232`) | 135 | 163,583,677 | *measured* |
+| an INSDC accession that no GTDB R232 genome carries (`not_in_gtdb_r232`) | 2,855 | 1,638,852,540 | *measured* |
+| no accession in Table S1, or no Table S1 row (`not_visible`) | 141 | 102,239,515 | *measured* |
+| **All** | **3,570** | **2,408,106,251** | |
+
+All 574 cells found in GTDB R232 were found by their WGS project (0 by BioSample alone); 439 of them are GTDB R232
+species representatives (*measured*). 574 of 3,429 cells visible to the test (16.7 %, *derived*) are in GTDB R232,
+under the C-72 note's estimate of 20 to 50 % represented at species level (*estimate*; that estimate was of species,
+this count is of the cells themselves).
+
+### 3.3 Staging and overlap
+
+Rule (card C-77's): the cells in name order for the metadata, the archive's order for the FASTA; whole contigs; the
+code screened per cell (`c58.screen_genetic_code`, 11, 25, 4, the GTDB-Tk classification as the hint); a contig name
+that does not begin with the cell's name and `_` is given the cell's name and `|` (132,751 of 301,688 records, *measured*;
+every name in the file unique, refused otherwise); `kind="prokaryote"`, `assembly_quality` `contig`; one BGZF FASTA.
+
+| | Value (*measured*) |
+|---|---:|
+| Cells / FASTA records | 3,570 / 301,688 |
+| Genomes listed (DEC-27: 2 repeated contig sets listed once) | 3,568 |
+| Distinct contigs (bp) | 299,181 (2,405,536,267) |
+| Contigs in more than one genome | 351 (`s2_check_inputs.py` accepts them, DEC-27) |
+| Genetic codes | code 11: 3,569; code 25: 1; conflicts 0 |
+| Held by the root or `r26.11.4` (exact `contig_uid`, build order) | 1,280 contigs, 28,838,169 bp: `GART1` 833 (15,795,258 bp), `G1` 321 (9,515,941), `GART2` 61 (1,779,565), `PL3` 38 (647,026), `MV1` 26 (1,058,931), `V2` 1 (41,448) |
+| New after the root and `r26.11.4` | 297,901 contigs, 2,376,698,098 bp |
+| Held by `r26.11.5` stages before it on the pod | `SAG1` 50,613 contigs (840,766,748 bp), `GRARE1` 690 (11,886,838), `MV2` 2 (100,544), `MVEUKV` 2 (32,511); `GWV1` and the rest 0 |
+| **New after both** | **246,594 contigs, 1,523,911,457 bp** |
+| `s2_check_inputs.py SAG3` (with `objects_staging.json`) | exit 0, `problems: []`, 3,568 genomes, 300,422 `genome_input` rows, codes `[11, 25]` |
+
+**`SAG3` repeats 1,100 of `SAG1`'s GORG-Tropics cells.** The contigs `SAG1` holds belong to 1,100 `SAG3` cells, all
+with GORG-Tropics names (`AG-3xx-...`, BioProject `PRJEB33281`), and 1,089 of them are held whole (*measured*, a
+read-only count over `later_records.tsv` and `records.tsv`). The compendium gathered the GORG-Tropics cells sorted from
+oxygen-deficient waters with its own. Nothing is removed for it: the cells are listed in `SAG3`'s `genomes.json`
+(DEC-27) and `SAG1`, earlier in the chain, owns their contigs (DEC-26), so the build stores them once; card A-29 writes
+the `EXPECT=held_by SAG1` line. `GRARE1` holds 7 `SAG3` cells whole (archaeal or unclassified-domain SAGs that GlobDB
+r226 carries). So of `SAG3`'s 2.408 Gbp, 1.524 Gbp is new (*derived* above), 37 % under the C-72 note's 2.3 to 2.5 Gbp
+(*estimate*), which was of the set's size and did not know of the shared cells. The set's own size, 2.408 Gbp, is
+inside that estimate.
+
+`redistributable: true`: both figshare articles state CC BY 4.0 (read 2026-11-26 by card C-72 part 1; DEC-80 (3)).
+
+### 3.4 ANI against `SAG1`, `SAG2` and the r226 archaea of the same genera (recorded, not cut)
+
+@@SAG3_ANI@@
+
+## 4. Staged files
+
+| File | Where | Bytes | sha256 |
+|---|---|---:|---|
+| `gwv1_gwvc.fna.gz` | `/stor/scratch/Wilke/if2453/bio-box-staging/GWV1/` | 1,183,215,792 | `e387439dbb6b4838d271325837e62ec5d783591304e022f80df56052eb9e16eb` |
+| `genomes.json` | `/tmp/if2453/c81/meta/GWV1/` | 38,314,260 | `b920b2c5ed68082ffca013328166a014ee16f4228181fdde16b1be9074c6b84d` |
+| `objects.json` | same | 426 | `3dc1500e68c418e51a4495355603bdf8d1e31cb9dd0caa2898920fa04f2a3cd7` |
+| `objects_staging.json` | same | 447 | `5d39975ea97f5ec5b2d86fcaedc0b6825403adca418b4181ff3e12eae4a0e868` |
+| `records.tsv` | same | 78,157,462 | `d7c65e3c4f09c6d71be86dd77ed42b732855425d16246217231b42221b53730b` |
+| `repeated_records.tsv` | same | 39 | `d109495ee76e4643c181eae183c452c9a84560f97a79bbe22d6630780368c565` |
+| `shared_records.tsv` | same | 6,526 | `a5edd262fb904e4594e7e439923faf357a514775e17446d60aa6d0ff83715a52` |
+| `later_records.tsv` | same | 40 | `35715d5e3e9f7b84789769b5e7130ae87a7e93e2adfa6cae8ac0222b940589fb` |
+| `trims.tsv` | same | 942,800 | `b65f35f08a9a1e9fa5263f3337b3de3a2929fc186acaff3df2a79951525a18b2` |
+| `sag3_omz.fna.gz` | `/stor/scratch/Wilke/if2453/bio-box-staging/SAG3/` | 759,962,632 | `2c62483fe32de8915f6795df9cca28b4e7eff5d7e68413d4af474c1852491b8d` |
+| `genomes.json` | `/tmp/if2453/c81/meta/SAG3/` | 11,196,968 | `9e7c895453ace069ebe0f9205e582f4a8edb93a21fbd12e8e8faf729251330d8` |
+| `objects.json` | same | 419 | `a0534151a99c3191bba77ad0e9b6ac6471030454bf1e5e4f5f1310f3efa8ca40` |
+| `objects_staging.json` | same | 440 | `7ae69a31782d1826ae44258d6c762063b9d533ef56b9408ba90ce6de9a2655ac` |
+| `records.tsv` | same | 24,490,279 | `75483af3acf17f4c08a3778ad6f47e4328a8aa32942a4e88d1cfe69e5612310e` |
+| `repeated_records.tsv` | same | 162 | `2c3b31d860d41f6f779b4d7afad6d6e541a181c917aa02e6ae36de0c1515aaa5` |
+| `shared_records.tsv` | same | 82,757 | `32cae5c995f8d05408790b266bf0cf594cb08f632d205d6498def8e58c134919` |
+| `later_records.tsv` | same | 3,297,388 | `fd811537bdc18247b6917b45b23f4c9f52c82811d97c1a4a94372e4f4d8514aa` |
+| `genetic_codes.tsv` | same | 624,764 | `00a3e33892b79d7d9156f95aa76874b4f6458e9b28627a98c82b10a9cd04cb76` |
+| `sag_match.tsv` | same | 373,216 | `4936a65edfa707c546fcc2eab4985c13c98dabb8182805571411d5b46bad54f3` |
+| `r232_status.tsv` | same | 662,415 | `3fc100d20d16f1a989fd042453a090e1ce6fe96ffefe971085e66a9105ce02fc` |
+
+All *measured* (`ids.sha256_file`, the scripts' reports). `objects.json` names `/tmp/if2453/s2/inputs/<STAGE>/<FASTA>`
+(card A-29 copies there); `objects_staging.json` the file on `/stor`. The templates' `SUM` lines are the rows for
+`genomes.json`, `objects.json` and the FASTA. Every metadata file is under 64 MB except `GWV1/records.tsv`
+(78,157,462 B), which was therefore @@GWV1_RECORDS_MOVE@@. `stage_est.py conf` on both templates (`python -I`,
+`--tree`, in the image): exit 0 (*measured*).
+
+**Mirror to `tower`** (`scripts/orchestrator/relay_to_tower.sh`, card C-49, from the laptop, one stream, *measured*,
+the script's log, 2026-11-26): `GWV1`: the FASTA, 1,183,215,792 B in 96 s (12.33 MB/s), then the eight metadata files,
+`DONE: 1 verified` and `DONE: 8 verified, 0 failed`, `SHA256SUMS` on `tower` 9 lines;
+`SAG3`: the FASTA, 759,962,632 B in 42 s (18.09 MB/s), then the ten metadata files, `DONE: 1 verified` and
+`DONE: 10 verified, 0 failed`, `SHA256SUMS` 11 lines. Both to `tower:/mnt/user/research-bulk/bio-box/sources/{GWV1,SAG3}/`.
+
+## 5. `WET1` waits: the relay refuses the archive's name
+
+`WET1`'s genome archive on `tower` is `Dereplicated genomes.zip` (3,885,785,718 bytes, sha256
+`3b63926fb66fcff2522d47e34f2f12128a25bdbb39e97c6917a390d8d9d70f8b` in `tower`'s `SHA256SUMS`, *measured* by `ls -la` and
+the file read with `scp`). `relay_to_pod.sh --dry-run` with that `SHA256SUMS` as the list, 2026-11-26 18:54 CST
+(*measured*), exit 2, before any remote call:
+
+```
+relay_to_pod: list line 2: refused path (only letters, digits, . _ = + , - and /; no . or .. or leading -)
+```
+
+Nothing on `tower` was renamed or linked and nothing was copied by hand. `MAG_meta.xlsx` (806,764 bytes) has a safe
+name, but without the genomes there is nothing to stage, so it was not relayed either. The card's one stream of the
+GlobDB r226 archive for `WET1`'s same-genus references belongs to `WET1` and was not run.
+
+**The smallest change to `relay_to_pod.sh` that would carry such a name safely** (not made: the script is not in this
+card's files): keep the list check for every name the pod sees, and admit a space only in the name read on `tower`.
+(1) A second pattern for the list's path, the present `COMP` with a space added inside a component
+(`[A-Za-z0-9._=+,-]+( [A-Za-z0-9._=+,-]+)*`), so no quote, `$`, backslash, tab or leading or trailing space ever
+passes; (2) the name on the pod is the tower name with each space turned to `_` (`dest=${rel// /_}`), checked against
+the present `PATH_RE` and for a clash with another listed name (two names that map to one are refused); (3) the
+`.partial`, the destination, `SHA256SUMS` and the log use that name, while `tower` is read at the original name, which
+the remote commands already pass inside single quotes (`cat -- '$SRC/$rel'`) or through `read -r` (the `stat` loop),
+where a space is inert. About ten lines and one test (a fake `tower` file `a b.zip` lands as `a_b.zip`; a list holding
+both `a b.zip` and `a_b.zip` is refused). Then `WET1` is relayed as `Dereplicated_genomes.zip`, its zip listed, and
+the card's `WET1` part runs (the GlobDB r226 stream for same-genus references, the `PRJNA1430164` accessions against
+C-74's index, `DEPTH=called`).
+
+## 6. Pod compute used
+
+@@COMPUTE@@
+
+## 7. Tests
+
+@@TESTS@@
