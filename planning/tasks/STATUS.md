@@ -152,7 +152,32 @@ holiday; ftp is fine, use it if needed; omd2: fetch away; bbsag20 fetch last, ys
   13:08; card C-79 is done on its branch (`MV2` 98,920 UViGs and 3.909 Gbp; `MVEUKV` 105,902 vOTUs and 1.257 Gbp;
   both mirrored to `tower`), pushed for `ci`, not merged.
 
-**W11. Wave-6 is building the 18 remaining stages of `r26.11.4`, launched 2026-11-26 19:25:15 CST (current).**
+**W12. State at 2026-11-27 00:15 CST: two of 19 stages built, staging for `r26.11.5` nearly done, `tower` chained (current).**
+- The wave (*measured*, `wilkcomp02`, `tail -n 3 /tmp/if2453/stages/r26-11-4-wave-6.log`): `PL2` ended 2026-11-26 23:03:17,
+  exit 0, backup marker present, 3 h 38 min after its start (rehearsal 38 min, the full one the wave shares; `before`
+  31 min; `run` about 2 h 8 min; `after`, `check`, `backup`); `PL3` started at 23:03:17. The wave is a detached unit and
+  needs no session; a guard stop or a failure holds it for the PI.
+- `tower` (*measured*, 2026-11-26 22:47): lists 01 to 18 of the 20-list run (pid 144525) are done; its log has two lines
+  that are not `OK`: `FAIL_CURL DSV70/DSV70_mag.tar.gz` (the connection ended early) and `WARN_ZIP EUK_Y1000
+  y1000p_genome_files.zip` (the archive test failed, the provider's md5 matched, kept as card R-13 has it). At 22:47 the
+  orchestrating session chained batch 7 on `tower` itself, so that it needs no session:
+  `fetch_logs/after_lists_batch7.sh 144525` (detached with `setsid -f nohup`, log
+  `fetch_logs/2026-11-26_batch7_chain.log`) waits for that pid, then runs `fetch_to_tower.sh` from `tree_e445342` on
+  list 21 (`--pause 1`), list 22 (`--pause 0`) and list 18 again for `DSV70`. The `--check` of list 21 on `tower`
+  matched 104 of 104 URLs before the chain was started. DEC-81 (4) is the PI's word for batch 7 and for ftp.
+- Staging for `r26.11.5`, merged: `GRARE1..3`, `ECE2`, `MIR1`, `GWV1`, `SAG3`, `DPN1`, `SYM2`, `LRP1`, `MIR2` (this
+  section's merges and the four before it), with `MV2`, `MVEUKV`, `EGV1`, `KAVHIFI`, `INPH2604`, `LR2`, `SAG1`, `NX1`,
+  `SAG2` from earlier. Out of `r26.11.5`: `ASG1` (no genome sequence in what was fetched; card C-82) and `MGE4` (not
+  mobile elements). Still to stage: `WET1`, whose worker resumed at 22:55 with `relay_to_pod.sh --space-as-underscore`
+  (card R-18). Then card A-29, the chain.
+- For the release train of `r26.11.4`: the rehearsal is done (W11) and RUNBOOK's launch is corrected (card R-16). The
+  train is not chained to the wave: its dry run and space check (DEC-82 (4) to (6)) are read by a session before the
+  launch.
+- Open with the PI: whether to delete two superseded or misplaced files on `/stor` (the first `DPN1` FASTA; the 28 MB
+  `MIR2` file). He was told that `GRARE1` keeps the unclassified-domain genomes and that `MIR1` keeps the Bellas loci,
+  and has not objected.
+
+**W11. Wave-6 is building the 18 remaining stages of `r26.11.4`, launched 2026-11-26 19:25:15 CST (superseded by W12 for the state; its facts stand).**
 - What runs (*measured*, `wilkcomp02`, 19:25, the first two lines of `/tmp/if2453/stages/r26-11-4-wave-6.log`): unit
   `r26-11-4-wave-6.service`, launched as RUNBOOK "A wave of stages" gives it with `--setenv=SCAN_JOBS=10`:
   `stage_wave.sh /tmp/if2453/stages/r26-11-4-wave-6.log PL2 PL3 CG1 MGE1 SAT1 ECE1 O1 O2 LPL1 SYM1 LRV1 LGRT1 MGE2 MV1
@@ -1715,7 +1740,7 @@ Last full suite on the integration branch before the C-11 merge: 1,053 passed, 1
 pinned image; 3 min 40 s wall for the slowest shard, against 13.5 min in one process). The skips
 need samtools, bgzip, Prodigal or the golden set. Tests no longer run on the laptop (AGENTS.md §5.5).
 
-## Merged (234 rows counted one per card row as before, and measurements; F-02 has ten sessions in; C-48c has parts 2 and 3, and C-48e part 1, the inputs, in)
+## Merged (236 rows counted one per card row as before, and measurements; F-02 has ten sessions in; C-48c has parts 2 and 3, and C-48e part 1, the inputs, in)
 
 The count stood at 190 after C-38c. The twelve card rows and four note rows that follow were not written at their
 merges; the audit of 2026-11-25 wrote them from git and from the orchestrator's log
@@ -1724,6 +1749,8 @@ table's distinct card IDs are fewer (some cards have several rows).
 
 | Card | Merge | What it did | Audit notes |
 |---|---|---|---|
+| R-16 | `cf1fa93` | **RUNBOOK's release-train launch is corrected: no `--parts`.** RUNBOOK only, no code. Both findings of the review are confirmed with file and line; the launch has no `--parts`; the order before a launch is written out (rehearsal, fresh `WORK`, dry run, `df`, DEC-83, launch) (`bd1a1d0`) | Sonnet agent on `task/R-16`; no test failed first (a document); pod test 249 passed in 21.81 s. `ci` of the branch green (`45944443784`). Merged tree on the pod (steward run, *measured*, `wilkcomp02`, 2026-11-27): `tests/r1/test_c78_compact_tower_sets.py`, `test_c46_release_train.py`, `test_r232_index.py` and `tests/r0`: 307 passed in 51.02s. Audited by the orchestrating session: the whole diff read, and the script's defaults `CLUSTER_METHOD=hybrid-b1`, `T=18 J=2 CPUS=18 Q=40`, `START_MIN_GB=250` checked against `release_train.sh` lines 50 to 65 |
+| C-78 | `a0ac6d8` | **`DPN1`, `SYM2`, `LRP1` and `MIR2` staged; `MGE4` left out.** `DPN1`: 1,842 genomes (all 208 closed genomes kept) and 26 elements, 1.792 Gbp new, depth `called`. `SYM2`: 551 prokaryote bins, 74 giant-virus bins and 61,959 viral contigs, 0.868 Gbp new. `LRP1`: 78,737 plasmidome contigs, 0.241 Gbp new (the file is not 10,942 curated plasmids). `MIR2`: 56,092 genomes, 0.489 Gbp new. `MGE4` is not staged: three isolate genomes of one conjugation experiment, no mobile elements (`fca517e`) | Opus agent on `task/C-78`; first failing test `test_census_names_every_member_and_tells_genome_dna_from_protein_and_alignments`, FileNotFoundError on the script; pod test 282 passed in 36.06 s on the branch merged with `plan/task-cards`. The first pass of `DPN1` removed 65 closed genomes on 96% ANI matches; the PI agreed on 2026-11-26 that a closed genome is never removed for such a match (the match is recorded), and the stage was redone: its FASTA is `dpn1_dpann_genomes_rev2.fna.gz`, and the first file stays on `/stor`, superseded. The first run of `SYM2` classed the 74 giant-virus bins as prokaryotes; corrected and rerun. A 28 MB file `mir2_bulzu_2025_plv_virophage.fna` was written to `/stor` against AGENTS §7.3 and is left in place; the PI was asked on 2026-11-26 whether to delete it and the superseded `DPN1` file. `ci` of the branch green (`45943932379`). Merged tree on the pod (steward run, *measured*, `wilkcomp02`, 2026-11-27): 307 passed in 51.02s. Audited by the orchestrating session: its report read, the diff not read line by line |
 | R-18 | `4087857` | **The relay carries a tower name with a space, on request.** A path with a space stays refused by default (exit 2, before any call); under the new option `--space-as-underscore` a single interior space is admitted on the tower side, every pod-side name has `_` for it, the duplicate and own-name checks run on the pod name, and the mapping is in `--dry-run` and the log (`448f6d7`) | Sonnet agent on `task/R-18`; the worker stopped before editing, because the card as written contradicted the existing case `a b.tar` of `BAD_LINES`; the orchestrating session changed the design to an explicit option, so that no existing test changed. 14 new cases failed first; 372 passed on the pod; the dry run on `tower`'s `WET1` list prints "copy Dereplicated genomes.zip 3885785718 (pod name Dereplicated_genomes.zip)". Its commit body still says work in progress; the tests passed after it with no further change. `ci` of the branch green (`45929753700`). Merged tree on the pod (steward run, *measured*, `wilkcomp02`, 2026-11-26): `tests/r1/test_c75_grare_inputs.py`, `test_c70_tier1_mge_dsdna_asgard.py`, `test_c81_gwv1_sag3_wet1.py`, `test_relay_to_pod.py`, `test_r232_index.py` and `tests/r0`: 497 passed, 1 skipped in 240.65s. Audited by the orchestrating session: its report read; the diff not read line by line |
 | C-81 | `88cb295` | **`GWV1` and `SAG3` staged; `WET1` waits.** `GWV1`: 280,420 genomes, 3,740,796,061 bp, 3,721,883,345 bp new. `SAG3`: 3,570 cells, 2,408,106,251 bp, 1,523,911,457 bp new, because 1,100 of its cells are GORG-Tropics cells `SAG1` holds. `WET1` is not staged: the relay refused `Dereplicated genomes.zip` (card R-18) (`ad80357`) | Opus agent on `task/C-81`; the card's own run: 37 failed, 1 skipped before the script, then 285 passed, 1 skipped in 26.36 s (*measured*, `pod_pytest.sh`, `wilkcomp02`, 2026-11-26; `planning/measurements/2026-11-26_gwv1_sag3_wet1_inputs.md`). `ci` of the branch green (`45928884982`). Merged tree on the pod (steward run, *measured*): 497 passed, 1 skipped in 240.65s. Audited by the orchestrating session: its report read; the diff not read line by line |
 | C-70 | `c5c5d8a` | **`ECE2` and `MIR1` staged; `ASG1` not stageable.** `ECE2`: 945 genomes, 17,676,120 bp, all new. `MIR1`: 9,992 genomes, 1,153,750,393 bp, 820,588,756 bp new, against the card's estimate of 0.4 to 0.55 Gbp; the worker stopped at the 20% rule and the orchestrating session accepted the miss (the excess is the Bellas endogenous-virus loci, which DEC-79 (1) and DEC-80 take; they carry class `plv_eve`). `ASG1` is not staged: its `Data.zip` holds no genome sequence (card C-82). The Inocles are `redistributable: false`; two `MIR1` sources stay `true` on the prep note's "CC BY 4.0" without a quoted record. `tower`'s `sources/ECE2/` holds the first `objects.json` beside the corrected one in `c70_rev2/` (`ed7af18`) | Opus agent on `task/C-70`; tests seen failing first in three rounds (12, 10 and 10 failed), then passing; 254 passed in 12.46 s with `tests/r1/test_r232_index.py` and `tests/r0` (*measured*, `pod_pytest.sh`, 2026-11-26). `ci` of the branch green (`45926195186`). Merged tree on the pod (steward run, *measured*): 497 passed, 1 skipped in 240.65s. Audited by the orchestrating session: its report read; the diff not read line by line; the migrated licence test read in the diff |
