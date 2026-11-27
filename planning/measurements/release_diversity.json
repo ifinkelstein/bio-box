@@ -1,238 +1,1808 @@
 {
-  "schema_version": 2,
-  "description": "Canonical per-release corpus source diversity, per-stage novelty, and published external benchmarks for scripts/plot_release_diversity.py. Append each newly verified release as status='measured' and update the trailing status='queued' entry for the next cut.",
-  "categories": [
+  "schema_version": 3,
+  "as_of": "2026-11-27",
+  "description": "Data of the release-diversity figure (scripts/plot_release_diversity.py; card A-31). Every number is a record with its value, its label (measured, derived or estimate; AGENTS section 6) and its source; a quote is a string found in the file at `path`, and a derived number carries its formula. A stage's `bases` are the bases it adds to the catalog (default-variant contigs no earlier stage holds). Run `plot_release_diversity.py check` after any change; `fill` recomputes every formula.",
+  "figure_title": "bio-box catalog diversity by release: measured to r26.11.3, then built, staged and planned (as of 2026-11-27)",
+  "classes": [
     {
-      "id": "prok_iso",
-      "label": "Complete prokaryote isolates (GTDB P1–P6, C5)",
+      "id": "isolate",
+      "label": "Isolate genomes (complete prokaryotes)",
       "color": "#8C96A0",
-      "dark_text": true
+      "rule": "complete genomes of cultured prokaryotes from GTDB or RefSeq (P1 to P6, C5, REFSEQ-NEW)"
     },
     {
-      "id": "arch_mag",
-      "label": "Uncultured archaea & MAGs (GlobDB G1, GART1–2, SYM1)",
+      "id": "uncultured",
+      "label": "Uncultured prokaryotes (MAGs, single cells, symbionts)",
       "color": "#0072B2",
-      "dark_text": false
+      "rule": "genomes of organisms not in culture: MAGs (G1, GART1, GART2, GRARE1 to 3, NX1, WET1, KAVHIFI, reef sets RMD1 and GBRMGD), single-cell genomes (SAG1 to SAG3), reduced symbionts (SYM1, SYM2), DPANN (DPN1); a stage of MAGs and unbinned contigs goes here when MAGs hold most of its bases (LR2: MAGs 19.4 of its 21.3 Gbp, derived from card R-19's note as 21.255 less 1.882 Gbp of unbinned contigs; SYM2: prokaryote bins 0.49 of 0.87 Gbp, measured, card C-78)"
     },
     {
       "id": "virus",
-      "label": "Viruses & phages (S1, H1, V1–V3, CG1, MV1, SAT1)",
+      "label": "Viruses (phages, giant viruses, mirusviruses)",
       "color": "#E69F00",
-      "dark_text": true
+      "rule": "every viral genome set, prokaryotic and eukaryotic: phages, prophages, satellites, giant viruses (GV1, EGV1, MVEUKV), mirusviruses and polinton-like viruses (MIR1, MIR2)"
     },
     {
       "id": "plasmid",
-      "label": "Plasmids & MGEs (PL1–PL3, MGE1, ECE1, LPL1)",
+      "label": "Plasmids and mobile elements",
       "color": "#009E73",
-      "dark_text": false
+      "rule": "plasmids, integrative and extrachromosomal elements (PL1 to PL3, MGE1, ECE1, ECE2, LPL1, LRP1)"
     },
     {
       "id": "metagenome",
-      "label": "Unbinned & long-read metagenomes (SPX1, LR1, LGRT1)",
+      "label": "Unbinned metagenome contigs",
       "color": "#CC79A7",
-      "dark_text": false
+      "rule": "assembled contigs not binned into genomes (SPX1, SPX2, LR1, LGRT1, LGRT2)"
     },
     {
       "id": "organelle",
-      "label": "Organelles (RefSeq plastids & mito O1–O2)",
+      "label": "Organelles",
       "color": "#F0E442",
-      "dark_text": true
+      "rule": "plastid and mitochondrial genomes (O1, O2, O4)"
     }
   ],
   "releases": [
     {
       "id": "rN.3",
+      "status": "released",
       "date_label": "Nov 11",
-      "status": "measured",
-      "gbp_by_category": {
-        "prok_iso": 10.613,
-        "arch_mag": 0.0,
-        "virus": 1.664,
-        "plasmid": 0.0,
-        "metagenome": 0.0,
-        "organelle": 0.0
+      "date": {
+        "value": 20261111,
+        "label": "measured",
+        "host": "wilkcomp02",
+        "source": "mtime of manifests/release=rN.3.json (ls -l, 2026-11-27): the day the release's manifest was written"
       },
-      "proteins_m": 10.62,
-      "nr90_m": null,
-      "nr50_m": 2.97,
-      "source_note": "planning/measurements/2026-11-11_build_r50.md; planning/measurements/2026-11-13_crispr_arrays.md"
+      "stored_bases": {
+        "value": 12276916069,
+        "label": "measured",
+        "host": "wilkcomp02",
+        "source": "sum of its stages' contig_index default variants (audit, unit a31-root)",
+        "path": "planning/measurements/2026-11-27_release_diversity.md",
+        "quote": "12,276,916,069"
+      },
+      "proteins": {
+        "value": 10620684,
+        "label": "measured",
+        "host": "wilkcomp02",
+        "source": "cluster_member rows of manifests/release=rN.3.json / 2 (audit)",
+        "path": "planning/measurements/2026-11-11_build_r50.md",
+        "quote": "10,620,684 members per level"
+      },
+      "nr50": {
+        "value": 2966200,
+        "label": "measured",
+        "source": "card B-42's comparison of rN.3 with rN.2, 2026-11-11",
+        "path": "planning/measurements/2026-11-11_build_r50.md",
+        "quote": "2,966,200 and NR90"
+      },
+      "nr90": {
+        "value": 8278537,
+        "label": "measured",
+        "source": "the same comparison",
+        "path": "planning/measurements/2026-11-11_build_r50.md",
+        "quote": "8,278,537 clusters on both sides"
+      }
     },
     {
       "id": "rM.2",
-      "date_label": "Nov 15",
-      "status": "measured",
-      "gbp_by_category": {
-        "prok_iso": 50.469,
-        "arch_mag": 0.0,
-        "virus": 1.664,
-        "plasmid": 0.0,
-        "metagenome": 0.0,
-        "organelle": 0.0
+      "status": "released",
+      "date_label": "Nov 14",
+      "date": {
+        "value": 20261114,
+        "label": "measured",
+        "host": "wilkcomp02",
+        "source": "mtime of manifests/release=rM.2.json"
       },
-      "proteins_m": 45.82,
-      "nr90_m": 30.89,
-      "nr50_m": 8.19,
-      "source_note": "planning/measurements/2026-11-16_release_r26.11.1.md; README.md"
+      "stored_bases": {
+        "value": 52132698276,
+        "label": "measured",
+        "host": "wilkcomp02",
+        "source": "sum of its stages' contig_index default variants (audit)",
+        "path": "planning/measurements/2026-11-27_release_diversity.md",
+        "quote": "52,132,698,276"
+      },
+      "proteins": {
+        "value": 45815843,
+        "label": "measured",
+        "host": "wilkcomp02",
+        "source": "cluster_member rows of manifests/release=rM.2.json / 2 (audit); c35_check.py's count in r26.11.1's summary.json",
+        "path": "planning/measurements/2026-11-16_release_r26.11.1/summary.json",
+        "quote": "\"members\": 45815843"
+      },
+      "nr50": {
+        "value": 8192065,
+        "label": "measured",
+        "source": "c35_check.py on r26.11.1 (its summary.json, clusters.rM.2.nr50)",
+        "path": "planning/measurements/2026-11-16_release_r26.11.1/summary.json",
+        "quote": "\"clusters\": 8192065"
+      },
+      "nr90": {
+        "value": 31183876,
+        "label": "measured",
+        "source": "c35_check.py on r26.11.1 (its summary.json, clusters.rM.2.nr90)",
+        "path": "planning/measurements/2026-11-16_release_r26.11.1/summary.json",
+        "quote": "\"clusters\": 31183876"
+      }
     },
     {
       "id": "r26.11.1",
-      "date_label": "Nov 19",
-      "status": "measured",
-      "gbp_by_category": {
-        "prok_iso": 50.469,
-        "arch_mag": 0.0,
-        "virus": 3.484,
-        "plasmid": 5.925,
-        "metagenome": 0.0,
-        "organelle": 0.0
+      "status": "released",
+      "date_label": "Nov 18",
+      "date": {
+        "value": 20261118,
+        "label": "measured",
+        "host": "wilkcomp02",
+        "source": "mtime of manifests/release=r26.11.1.json (the release is archived; its manifest stays)"
       },
-      "proteins_m": 49.10,
-      "nr90_m": 33.12,
-      "nr50_m": 9.29,
-      "source_note": "planning/measurements/2026-11-16_release_r26.11.1.md; 2026-11-15_stage_H1.md; 2026-11-15_stage_PL1.md"
+      "stored_bases": {
+        "value": 59877082489,
+        "label": "measured",
+        "host": "wilkcomp02",
+        "source": "sum of its stages' contig_index default variants (audit)",
+        "path": "planning/measurements/2026-11-21_release_r26.11.2.md",
+        "quote": "`59,877,082,489` bp"
+      },
+      "proteins": {
+        "value": 49102041,
+        "label": "measured",
+        "host": "wilkcomp02",
+        "source": "cluster_member rows of manifests/release=r26.11.1.json / 2 (audit)",
+        "path": "planning/measurements/2026-11-16_release_r26.11.1.md",
+        "quote": "49,102,041 members"
+      },
+      "nr50": {
+        "value": 9291312,
+        "label": "measured",
+        "source": "c35_check.py on r26.11.1 (summary.json)",
+        "path": "planning/measurements/2026-11-16_release_r26.11.1/summary.json",
+        "quote": "\"clusters\": 9291312"
+      },
+      "nr90": {
+        "value": 33117773,
+        "label": "measured",
+        "source": "c35_check.py on r26.11.1 (summary.json)",
+        "path": "planning/measurements/2026-11-16_release_r26.11.1/summary.json",
+        "quote": "\"clusters\": 33117773"
+      }
     },
     {
       "id": "r26.11.2",
-      "date_label": "Nov 22",
-      "status": "measured",
-      "gbp_by_category": {
-        "prok_iso": 59.578,
-        "arch_mag": 0.0,
-        "virus": 8.662,
-        "plasmid": 5.925,
-        "metagenome": 0.0,
-        "organelle": 0.0
+      "status": "released",
+      "date_label": "Nov 21",
+      "date": {
+        "value": 20261121,
+        "label": "measured",
+        "host": "wilkcomp02",
+        "source": "mtime of manifests/release=r26.11.2.json"
       },
-      "proteins_m": 57.78,
-      "nr90_m": 35.48,
-      "nr50_m": 10.09,
-      "source_note": "planning/measurements/2026-11-21_release_r26.11.2.md; 2026-11-20_stage_C5.md; 2026-11-20_stage_V1.md"
+      "stored_bases": {
+        "value": 74164810323,
+        "label": "measured",
+        "host": "wilkcomp02",
+        "source": "sum of its stages' contig_index default variants (audit)",
+        "path": "planning/measurements/2026-11-21_release_r26.11.2.md",
+        "quote": "`74,164,810,323` bp"
+      },
+      "proteins": {
+        "value": 57780176,
+        "label": "measured",
+        "host": "wilkcomp02",
+        "source": "cluster_member, rows per level (audit, unit a31-root)",
+        "path": "planning/measurements/2026-11-21_release_r26.11.2/summary.json",
+        "quote": "\"members\": 57780176"
+      },
+      "nr50": {
+        "value": 10091519,
+        "label": "measured",
+        "host": "wilkcomp02",
+        "source": "cluster_member, level nr50, rows whose member is the representative (audit); equals c35_check.py's",
+        "path": "planning/measurements/2026-11-21_release_r26.11.2/summary.json",
+        "quote": "\"clusters\": 10091519"
+      },
+      "nr90": {
+        "value": 35475280,
+        "label": "measured",
+        "host": "wilkcomp02",
+        "source": "as nr50, level nr90",
+        "path": "planning/measurements/2026-11-21_release_r26.11.2/summary.json",
+        "quote": "\"clusters\": 35475280"
+      }
     },
     {
       "id": "r26.11.3",
-      "date_label": "Nov 25",
-      "status": "measured",
-      "gbp_by_category": {
-        "prok_iso": 59.578,
-        "arch_mag": 10.043,
-        "virus": 8.662,
-        "plasmid": 5.925,
-        "metagenome": 35.689,
-        "organelle": 0.0
+      "status": "released",
+      "date_label": "Nov 24",
+      "date": {
+        "value": 20261124,
+        "label": "measured",
+        "host": "wilkcomp02",
+        "source": "mtime of manifests/release=r26.11.3.json"
       },
-      "proteins_m": 102.34,
-      "nr90_m": 71.21,
-      "nr50_m": 22.16,
-      "source_note": "planning/measurements/2026-11-24_release_r26.11.3.md; 2026-11-23_stage_G1.md; 2026-11-23_stage_SPX1.md"
+      "stored_bases": {
+        "value": 119895942057,
+        "label": "measured",
+        "host": "wilkcomp02",
+        "source": "sum of its stages' contig_index default variants (audit)",
+        "path": "planning/measurements/2026-11-24_release_r26.11.3.md",
+        "quote": "`119,895,942,057` bp"
+      },
+      "proteins": {
+        "value": 102337875,
+        "label": "measured",
+        "host": "wilkcomp02",
+        "source": "cluster_member, rows per level (audit)",
+        "path": "planning/measurements/2026-11-24_release_r26.11.3.md",
+        "quote": "`102,337,875` members"
+      },
+      "nr50": {
+        "value": 22155373,
+        "label": "measured",
+        "host": "wilkcomp02",
+        "source": "cluster_member, level nr50, representatives (audit); equals c35_check.py's",
+        "path": "planning/measurements/2026-11-24_release_r26.11.3.md",
+        "quote": "`22,155,373` NR50"
+      },
+      "nr90": {
+        "value": 71208987,
+        "label": "measured",
+        "host": "wilkcomp02",
+        "source": "as nr50, level nr90",
+        "path": "planning/measurements/2026-11-24_release_r26.11.3.md",
+        "quote": "`71,208,987` NR90"
+      }
     },
     {
       "id": "r26.11.4",
-      "date_label": "queued",
-      "status": "queued",
-      "gbp_by_category": {
-        "prok_iso": 59.578,
-        "arch_mag": 60.891,
-        "virus": 83.200,
-        "plasmid": 24.417,
-        "metagenome": 56.295,
-        "organelle": 2.653
-      },
-      "proteins_m": 265.0,
-      "nr90_m": null,
-      "nr50_m": 64.0,
-      "source_note": "planning/measurements/2026-11-24_a26_r26_11_4_confs.md; planning/design/hybrid_linclust_nr90_cascade_nr50.md"
+      "status": "building",
+      "date_label": "building",
+      "proteins_projection": {
+        "value": 265129911,
+        "low": 252761727,
+        "high": 286189250,
+        "round": 0,
+        "label": "estimate",
+        "source": "the hybrid clustering design's formula (planning/design/hybrid_linclust_nr90_cascade_nr50.md section 2): r26.11.3's distinct proteins plus 0.90 to 1.10 M new distinct proteins per new Gbp (central 0.974, measured on G1 and SPX1), over the 19 stages' new bases",
+        "formula": "p + c * g / 1e9",
+        "low_formula": "p + lo * g / 1e9",
+        "high_formula": "p + hi * g / 1e9",
+        "inputs": {
+          "p": {
+            "value": 102337875,
+            "label": "measured",
+            "source": "r26.11.3's distinct proteins",
+            "path": "planning/measurements/2026-11-24_release_r26.11.3.md",
+            "quote": "`102,337,875` members"
+          },
+          "g": {
+            "value": 167137613539,
+            "label": "derived",
+            "source": "card A-26's sum of the 19 stages' new bases",
+            "path": "planning/measurements/2026-11-24_a26_r26_11_4_confs.md",
+            "quote": "167,137,613,539"
+          },
+          "c": {
+            "value": 974000,
+            "label": "derived",
+            "source": "G1 and SPX1: 44.56 M new proteins over 45.73 Gbp",
+            "path": "planning/design/hybrid_linclust_nr90_cascade_nr50.md",
+            "quote": "`0.974 M prot/Gbp`",
+            "quote_scale": 1000000
+          },
+          "lo": {
+            "value": 900000,
+            "label": "estimate",
+            "source": "the design's lower yield",
+            "path": "planning/design/hybrid_linclust_nr90_cascade_nr50.md",
+            "quote": "0.90–1.10 M new distinct prot/Gbp",
+            "quote_scale": 1000000
+          },
+          "hi": {
+            "value": 1100000,
+            "label": "estimate",
+            "source": "the design's upper yield",
+            "path": "planning/design/hybrid_linclust_nr90_cascade_nr50.md",
+            "quote": "1.10 M new distinct prot/Gbp",
+            "quote_scale": 1000000
+          }
+        }
+      }
+    },
+    {
+      "id": "r26.11.5",
+      "status": "staged",
+      "date_label": "staged"
+    },
+    {
+      "id": "r26.11.6",
+      "status": "planned",
+      "date_label": "planned"
     }
   ],
+  "stages": [
+    {
+      "stage": "S1",
+      "class": "virus",
+      "release": "rN.3",
+      "state": "released",
+      "what": "INPHARED phages, 14Apr2025",
+      "bases": {
+        "value": 1664109938,
+        "label": "measured",
+        "host": "wilkcomp02",
+        "source": "contig_index default variants (audit, unit a31-root)",
+        "path": "planning/measurements/2026-11-27_release_diversity.md",
+        "quote": "1,664,109,938"
+      }
+    },
+    {
+      "stage": "P1",
+      "class": "isolate",
+      "release": "rN.3",
+      "state": "released",
+      "what": "GTDB R226 complete genomes, first part",
+      "bases": {
+        "value": 1016625803,
+        "label": "measured",
+        "host": "wilkcomp02",
+        "source": "contig_index default variants (audit)",
+        "path": "planning/measurements/2026-11-27_release_diversity.md",
+        "quote": "1,016,625,803"
+      }
+    },
+    {
+      "stage": "P2",
+      "class": "isolate",
+      "release": "rN.3",
+      "state": "released",
+      "what": "GTDB R226 complete genomes",
+      "bases": {
+        "value": 9596180328,
+        "label": "measured",
+        "host": "wilkcomp02",
+        "source": "contig_index default variants (audit)",
+        "path": "planning/measurements/2026-11-27_release_diversity.md",
+        "quote": "9,596,180,328"
+      }
+    },
+    {
+      "stage": "P3",
+      "class": "isolate",
+      "release": "rM.2",
+      "state": "released",
+      "what": "GTDB R226 complete genomes",
+      "bases": {
+        "value": 9949077522,
+        "label": "measured",
+        "host": "wilkcomp02",
+        "source": "contig_index default variants (audit)",
+        "path": "planning/measurements/2026-11-27_release_diversity.md",
+        "quote": "9,949,077,522"
+      }
+    },
+    {
+      "stage": "P4",
+      "class": "isolate",
+      "release": "rM.2",
+      "state": "released",
+      "what": "GTDB R226 complete genomes",
+      "bases": {
+        "value": 9976456950,
+        "label": "measured",
+        "host": "wilkcomp02",
+        "source": "contig_index default variants (audit)",
+        "path": "planning/measurements/2026-11-27_release_diversity.md",
+        "quote": "9,976,456,950"
+      }
+    },
+    {
+      "stage": "P5",
+      "class": "isolate",
+      "release": "rM.2",
+      "state": "released",
+      "what": "GTDB R226 complete genomes",
+      "bases": {
+        "value": 9967711632,
+        "label": "measured",
+        "host": "wilkcomp02",
+        "source": "contig_index default variants (audit)",
+        "path": "planning/measurements/2026-11-27_release_diversity.md",
+        "quote": "9,967,711,632"
+      }
+    },
+    {
+      "stage": "P6",
+      "class": "isolate",
+      "release": "rM.2",
+      "state": "released",
+      "what": "GTDB R226 complete genomes",
+      "bases": {
+        "value": 9962536103,
+        "label": "measured",
+        "host": "wilkcomp02",
+        "source": "contig_index default variants (audit)",
+        "path": "planning/measurements/2026-11-27_release_diversity.md",
+        "quote": "9,962,536,103"
+      }
+    },
+    {
+      "stage": "H1",
+      "class": "virus",
+      "release": "r26.11.1",
+      "state": "released",
+      "what": "Huge Phage Genome Collection",
+      "bases": {
+        "value": 1819831338,
+        "label": "measured",
+        "host": "wilkcomp02",
+        "source": "contig_index default variants (audit)",
+        "path": "planning/measurements/2026-11-27_release_diversity.md",
+        "quote": "1,819,831,338"
+      }
+    },
+    {
+      "stage": "PL1",
+      "class": "plasmid",
+      "release": "r26.11.1",
+      "state": "released",
+      "what": "PLSDB 2024_05_31_v2",
+      "bases": {
+        "value": 5924552875,
+        "label": "measured",
+        "host": "wilkcomp02",
+        "source": "contig_index default variants (audit)",
+        "path": "planning/measurements/2026-11-27_release_diversity.md",
+        "quote": "5,924,552,875"
+      }
+    },
+    {
+      "stage": "C5",
+      "class": "isolate",
+      "release": "r26.11.2",
+      "state": "released",
+      "what": "GTDB R226 complete genomes, second selection",
+      "bases": {
+        "value": 9109234757,
+        "label": "measured",
+        "host": "wilkcomp02",
+        "source": "contig_index default variants (audit)",
+        "path": "planning/measurements/2026-11-27_release_diversity.md",
+        "quote": "9,109,234,757"
+      }
+    },
+    {
+      "stage": "V1",
+      "class": "virus",
+      "release": "r26.11.2",
+      "state": "released",
+      "what": "UHGV gut phage vOTU representatives",
+      "bases": {
+        "value": 5178493077,
+        "label": "measured",
+        "host": "wilkcomp02",
+        "source": "contig_index default variants (audit)",
+        "path": "planning/measurements/2026-11-27_release_diversity.md",
+        "quote": "5,178,493,077"
+      }
+    },
+    {
+      "stage": "G1",
+      "class": "uncultured",
+      "release": "r26.11.3",
+      "state": "released",
+      "what": "GlobDB r226 non-GTDB archaea",
+      "bases": {
+        "value": 10042502859,
+        "label": "measured",
+        "host": "wilkcomp02",
+        "source": "contig_index default variants (audit)",
+        "path": "planning/measurements/2026-11-27_release_diversity.md",
+        "quote": "10,042,502,859"
+      }
+    },
+    {
+      "stage": "SPX1",
+      "class": "metagenome",
+      "release": "r26.11.3",
+      "state": "released",
+      "what": "SPIRE unbinned contigs of 5 kb and more, tranche 1",
+      "bases": {
+        "value": 35688628875,
+        "label": "measured",
+        "host": "wilkcomp02",
+        "source": "contig_index default variants (audit)",
+        "path": "planning/measurements/2026-11-27_release_diversity.md",
+        "quote": "35,688,628,875"
+      }
+    },
+    {
+      "stage": "V2",
+      "class": "virus",
+      "release": "r26.11.4",
+      "state": "built",
+      "what": "IMG/VR v4.1 vOTU representatives and Inovirus",
+      "bases": {
+        "value": 8199089073,
+        "label": "measured",
+        "host": "wilkcomp02",
+        "source": "contig_index default variants of the built stage (audit; partition listed); equals card A-26's new bases",
+        "path": "planning/measurements/2026-11-27_release_diversity.md",
+        "quote": "8,199,089,073"
+      }
+    },
+    {
+      "stage": "PL2",
+      "class": "plasmid",
+      "release": "r26.11.4",
+      "state": "built",
+      "what": "Yu 2024 gut and PlasmidScope public plasmids",
+      "bases": {
+        "value": 1974983002,
+        "label": "measured",
+        "host": "wilkcomp02",
+        "source": "contig_index default variants of the built stage (audit; partition listed); equals card A-26's new bases",
+        "path": "planning/measurements/2026-11-27_release_diversity.md",
+        "quote": "1,974,983,002"
+      }
+    },
+    {
+      "stage": "PL3",
+      "class": "plasmid",
+      "release": "r26.11.4",
+      "state": "staged",
+      "what": "PlasmidScope IMG-PR and mMGE plasmids (building)",
+      "bases": {
+        "value": 16282680966,
+        "label": "measured",
+        "source": "card A-26, exact prefix ownership over the chain",
+        "path": "planning/measurements/2026-11-24_a26_r26_11_4_confs.md",
+        "quote": "16,282,680,966"
+      }
+    },
+    {
+      "stage": "CG1",
+      "class": "virus",
+      "release": "r26.11.4",
+      "state": "staged",
+      "what": "Chinese Gut Viral Reference",
+      "bases": {
+        "value": 10727099394,
+        "label": "measured",
+        "source": "card A-26",
+        "path": "planning/measurements/2026-11-24_a26_r26_11_4_confs.md",
+        "quote": "10,727,099,394"
+      }
+    },
+    {
+      "stage": "MGE1",
+      "class": "plasmid",
+      "release": "r26.11.4",
+      "state": "staged",
+      "what": "curated integrative MGEs, transposons, IS elements, integrons",
+      "bases": {
+        "value": 148953649,
+        "label": "measured",
+        "source": "card A-26",
+        "path": "planning/measurements/2026-11-24_a26_r26_11_4_confs.md",
+        "quote": "148,953,649"
+      }
+    },
+    {
+      "stage": "SAT1",
+      "class": "virus",
+      "release": "r26.11.4",
+      "state": "staged",
+      "what": "INPHARED delta, phage satellites, small DNA and archaeal viruses",
+      "bases": {
+        "value": 572385232,
+        "label": "measured",
+        "source": "card A-26",
+        "path": "planning/measurements/2026-11-24_a26_r26_11_4_confs.md",
+        "quote": "572,385,232"
+      }
+    },
+    {
+      "stage": "ECE1",
+      "class": "plasmid",
+      "release": "r26.11.4",
+      "state": "staged",
+      "what": "Borgs, linear megaplasmids, phage-plasmids",
+      "bases": {
+        "value": 82800651,
+        "label": "measured",
+        "source": "card A-26",
+        "path": "planning/measurements/2026-11-24_a26_r26_11_4_confs.md",
+        "quote": "82,800,651"
+      }
+    },
+    {
+      "stage": "O1",
+      "class": "organelle",
+      "release": "r26.11.4",
+      "state": "staged",
+      "what": "RefSeq 238 plastids and code-11 mitochondria",
+      "bases": {
+        "value": 2314604556,
+        "label": "measured",
+        "source": "card A-26",
+        "path": "planning/measurements/2026-11-24_a26_r26_11_4_confs.md",
+        "quote": "2,314,604,556"
+      }
+    },
+    {
+      "stage": "O2",
+      "class": "organelle",
+      "release": "r26.11.4",
+      "state": "staged",
+      "what": "RefSeq 238 organelles of other codes",
+      "bases": {
+        "value": 337965568,
+        "label": "measured",
+        "source": "card A-26",
+        "path": "planning/measurements/2026-11-24_a26_r26_11_4_confs.md",
+        "quote": "337,965,568"
+      }
+    },
+    {
+      "stage": "LPL1",
+      "class": "plasmid",
+      "release": "r26.11.4",
+      "state": "staged",
+      "what": "eukaryotic linear plasmids",
+      "bases": {
+        "value": 2967857,
+        "label": "measured",
+        "source": "card A-26",
+        "path": "planning/measurements/2026-11-24_a26_r26_11_4_confs.md",
+        "quote": "2,967,857"
+      }
+    },
+    {
+      "stage": "SYM1",
+      "class": "uncultured",
+      "release": "r26.11.4",
+      "state": "staged",
+      "what": "genome-reduced endosymbionts",
+      "bases": {
+        "value": 228637055,
+        "label": "measured",
+        "source": "card A-26",
+        "path": "planning/measurements/2026-11-24_a26_r26_11_4_confs.md",
+        "quote": "228,637,055"
+      }
+    },
+    {
+      "stage": "LRV1",
+      "class": "virus",
+      "release": "r26.11.4",
+      "state": "staged",
+      "what": "long-read complete viromes",
+      "bases": {
+        "value": 104491079,
+        "label": "measured",
+        "source": "card A-26",
+        "path": "planning/measurements/2026-11-24_a26_r26_11_4_confs.md",
+        "quote": "104,491,079"
+      }
+    },
+    {
+      "stage": "LGRT1",
+      "class": "metagenome",
+      "release": "r26.11.4",
+      "state": "staged",
+      "what": "Logan contigs baited for rare RTs",
+      "bases": {
+        "value": 3026010,
+        "label": "measured",
+        "source": "card A-26",
+        "path": "planning/measurements/2026-11-24_a26_r26_11_4_confs.md",
+        "quote": "3,026,010"
+      }
+    },
+    {
+      "stage": "MGE2",
+      "class": "virus",
+      "release": "r26.11.4",
+      "state": "staged",
+      "what": "GEMs VirSorter prophages",
+      "bases": {
+        "value": 631141175,
+        "label": "measured",
+        "source": "card A-26",
+        "path": "planning/measurements/2026-11-24_a26_r26_11_4_confs.md",
+        "quote": "631,141,175"
+      }
+    },
+    {
+      "stage": "MV1",
+      "class": "virus",
+      "release": "r26.11.4",
+      "state": "staged",
+      "what": "MetaVR vOTU representatives",
+      "bases": {
+        "value": 28356875142,
+        "label": "measured",
+        "source": "card A-26",
+        "path": "planning/measurements/2026-11-24_a26_r26_11_4_confs.md",
+        "quote": "28,356,875,142"
+      }
+    },
+    {
+      "stage": "V3",
+      "class": "virus",
+      "release": "r26.11.4",
+      "state": "staged",
+      "what": "EMBL VIRE DNA vOTU representatives",
+      "bases": {
+        "value": 25946952616,
+        "label": "measured",
+        "source": "card A-26",
+        "path": "planning/measurements/2026-11-24_a26_r26_11_4_confs.md",
+        "quote": "25,946,952,616"
+      }
+    },
+    {
+      "stage": "LR1",
+      "class": "metagenome",
+      "release": "r26.11.4",
+      "state": "staged",
+      "what": "long-read metagenome contigs of 5 kb and more",
+      "bases": {
+        "value": 20603253925,
+        "label": "measured",
+        "source": "card A-26",
+        "path": "planning/measurements/2026-11-24_a26_r26_11_4_confs.md",
+        "quote": "20,603,253,925"
+      }
+    },
+    {
+      "stage": "GART1",
+      "class": "uncultured",
+      "release": "r26.11.4",
+      "state": "staged",
+      "what": "GlobDB r226 proto-ART bacterial phyla",
+      "bases": {
+        "value": 38957616428,
+        "label": "measured",
+        "source": "card A-26",
+        "path": "planning/measurements/2026-11-24_a26_r26_11_4_confs.md",
+        "quote": "38,957,616,428"
+      }
+    },
+    {
+      "stage": "GART2",
+      "class": "uncultured",
+      "release": "r26.11.4",
+      "state": "staged",
+      "what": "GlobDB r226 Patescibacteriota",
+      "bases": {
+        "value": 11662090161,
+        "label": "measured",
+        "source": "card A-26",
+        "path": "planning/measurements/2026-11-24_a26_r26_11_4_confs.md",
+        "quote": "11,662,090,161"
+      }
+    },
+    {
+      "stage": "GRARE1",
+      "class": "uncultured",
+      "release": "r26.11.5",
+      "state": "staged",
+      "what": "GlobDB r226 archaea, unclassified domain, rare phyla",
+      "bases": {
+        "value": 11369361616,
+        "label": "measured",
+        "source": "card C-75, new against the root and r26.11.4",
+        "path": "planning/measurements/2026-11-26_grare_inputs.md",
+        "quote": "11,369,361,616"
+      }
+    },
+    {
+      "stage": "GRARE2",
+      "class": "uncultured",
+      "release": "r26.11.5",
+      "state": "staged",
+      "what": "GlobDB r226 minor phyla",
+      "bases": {
+        "value": 10280169858,
+        "label": "measured",
+        "source": "card C-75, new against the root, r26.11.4 and GRARE1",
+        "path": "planning/measurements/2026-11-26_grare_inputs.md",
+        "quote": "10,280,169,858"
+      }
+    },
+    {
+      "stage": "GRARE3",
+      "class": "uncultured",
+      "release": "r26.11.5",
+      "state": "staged",
+      "what": "GlobDB r226 minor phyla",
+      "bases": {
+        "value": 10190173735,
+        "label": "measured",
+        "source": "card C-75, new against the root, r26.11.4, GRARE1 and GRARE2",
+        "path": "planning/measurements/2026-11-26_grare_inputs.md",
+        "quote": "10,190,173,735"
+      }
+    },
+    {
+      "stage": "LR2",
+      "class": "uncultured",
+      "release": "r26.11.5",
+      "state": "staged",
+      "what": "long-read peatland, sludge and rumen MAGs and unbinned contigs (re-staged by R-19)",
+      "bases": {
+        "value": 21131651868,
+        "label": "measured",
+        "source": "card R-19's re-stage, new against the root and r26.11.4",
+        "path": "planning/measurements/2026-11-27_staged_fasta_scan.md",
+        "quote": "21,131,651,868"
+      }
+    },
+    {
+      "stage": "SAG1",
+      "class": "uncultured",
+      "release": "r26.11.5",
+      "state": "staged",
+      "what": "GORG-Tropics single-cell genomes",
+      "bases": {
+        "value": 4923761111,
+        "label": "measured",
+        "source": "card C-76, new against the root and r26.11.4 (LR2 holds none)",
+        "path": "planning/measurements/2026-11-26_lr2_sag1_nx1_r232.md",
+        "quote": "4,923,761,111"
+      }
+    },
+    {
+      "stage": "NX1",
+      "class": "uncultured",
+      "release": "r26.11.5",
+      "state": "staged",
+      "what": "niche, extremophile and holobiont MAGs (re-staged by R-20)",
+      "bases": {
+        "value": 3398225424,
+        "label": "measured",
+        "source": "card R-20's re-stage, new against the root and r26.11.4 (LR2, SAG1 hold none)",
+        "path": "planning/measurements/2026-11-27_staged_fasta_scan.md",
+        "quote": "3,398,225,424"
+      }
+    },
+    {
+      "stage": "GV1",
+      "class": "virus",
+      "release": "r26.11.5",
+      "state": "staged",
+      "what": "GVMAGs V2 giant viruses (re-staged by R-23)",
+      "bases": {
+        "value": 1640410024,
+        "label": "measured",
+        "source": "card R-23's re-stage, new against the root and r26.11.4",
+        "path": "planning/measurements/2026-11-27_non_base_bytes.md",
+        "quote": "1,640,410,024"
+      }
+    },
+    {
+      "stage": "EGV1",
+      "class": "virus",
+      "release": "r26.11.5",
+      "state": "staged",
+      "what": "Egovirales gut giant viruses",
+      "bases": {
+        "value": 50954930,
+        "label": "measured",
+        "source": "card C-69: 0 bp held by the root, r26.11.4 or GV1, so all its bases are new",
+        "path": "planning/measurements/2026-11-26_egv1_inputs.md",
+        "quote": "50,954,930"
+      }
+    },
+    {
+      "stage": "ECE2",
+      "class": "plasmid",
+      "release": "r26.11.5",
+      "state": "staged",
+      "what": "Inocles and tycheposons",
+      "bases": {
+        "value": 17676120,
+        "label": "measured",
+        "source": "card C-70, none held",
+        "path": "planning/measurements/2026-11-26_c70_tier1_inputs.md",
+        "quote": "17,676,120 bp |"
+      }
+    },
+    {
+      "stage": "MIR1",
+      "class": "virus",
+      "release": "r26.11.5",
+      "state": "staged",
+      "what": "Mirusviricota, GOEV and Bellas PLV loci",
+      "bases": {
+        "value": 820588756,
+        "label": "measured",
+        "source": "card C-70, new against the root, r26.11.4, GV1 and GRARE1, after the ANI test",
+        "path": "planning/measurements/2026-11-26_c70_tier1_inputs.md",
+        "quote": "820,588,756"
+      }
+    },
+    {
+      "stage": "SAG2",
+      "class": "uncultured",
+      "release": "r26.11.5",
+      "state": "staged",
+      "what": "GORG-Dark single-cell genomes",
+      "bases": {
+        "value": 8020054069,
+        "label": "measured",
+        "source": "card C-77, all new",
+        "path": "planning/measurements/2026-11-26_sag2_inputs.md",
+        "quote": "8,020,054,069 bp (8.020 Gbp)"
+      }
+    },
+    {
+      "stage": "DPN1",
+      "class": "uncultured",
+      "release": "r26.11.5",
+      "state": "staged",
+      "what": "DPANN and Nanobdellota genomes",
+      "bases": {
+        "value": 1791522244,
+        "label": "measured",
+        "source": "card C-78, new against the root, r26.11.4 and GRARE2",
+        "path": "planning/measurements/2026-11-26_c78_compact_inputs.md",
+        "quote": "1,791,522,244"
+      }
+    },
+    {
+      "stage": "SYM2",
+      "class": "uncultured",
+      "release": "r26.11.5",
+      "state": "staged",
+      "what": "protist symbiont bins (551 prokaryote, 74 giant virus) and viral contigs",
+      "bases": {
+        "value": 846561660,
+        "label": "measured",
+        "source": "card C-78, new against the root, r26.11.4 and GV1; prokaryote bins hold 0.49 of its 0.87 Gbp",
+        "path": "planning/measurements/2026-11-26_c78_compact_inputs.md",
+        "quote": "846,561,660"
+      }
+    },
+    {
+      "stage": "LRP1",
+      "class": "plasmid",
+      "release": "r26.11.5",
+      "state": "staged",
+      "what": "urban-water circular plasmidome",
+      "bases": {
+        "value": 240645848,
+        "label": "measured",
+        "source": "card C-78, new against the root, r26.11.4, GRARE2 and NX1",
+        "path": "planning/measurements/2026-11-26_c78_compact_inputs.md",
+        "quote": "240,645,848"
+      }
+    },
+    {
+      "stage": "MIR2",
+      "class": "virus",
+      "release": "r26.11.5",
+      "state": "staged",
+      "what": "polinton-like viruses and virophages",
+      "bases": {
+        "value": 487711936,
+        "label": "measured",
+        "source": "card C-78, new against the root, r26.11.4 and GV1",
+        "path": "planning/measurements/2026-11-26_c78_compact_inputs.md",
+        "quote": "487,711,936"
+      }
+    },
+    {
+      "stage": "MV2",
+      "class": "virus",
+      "release": "r26.11.5",
+      "state": "staged",
+      "what": "MetaVR spill-over vOTUs of 30 kb and more",
+      "bases": {
+        "value": 3762402213,
+        "label": "derived",
+        "source": "card C-79: distinct bases less those held by the root and r26.11.4, less those GV1 holds",
+        "formula": "t - h - g",
+        "inputs": {
+          "t": {
+            "value": 3905501982,
+            "label": "measured",
+            "source": "card C-79, distinct contigs (bp)",
+            "path": "planning/measurements/2026-11-26_mv2_mveukv_inputs.md",
+            "quote": "3,905,501,982"
+          },
+          "h": {
+            "value": 44501988,
+            "label": "measured",
+            "source": "held by the root or r26.11.4",
+            "path": "planning/measurements/2026-11-26_mv2_mveukv_inputs.md",
+            "quote": "44,501,988"
+          },
+          "g": {
+            "value": 98597781,
+            "label": "measured",
+            "source": "held by GV1",
+            "path": "planning/measurements/2026-11-26_mv2_mveukv_inputs.md",
+            "quote": "98,597,781"
+          }
+        }
+      }
+    },
+    {
+      "stage": "MVEUKV",
+      "class": "virus",
+      "release": "r26.11.5",
+      "state": "staged",
+      "what": "MetaVR eukaryotic viruses",
+      "bases": {
+        "value": 1200521389,
+        "label": "derived",
+        "source": "card C-79: distinct bases less those held by the root and r26.11.4, less those GV1 holds (MV2 holds none)",
+        "formula": "t - h - g",
+        "inputs": {
+          "t": {
+            "value": 1256895787,
+            "label": "measured",
+            "source": "card C-79, distinct contigs (bp)",
+            "path": "planning/measurements/2026-11-26_mv2_mveukv_inputs.md",
+            "quote": "1,256,895,787"
+          },
+          "h": {
+            "value": 886270,
+            "label": "measured",
+            "source": "held by the root or r26.11.4",
+            "path": "planning/measurements/2026-11-26_mv2_mveukv_inputs.md",
+            "quote": "886,270"
+          },
+          "g": {
+            "value": 55488128,
+            "label": "measured",
+            "source": "held by GV1",
+            "path": "planning/measurements/2026-11-26_mv2_mveukv_inputs.md",
+            "quote": "55,488,128"
+          }
+        }
+      }
+    },
+    {
+      "stage": "KAVHIFI",
+      "class": "uncultured",
+      "release": "r26.11.5",
+      "state": "staged",
+      "what": "Kavagutti freshwater HiFi MAGs and NCLDV contigs",
+      "bases": {
+        "value": 4658926055,
+        "label": "measured",
+        "source": "card C-80, new against the root, r26.11.4 and the r26.11.5 stages before it",
+        "path": "planning/measurements/2026-11-26_kavhifi_inph2604_inputs.md",
+        "quote": "4,658,926,055"
+      }
+    },
+    {
+      "stage": "INPH2604",
+      "class": "virus",
+      "release": "r26.11.5",
+      "state": "staged",
+      "what": "INPHARED 7Apr2026 new phages",
+      "bases": {
+        "value": 31000866,
+        "label": "measured",
+        "source": "card C-80",
+        "path": "planning/measurements/2026-11-26_kavhifi_inph2604_inputs.md",
+        "quote": "31,000,866"
+      }
+    },
+    {
+      "stage": "GWV1",
+      "class": "virus",
+      "release": "r26.11.5",
+      "state": "staged",
+      "what": "Groundwater Virome Catalogue",
+      "bases": {
+        "value": 3721883345,
+        "label": "measured",
+        "source": "card C-81",
+        "path": "planning/measurements/2026-11-26_gwv1_sag3_wet1_inputs.md",
+        "quote": "3,721,883,345"
+      }
+    },
+    {
+      "stage": "SAG3",
+      "class": "uncultured",
+      "release": "r26.11.5",
+      "state": "staged",
+      "what": "OMZ single-cell genomes",
+      "bases": {
+        "value": 1523911457,
+        "label": "measured",
+        "source": "card C-81, new against the root, r26.11.4, SAG1, GRARE1, MV2, MVEUKV",
+        "path": "planning/measurements/2026-11-26_gwv1_sag3_wet1_inputs.md",
+        "quote": "1,523,911,457"
+      }
+    },
+    {
+      "stage": "WET1",
+      "class": "uncultured",
+      "release": "r26.11.5",
+      "state": "staged",
+      "what": "GWM global wetland MAGs",
+      "bases": {
+        "value": 12615143581,
+        "label": "measured",
+        "source": "card C-81",
+        "path": "planning/measurements/2026-11-26_gwv1_sag3_wet1_inputs.md",
+        "quote": "12,615,143,581"
+      }
+    },
+    {
+      "stage": "RMD1",
+      "class": "uncultured",
+      "release": "r26.11.5",
+      "state": "planned",
+      "what": "Tara Pacific Reef Microbiomics Database genomes (card C-83 staging today)",
+      "bases": {
+        "value": 35000000000,
+        "low": 30000000000,
+        "high": 40000000000,
+        "label": "estimate",
+        "source": "card C-83: 30 to 40 Gbp, the orchestrating session's estimate from the archive's size (11,571,956,924 bytes)",
+        "path": "planning/tasks/TASKS.md"
+      }
+    },
+    {
+      "stage": "GBRMGD",
+      "class": "uncultured",
+      "release": "r26.11.5",
+      "state": "planned",
+      "what": "Great Barrier Reef prokaryote MAGs (card C-83 staging today)",
+      "bases": {
+        "value": 9365445745,
+        "low": 7693415412,
+        "high": 11037476077,
+        "label": "estimate",
+        "round": 0,
+        "source": "the archive's bytes times bases per byte: from RMD1's estimate (30 Gbp in its archive's bytes) to GART1's measured gzip ratio; the bzip2 archive's real ratio is not known",
+        "formula": "b * (g / gb + r / rb) / 2",
+        "low_formula": "b * r / rb",
+        "high_formula": "b * g / gb",
+        "inputs": {
+          "b": {
+            "value": 2967595725,
+            "label": "measured",
+            "source": "tower, prokaryote_bins_5283.tar.bz2 (card R-11)",
+            "path": "sources.yaml",
+            "quote": "bytes: 2967595725"
+          },
+          "g": {
+            "value": 39413000000,
+            "label": "derived",
+            "source": "GART1's bases (staging plan section 7)",
+            "path": "planning/measurements/2026-11-26_r26_11_5_staging_plan.md",
+            "quote": "39.413 Gbp in 10,596,793,098 B",
+            "quote_scale": 1000000000
+          },
+          "gb": {
+            "value": 10596793098,
+            "label": "measured",
+            "source": "GART1's gzip FASTA bytes",
+            "path": "planning/measurements/2026-11-24_a26_r26_11_4_confs.md",
+            "quote": "10,596,793,098"
+          },
+          "r": {
+            "value": 30000000000,
+            "label": "estimate",
+            "source": "card C-83's low estimate for RMD1",
+            "path": "planning/tasks/TASKS.md",
+            "quote": "30 to 40 Gbp for `RMD1`",
+            "quote_scale": 1000000000
+          },
+          "rb": {
+            "value": 11571956924,
+            "label": "measured",
+            "source": "RMD1's archive bytes (card C-83)",
+            "path": "planning/tasks/TASKS.md",
+            "quote": "11,571,956,924 bytes"
+          }
+        }
+      }
+    },
+    {
+      "stage": "SPX2",
+      "class": "metagenome",
+      "release": "r26.11.6",
+      "state": "planned",
+      "what": "SPIRE plant host, briny water and anthropogenic contigs of 5 kb and more",
+      "bases": {
+        "value": 38000000000,
+        "label": "estimate",
+        "source": "card C-72's survey (wishlist U1)",
+        "path": "planning/measurements/2026-11-26_missed_diversity_sources.md",
+        "quote": "about 38 Gbp at 5 kb",
+        "quote_scale": 1000000000
+      }
+    },
+    {
+      "stage": "O4",
+      "class": "organelle",
+      "release": "r26.11.6",
+      "state": "planned",
+      "what": "non-RefSeq organelles (10,763 records)",
+      "bases": {
+        "value": 1000000000,
+        "low": 700000000,
+        "high": 1300000000,
+        "label": "estimate",
+        "source": "card C-72's survey: 0.7 to 1.3 Gbp",
+        "path": "planning/measurements/2026-11-26_missed_diversity_sources.md"
+      }
+    },
+    {
+      "stage": "LGRT2",
+      "class": "metagenome",
+      "release": "r26.11.6",
+      "state": "planned",
+      "what": "Logan multi-bait sweep",
+      "bases": {
+        "value": 10000000000,
+        "low": 5000000000,
+        "high": 15000000000,
+        "label": "estimate",
+        "source": "card C-72's survey: 5 to 15 Gbp",
+        "path": "planning/measurements/2026-11-26_missed_diversity_sources.md"
+      }
+    },
+    {
+      "stage": "REFSEQ-NEW",
+      "class": "isolate",
+      "release": "r26.11.6",
+      "state": "planned",
+      "what": "complete RefSeq representatives absent from GTDB R226",
+      "bases": {
+        "value": 25812000000,
+        "label": "estimate",
+        "source": "the list's size, measured by the wishlist (5,036 genomes), as an upper estimate of its new bases: the re-key against GTDB R232 is not done",
+        "path": "planning/measurements/2026-11-26_missed_diversity_sources.md",
+        "quote": "25.812 Gbp (*measured*, wishlist)",
+        "quote_scale": 1000000000
+      }
+    },
+    {
+      "stage": "LR3",
+      "class": "uncultured",
+      "release": "r26.11.6",
+      "state": "planned",
+      "what": "long-read cMAG sets on tower (MFD_LR only is estimated)",
+      "bases": {
+        "value": 60000000000,
+        "low": 55000000000,
+        "high": 65000000000,
+        "label": "estimate",
+        "source": "card C-72's survey: MFD_LR 55 to 65 Gbp; MIDAS_LR, LR_COMPOST, LR_ARC, LR_REVIO not estimated",
+        "path": "planning/measurements/2026-11-26_missed_diversity_sources.md"
+      }
+    },
+    {
+      "stage": "G232-A",
+      "class": "uncultured",
+      "release": "r26.11.6",
+      "state": "planned",
+      "what": "first cut of GlobDB r232 new species",
+      "bases": {
+        "value": 12000000000,
+        "label": "estimate",
+        "source": "card C-72's survey: one stream capped at about 12 Gbp",
+        "path": "planning/measurements/2026-11-26_missed_diversity_sources.md",
+        "quote": "capped about 12 Gbp",
+        "quote_scale": 1000000000
+      }
+    },
+    {
+      "stage": "ASG1",
+      "class": "uncultured",
+      "release": "r26.11.6",
+      "state": "planned",
+      "what": "Appler 2026 Asgardarchaeota MAGs (card C-82)",
+      "bases": {
+        "value": 1200000000,
+        "low": 1000000000,
+        "high": 1400000000,
+        "label": "estimate",
+        "source": "card C-70's estimate, 1.0 to 1.4 Gbp; out of r26.11.5 (no genome sequence fetched), card C-82 stages it for r26.11.6",
+        "path": "planning/measurements/2026-11-26_missed_diversity_sources.md"
+      }
+    }
+  ],
+  "ownership_release": "r26.11.5",
+  "r26_11_5_ownership": null,
+  "r26_11_5_upper_bound": true,
+  "r26_11_5_bound_text": {
+    "upper": "the r26.11.5 total is an upper bound until card A-29's exact ownership over its chain replaces the staging notes' new bases",
+    "exact": "r26.11.5's new bases are card A-29's exact ownership over its chain"
+  },
+  "tower_remainder": {
+    "rule": "every tower_* entry of sources.yaml that no stage of this figure takes; its bytes are the sizes sources.yaml records for its files (files landed and recorded by card R-11 or later cards); a file whose name is a nucleotide FASTA or an archive counts as sequence, any other as other files; archives are not opened, so part of the sequence bytes is tables, proteins or eukaryotes",
+    "figure_text": "On tower and in no release, at least (files sources.yaml records):\n{entries} sets, {seq_gb:.0f} GB of FASTA and archives, {other_gb:.0f} GB of other files;\nbases not known. {waiting} more sets listed with no file recorded.",
+    "assigned": {
+      "tower_egv1": "EGV1",
+      "tower_ece2": "ECE2",
+      "tower_mir1": "MIR1",
+      "tower_sag2": "SAG2",
+      "tower_dpn1": "DPN1",
+      "tower_sym2": "SYM2",
+      "tower_lrp1": "LRP1",
+      "tower_mir2": "MIR2",
+      "tower_gwv1": "GWV1",
+      "tower_sag3": "SAG3",
+      "tower_wet1": "WET1",
+      "tower_rmd1": "RMD1",
+      "tower_batch6b_coral_rmd1": "RMD1",
+      "tower_gbr_mgd": "GBRMGD",
+      "tower_asg1": "ASG1",
+      "tower_mfd_lr": "LR3",
+      "tower_midas_lr": "LR3",
+      "tower_lr_arc": "LR3",
+      "tower_lr_revio": "LR3",
+      "tower_lr_compost": "LR3",
+      "tower_batch6b_ncbi_o4_org": "O4",
+      "tower_globdb_r232_tables": "(reference tables of every release, card C-74)",
+      "tower_gtdb_r232_meta": "(reference tables of every release, card C-74)"
+    }
+  },
   "benchmarks": {
     "gbp_refs": [
       {
         "id": "opengenome1",
-        "label": "OpenGenome 1 (Evo, 300 Gbp)",
-        "value_gbp": 300.0,
-        "source": "Nguyen et al., Science 2024 (prokaryote + phage + plasmid pretraining corpus)"
+        "value": 300.0,
+        "label": "measured",
+        "citation": "Nguyen et al., Science 2024 (Evo): OpenGenome, prokaryote, phage and plasmid pretraining corpus",
+        "date": "2024",
+        "re_verified": false,
+        "source": "the figure's earlier data file; not re-verified (AGENTS section 8: nothing fetched)",
+        "figure_label": "OpenGenome 1 (Evo), 300 Gbp, Science 2024; not re-verified"
       }
     ],
     "protein_refs": [
       {
         "id": "ncbi_clustered_nr",
-        "label": "NCBI ClusteredNR (~286M, 90% ID; full nr >595M)",
-        "value_m": 286.0,
+        "value": 286.0,
+        "label": "measured",
+        "citation": "NCBI BLAST ClusteredNR default, 90% identity and 90% coverage; full nr over 595M",
+        "date": "2025-08",
+        "re_verified": false,
         "color": "#555555",
-        "source": "NCBI BLAST ClusteredNR default (Aug 2025, 90% ID / 90% cov; full nr >595M, no synteny)"
+        "source": "the figure's earlier data file; not re-verified",
+        "figure_label": "NCBI ClusteredNR, about 286M at 90% identity (Aug 2025)"
       },
       {
         "id": "uniref100",
-        "label": "UniRef100 (227.1M, 100% ID, 2026_04)",
-        "value_m": 227.09,
+        "value": 227.09,
+        "label": "measured",
+        "citation": "UniProt release 2026_04, UniRef100",
+        "date": "2026_04",
+        "re_verified": false,
         "color": "#3A7CA5",
-        "source": "UniProt Release 2026_04 (all domains of life, 100% ID)"
+        "source": "the figure's earlier data file; not re-verified",
+        "figure_label": "UniRef100, 227.1M (UniProt 2026_04)"
       },
       {
         "id": "uniref50",
-        "label": "UniRef50 (41.2M, 50% ID, 2026_04)",
-        "value_m": 41.24,
+        "value": 41.24,
+        "label": "measured",
+        "citation": "UniProt release 2026_04, UniRef50 (41,243,524 clusters, 50% identity, 80% coverage)",
+        "date": "2026_04",
+        "re_verified": false,
         "color": "#B85000",
-        "source": "UniProt Release 2026_04 (41,243,524 clusters; all domains of life, 50% ID / 80% cov)"
+        "source": "the figure's earlier data file; not re-verified",
+        "figure_label": "UniRef50, 41.2M (UniProt 2026_04)"
       }
     ],
     "counterfactual": {
       "anchor_release": "r26.11.2",
-      "baseline_stage": "C5",
-      "rate_nr50_k_per_gbp": 10.463,
-      "label_template": "Isolate-only counterfactual ({val:.1f}M at C5 rate)"
+      "through_release": "r26.11.4",
+      "rate_nr50_per_gbp": {
+        "value": 10463.0,
+        "label": "derived",
+        "round": 1,
+        "source": "C5's new NR50 families per stored Gbp (r26.11.2 against r26.11.1)",
+        "formula": "n / (b / 1e9)",
+        "inputs": {
+          "n": {
+            "value": 95310,
+            "label": "measured",
+            "source": "c35_check.py on r26.11.2",
+            "path": "planning/measurements/2026-11-21_release_r26.11.2.md",
+            "quote": "`95,310`"
+          },
+          "b": {
+            "value": 9109234757,
+            "label": "measured",
+            "host": "wilkcomp02",
+            "source": "C5's stored bases (audit)",
+            "path": "planning/measurements/2026-11-27_release_diversity.md",
+            "quote": "9,109,234,757"
+          }
+        }
+      },
+      "figure_label": "Isolate rate (C5) from r26.11.2:\n{val:.1f}M"
     }
   },
   "callout": {
     "release_id": "r26.11.3",
-    "text": "r26.11.3: +120% NR50\nfrom G1 + SPX1"
+    "growth": {
+      "value": 120,
+      "label": "derived",
+      "round": 0,
+      "source": "r26.11.3's NR50 families over r26.11.2's, less one, in percent",
+      "formula": "(a / b - 1) * 100",
+      "inputs": {
+        "a": {
+          "value": 22155373,
+          "label": "measured",
+          "host": "wilkcomp02",
+          "source": "r26.11.3 NR50 (audit)",
+          "path": "planning/measurements/2026-11-24_release_r26.11.3.md",
+          "quote": "`22,155,373` NR50"
+        },
+        "b": {
+          "value": 10091519,
+          "label": "measured",
+          "host": "wilkcomp02",
+          "source": "r26.11.2 NR50 (audit)",
+          "path": "planning/measurements/2026-11-21_release_r26.11.2/summary.json",
+          "quote": "\"clusters\": 10091519"
+        }
+      }
+    },
+    "figure_text": "r26.11.3: NR50 families +{growth}%\nwith G1 and SPX1"
   },
-  "stage_novelty_nr50_per_gbp_k": [
+  "novelty_baseline_stage": "C5",
+  "novelty_caption": "Each stage against the release before it: H1, PL1 against rM.2;\nC5, V1 against r26.11.1; G1, SPX1 against r26.11.2. Compare loosely.",
+  "stage_novelty": [
     {
       "stage": "H1",
-      "label": "H1 · Huge phages\n(r26.11.1)",
-      "value_k": 489.4,
-      "category": "virus",
-      "release": "r26.11.1"
+      "figure_label": "H1, huge phages\n(r26.11.1)",
+      "per_gbp": {
+        "value": 489360,
+        "label": "derived",
+        "round": 0,
+        "source": "new NR50 clusters with an H1 member over H1's stored Gbp",
+        "formula": "n / (b / 1e9)",
+        "inputs": {
+          "n": {
+            "value": 890552,
+            "label": "measured",
+            "source": "c35_check.py on r26.11.1",
+            "path": "planning/measurements/2026-11-16_release_r26.11.1.md",
+            "quote": "890,552 |"
+          },
+          "b": {
+            "value": 1819831338,
+            "label": "measured",
+            "host": "wilkcomp02",
+            "source": "audit",
+            "path": "planning/measurements/2026-11-27_release_diversity.md",
+            "quote": "1,819,831,338"
+          }
+        }
+      }
     },
     {
       "stage": "SPX1",
-      "label": "SPX1 · SPIRE ≥5 kb\n(r26.11.3)",
-      "value_k": 267.4,
-      "category": "metagenome",
-      "release": "r26.11.3"
+      "figure_label": "SPX1, SPIRE contigs of 5 kb and more\n(r26.11.3)",
+      "per_gbp": {
+        "value": 267394,
+        "label": "derived",
+        "round": 0,
+        "source": "as H1",
+        "formula": "n / (b / 1e9)",
+        "inputs": {
+          "n": {
+            "value": 9542922,
+            "label": "measured",
+            "source": "c35_check.py on r26.11.3",
+            "path": "planning/measurements/2026-11-24_release_r26.11.3.md",
+            "quote": "`9,542,922`"
+          },
+          "b": {
+            "value": 35688628875,
+            "label": "measured",
+            "host": "wilkcomp02",
+            "source": "audit",
+            "path": "planning/measurements/2026-11-27_release_diversity.md",
+            "quote": "35,688,628,875"
+          }
+        }
+      }
     },
     {
       "stage": "G1",
-      "label": "G1 · GlobDB archaea\n(r26.11.3)",
-      "value_k": 266.0,
-      "category": "arch_mag",
-      "release": "r26.11.3"
+      "figure_label": "G1, GlobDB archaea\n(r26.11.3)",
+      "per_gbp": {
+        "value": 266041,
+        "label": "derived",
+        "round": 0,
+        "source": "as H1",
+        "formula": "n / (b / 1e9)",
+        "inputs": {
+          "n": {
+            "value": 2671721,
+            "label": "measured",
+            "source": "c35_check.py on r26.11.3",
+            "path": "planning/measurements/2026-11-24_release_r26.11.3.md",
+            "quote": "`2,671,721`"
+          },
+          "b": {
+            "value": 10042502859,
+            "label": "measured",
+            "host": "wilkcomp02",
+            "source": "audit",
+            "path": "planning/measurements/2026-11-27_release_diversity.md",
+            "quote": "10,042,502,859"
+          }
+        }
+      }
     },
     {
       "stage": "V1",
-      "label": "V1 · UHGV gut phages\n(r26.11.2)",
-      "value_k": 135.0,
-      "category": "virus",
-      "release": "r26.11.2"
+      "figure_label": "V1, UHGV gut phages\n(r26.11.2)",
+      "per_gbp": {
+        "value": 135037,
+        "label": "derived",
+        "round": 0,
+        "source": "as H1",
+        "formula": "n / (b / 1e9)",
+        "inputs": {
+          "n": {
+            "value": 699286,
+            "label": "measured",
+            "source": "c35_check.py on r26.11.2",
+            "path": "planning/measurements/2026-11-21_release_r26.11.2.md",
+            "quote": "`699,286`"
+          },
+          "b": {
+            "value": 5178493077,
+            "label": "measured",
+            "host": "wilkcomp02",
+            "source": "audit",
+            "path": "planning/measurements/2026-11-27_release_diversity.md",
+            "quote": "5,178,493,077"
+          }
+        }
+      }
     },
     {
       "stage": "PL1",
-      "label": "PL1 · PLSDB plasmids\n(r26.11.1)",
-      "value_k": 33.9,
-      "category": "plasmid",
-      "release": "r26.11.1"
+      "figure_label": "PL1, PLSDB plasmids\n(r26.11.1)",
+      "per_gbp": {
+        "value": 33876,
+        "label": "derived",
+        "round": 0,
+        "source": "as H1",
+        "formula": "n / (b / 1e9)",
+        "inputs": {
+          "n": {
+            "value": 200698,
+            "label": "measured",
+            "source": "c35_check.py on r26.11.1",
+            "path": "planning/measurements/2026-11-16_release_r26.11.1.md",
+            "quote": "200,698 |"
+          },
+          "b": {
+            "value": 5924552875,
+            "label": "measured",
+            "host": "wilkcomp02",
+            "source": "audit",
+            "path": "planning/measurements/2026-11-27_release_diversity.md",
+            "quote": "5,924,552,875"
+          }
+        }
+      }
     },
     {
       "stage": "C5",
-      "label": "C5 · GTDB strains\n(r26.11.2)",
-      "value_k": 10.5,
-      "category": "prok_iso",
-      "release": "r26.11.2"
+      "figure_label": "C5, GTDB strains\n(r26.11.2)",
+      "per_gbp": {
+        "value": 10463,
+        "label": "derived",
+        "round": 0,
+        "source": "as H1",
+        "formula": "n / (b / 1e9)",
+        "inputs": {
+          "n": {
+            "value": 95310,
+            "label": "measured",
+            "source": "c35_check.py on r26.11.2",
+            "path": "planning/measurements/2026-11-21_release_r26.11.2.md",
+            "quote": "`95,310`"
+          },
+          "b": {
+            "value": 9109234757,
+            "label": "measured",
+            "host": "wilkcomp02",
+            "source": "audit",
+            "path": "planning/measurements/2026-11-27_release_diversity.md",
+            "quote": "9,109,234,757"
+          }
+        }
+      }
     }
   ],
-  "novelty_baseline_stage": {
-    "stage": "C5",
-    "exact_value_k": 10.463
-  },
-  "footnote": "bio-box: rN.3–r26.11.3 measured on wilkcomp02 (c35_check.py / release notes); r26.11.4* hatched/open = staged Gbp (A-26 measured) & 265M / 64M estimate (DEC-77). Benchmarks: OpenGenome 1 (Evo, Science 2024, 300 Gbp); UniRef50 (41.24M) & UniRef100 (227.09M), UniProt 2026_04; NCBI ClusteredNR (~286M 90% ID, Aug 2025 default; full nr >595M, no synteny)."
+  "footnote": "Measured: stored bases of every built stage (contig_index default variants, read-only on wilkcomp02, 2026-11-27); proteins and NR50 families of the released releases (cluster tables and c35_check.py). Staged: new bases from each stage's staging note; r26.11.4's from card A-26's exact ownership; {bound}.\nPlanned: estimates from the cards and the catalog plan, drawn at the middle of their range with the range as a whisker. Protein projection of r26.11.4: r26.11.3's proteins plus 0.90 to 1.10 M new proteins per new Gbp (the hybrid clustering design); no NR50 family projection is drawn.\nBenchmarks are the values and dates their sources state, not re-verified. D = exp(H) of the class shares of stored Gbp. Release dates: the day each release's manifest was written.",
+  "audit": {
+    "host": "wilkcomp02",
+    "date": "2026-11-27",
+    "command": "plot_release_diversity.py root --root /tmp/if2453/r10/root --built V2,PL2 --threads 2 --memory 4GB (unit a31-root, test image bio-box-test_faec1f4.sif, root bound read-only; 16 s)",
+    "releases": {
+      "rN.3": {
+        "stages": [
+          "S1",
+          "P1",
+          "P2"
+        ],
+        "stored_bases": 12276916069,
+        "default_contigs": 32815,
+        "cluster_member_rows": 21241368,
+        "proteins": 10620684,
+        "nr50": null,
+        "nr90": null
+      },
+      "rM.2": {
+        "stages": [
+          "S1",
+          "P1",
+          "P2",
+          "P3",
+          "P4",
+          "P5",
+          "P6"
+        ],
+        "stored_bases": 52132698276,
+        "default_contigs": 54265,
+        "cluster_member_rows": 91631686,
+        "proteins": 45815843,
+        "nr50": null,
+        "nr90": null
+      },
+      "r26.11.1": {
+        "stages": [
+          "S1",
+          "P1",
+          "P2",
+          "P3",
+          "P4",
+          "P5",
+          "P6",
+          "H1",
+          "PL1"
+        ],
+        "stored_bases": 59877082489,
+        "default_contigs": 122626,
+        "cluster_member_rows": 98204082,
+        "proteins": 49102041,
+        "nr50": null,
+        "nr90": null
+      },
+      "r26.11.2": {
+        "stages": [
+          "S1",
+          "P1",
+          "P2",
+          "P3",
+          "P4",
+          "P5",
+          "P6",
+          "H1",
+          "PL1",
+          "C5",
+          "V1"
+        ],
+        "stored_bases": 74164810323,
+        "default_contigs": 293637,
+        "cluster_member_rows": 115560352,
+        "proteins": 57780176,
+        "nr50": 10091519,
+        "nr90": 35475280
+      },
+      "r26.11.3": {
+        "stages": [
+          "S1",
+          "P1",
+          "P2",
+          "P3",
+          "P4",
+          "P5",
+          "P6",
+          "H1",
+          "PL1",
+          "C5",
+          "V1",
+          "G1",
+          "SPX1"
+        ],
+        "stored_bases": 119895942057,
+        "default_contigs": 4338167,
+        "cluster_member_rows": 204675750,
+        "proteins": 102337875,
+        "nr50": 22155373,
+        "nr90": 71208987
+      }
+    },
+    "stages": {
+      "S1": {
+        "default_bases": 1664109938,
+        "default_contigs": 27258,
+        "rows": 27258
+      },
+      "P1": {
+        "default_bases": 1016625803,
+        "default_contigs": 539,
+        "rows": 539
+      },
+      "P2": {
+        "default_bases": 9596180328,
+        "default_contigs": 5018,
+        "rows": 5018
+      },
+      "P3": {
+        "default_bases": 9949077522,
+        "default_contigs": 9107,
+        "rows": 9107
+      },
+      "P4": {
+        "default_bases": 9976456950,
+        "default_contigs": 4005,
+        "rows": 4005
+      },
+      "P5": {
+        "default_bases": 9967711632,
+        "default_contigs": 4111,
+        "rows": 4111
+      },
+      "P6": {
+        "default_bases": 9962536103,
+        "default_contigs": 4227,
+        "rows": 4227
+      },
+      "H1": {
+        "default_bases": 1819831338,
+        "default_contigs": 6714,
+        "rows": 6714
+      },
+      "PL1": {
+        "default_bases": 5924552875,
+        "default_contigs": 61647,
+        "rows": 61647
+      },
+      "C5": {
+        "default_bases": 9109234757,
+        "default_contigs": 2653,
+        "rows": 2653
+      },
+      "V1": {
+        "default_bases": 5178493077,
+        "default_contigs": 168358,
+        "rows": 168358
+      },
+      "G1": {
+        "default_bases": 10042502859,
+        "default_contigs": 1227214,
+        "rows": 1227214
+      },
+      "SPX1": {
+        "default_bases": 35688628875,
+        "default_contigs": 2817316,
+        "rows": 2817316
+      },
+      "V2": {
+        "default_bases": 8199089073,
+        "default_contigs": 243466,
+        "rows": 243915
+      },
+      "PL2": {
+        "default_bases": 1974983002,
+        "default_contigs": 112562,
+        "rows": 112562
+      }
+    }
+  }
 }
