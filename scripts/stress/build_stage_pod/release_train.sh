@@ -113,7 +113,7 @@ fail() {
 
 bb_ro() {
   # Short read-only command in the runtime image (capped scope, nice 19, OMP_NUM_THREADS=2).
-  local what=$1 img=${IMG:-$IMAGE} ro_binds=()
+  local what=$1 img=${IMG:-$IMAGE} quota=${BB_RO_QUOTA:-200%} omp=${BB_RO_OMP:-2} ro_binds=()
   shift
   case "$what" in
     cli) set -- python -m biobox.cli "$@" ;;
@@ -122,8 +122,8 @@ bb_ro() {
   [ -d "$ROOT" ] && ro_binds+=(--bind "$ROOT:$ROOT:ro")
   [ -d "$REAL_ROOT" ] && [ "$ROOT" != "$REAL_ROOT" ] && ro_binds+=(--bind "$REAL_ROOT:$REAL_ROOT:ro")
   [ -d "$PFAMDIR" ] && ro_binds+=(--bind "$PFAMDIR:$PFAMDIR:ro")
-  systemd-run --user --scope --quiet -p MemoryMax=16G -p MemorySwapMax=0 -p CPUQuota=200% nice -n 19 \
-    singularity exec --cleanenv --env PYTHONPATH="$PYPATH" --env OMP_NUM_THREADS=2 --env PYTHONUNBUFFERED=1 \
+  systemd-run --user --scope --quiet -p MemoryMax=16G -p MemorySwapMax=0 -p "CPUQuota=$quota" nice -n 19 \
+    singularity exec --cleanenv --env PYTHONPATH="$PYPATH" --env "OMP_NUM_THREADS=$omp" --env PYTHONUNBUFFERED=1 \
     --bind /tmp/if2453 "${ro_binds[@]}" --bind /sys/fs/cgroup:/sys/fs/cgroup:ro "$img" "$@"
 }
 
@@ -888,13 +888,30 @@ do_run() {
     fail "release_examples.sh failed with exit $rc (see $WORK/examples.log)"
   fi
 
-  # 8. Post-release check, root_added.tsv, and announcement draft
+  # 8. Saturation curve tracker (card A-33, DEC-86 (1)), post-release check, root_added.tsv, and announcement draft
+  local sat_threads=$eff_ex_threads
+  [ "$sat_threads" -gt 4 ] && sat_threads=4
+  [ "$sat_threads" -lt 1 ] && sat_threads=1
+  rm -rf "$WORK/saturation" "$WORK/tmp/saturation"
+  mkdir -p "$WORK/saturation" "$WORK/tmp/saturation"
+  local sat_args=(measure --root "$ROOT" --release "$rel" --threads "$sat_threads"
+                  --tmp "$WORK/tmp/saturation" --out "$WORK/saturation" --stats-out "$WORK/saturation/stats.json")
+  [ -n "$latest" ] && sat_args+=(--earlier "$latest")
+  log "saturation: release=$rel earlier=${latest:-none} threads=$sat_threads"
+  BB_RO_QUOTA="$((sat_threads * 100))%" bb_ro py "$BIN/release_saturation.py" "${sat_args[@]}" \
+    > "$WORK/saturation/measure.log" 2>&1 || { rm -rf "$WORK/tmp/saturation"; fail "release_saturation.py failed (see $WORK/saturation/measure.log)"; }
+  rm -rf "$WORK/tmp/saturation"
+  if [ -s "$WORK/saturation/saturation.json" ]; then
+    cp "$WORK/saturation/saturation.json" "$WORK/saturation.json" || fail "cp saturation.json"
+  fi
+
   local chk_args=(--root "$ROOT" --before "$WORK/before/listing.tsv" --after "$WORK/after/listing.tsv"
                   --release "$rel" --stages "$stages" --out "$WORK/check")
   [ -n "$latest" ] && chk_args+=(--earlier "$latest")
   [ -n "$new_hash" ] && chk_args+=(--manifest-hash "$new_hash")
   [ -n "$pack_id" ] && chk_args+=(--pack-id "$pack_id")
   [ -s "$WORK/examples/summary.tsv" ] && chk_args+=(--examples-summary "$WORK/examples/summary.tsv")
+  [ -s "$WORK/saturation/saturation.json" ] && chk_args+=(--saturation-summary "$WORK/saturation/saturation.json")
   python3 -I "$BIN/train_check.py" "${chk_args[@]}" > "$WORK/check/check.out"
   rc=$?
   cat "$WORK/check/check.out"

@@ -975,7 +975,7 @@ with `STAGE_SHARE=0` (`systemd-run ... --setenv=STAGE_SHARE=0 ...`; the wave pas
 Releases are rolling (DEC-52, card C-46): a new release is cut whenever at least one stage has been
 completed since the last release and no release or stage build is active. One driver,
 `scripts/stress/build_stage_pod/release_train.sh` (with helpers `train_plan.py`, `train_est.py`,
-`train_check.py`, and `r50_watch.py`), runs the whole release train from the pod host without a
+`release_saturation.py`, `train_check.py`, and `r50_watch.py`), runs the whole release train from the pod host without a
 per-release script.
 
 The two selection rules:
@@ -1088,10 +1088,14 @@ more: over 1.50 of the estimate stops the unit at once; over 1.20 and at or unde
 `recorded_over_20pct` without stopping, as more than 20% under is; the ratio compared with 1.50 is the reported
 three-decimal one); runs
 `release verify` on the new release and every earlier release (checking unchanged manifest hashes);
-builds and verifies the search pack in parts (card W-35); runs `scripts/release_examples.sh`; and
-writes `$WORK/root_added.tsv` (size and sha256 of every file added to the root, for the `/stor/work`
-durable tar backup) and `$WORK/announcement.md`. It never deletes or moves anything of an earlier
-release.
+builds and verifies the search pack in parts (card W-35); runs `scripts/release_examples.sh`; runs `scripts/stress/build_stage_pod/release_saturation.py measure`
+(card A-33, DEC-86 (1): complete-ORF NR50 family and strand-canonical syntenic adjacent NR50 pair
+saturation curves, Good–Turing coverage `C_hat`, Chao1 richness, and `k >= 3` / `k >= 5` marginal yields
+at up to 4 threads in a 16 GB read-only scope, writing `$WORK/saturation.json` and
+`$WORK/saturation/saturation.txt`); and writes `$WORK/root_added.tsv` (size and sha256 of every file
+added to the root, for the `/stor/work` durable tar backup) and `$WORK/announcement.md` (including the
+concise saturation summary line via `train_check.py --saturation-summary`). It never deletes or moves
+anything of an earlier release.
 
 **The clustering method (DEC-77; cards B-71, B-72, A-27).** `release_train.sh` clusters with
 `CLUSTER_METHOD` (or `--cluster-method`), whose default in the train is `hybrid-b1`: for NR90 the linclust step
@@ -1204,6 +1208,25 @@ python $TREE/scripts/plot_release_diversity.py render \
    and copy the `.png` and `.svg` back with `scp`. Nothing is rendered on the laptop (AGENTS §5.5).
 3. Visually inspect the rendered `.png` for label clarity and zero overlaps, then link/embed it in
    `planning/measurements/<YYYY-MM-DD>_release_<REL>.md` and present it with the release announcement.
+4. Update the saturation curve history and figure (card A-33, DEC-86 (1)): `release_train.sh` already wrote
+   `$WORK/saturation/saturation.json` and `$WORK/saturation/stats.json`. On the pod, in the image, one thread,
+   insert the release's labelled numbers into [`planning/measurements/release_saturation_history.json`](planning/measurements/release_saturation_history.json),
+   verify every label, source, and derived formula (`checks: all pass`), and render the 4-panel saturation figure:
+
+```bash
+python $TREE/scripts/stress/build_stage_pod/release_saturation.py history \
+  --data $TREE/planning/measurements/release_saturation_history.json \
+  --add $WORK/saturation/saturation.json --stats $WORK/saturation/stats.json \
+  --host wilkcomp02 --date <YYYY-MM-DD> \
+  --command "release_saturation.py measure --root /tmp/if2453/r10/root --release <REL> --earlier <PREV>" \
+  --set-collector --check
+python $TREE/scripts/stress/build_stage_pod/release_saturation.py render \
+  --data $TREE/planning/measurements/release_saturation_history.json \
+  --out $TREE/planning/measurements/<YYYY-MM-DD>_release_<REL>/release_saturation_<REL>
+```
+
+   Copy the `.png`, `.svg`, and updated `release_saturation_history.json` back, visually inspect the `.png` for
+   zero overlapping labels, and link it in the release measurement note alongside the diversity figure.
 
 ## Mirror to tower
 
