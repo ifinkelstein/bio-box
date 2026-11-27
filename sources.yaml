@@ -1545,7 +1545,11 @@ sources:
           4.924 Gbp net new after S1..GART2; genomes.json sha256
           9667599059cddfd012bb437fa4ea87bfeeb81d8cb9f4cdeaccf4cc36fea908ad; objects.json sha256
           e7977369f84893f3419c878226dc20eac3d0d4e48b5d6c6a27993f9de64b2234; s2_check_inputs.py SAG1 problems: [];
-          awaiting /tmp headroom after r26.11.3 before moving into /tmp/if2453/s2/inputs/SAG1/)
+          awaiting /tmp headroom after r26.11.3 before moving into /tmp/if2453/s2/inputs/SAG1/; card C-76,
+          2026-11-26: files re-checked against these sizes and sha256, kept whole, 954 contigs held by S1..GART2;
+          r232 status recorded in /tmp/if2453/c76/SAG1/r232_status.tsv: 3,160 SAGs in GTDB R232 [1,824 of them also
+          in GlobDB r232], 2,376 in neither, 1 not in the ENA table; recorded for the later r232 cut, not used to
+          remove; planning/measurements/2026-11-26_lr2_sag1_nx1_r232.md)
     approved: under DEC-50 (entry written by card C-58 on 2026-11-24 before any fetch)
   - name: ena_gorg_sag_tables
     what: >-
@@ -1847,7 +1851,10 @@ sources:
           S1..SAG1+NX1 -> 555,242 contigs / 21.549 Gbp = 99.43% net new; genomes.json sha256
           22d9f1fe2e07ff0756f34806fed450f6592d9bea9f80b49eceb54066f2143061; objects.json sha256
           fbe792620f011a9a7a6f842e5fe165946d2055a2b45dc0387e3eb4c516e9b3a8; s2_check_inputs.py LR2 problems: [];
-          awaiting /tmp headroom after r26.11.3 before moving into /tmp/if2453/s2/inputs/LR2/)
+          awaiting /tmp headroom after r26.11.3 before moving into /tmp/if2453/s2/inputs/LR2/; card C-76,
+          2026-11-26: files re-checked, kept whole; r232 status in /tmp/if2453/c76/LR2/r232_status.tsv: no genome
+          carries an INSDC accession, so all 49,205 are not visible to the accession test, none removed;
+          planning/measurements/2026-11-26_lr2_sag1_nx1_r232.md)
     approved: under DEC-50 (entry written by card C-66 on 2026-11-24 before any fetch)
   - name: microflora_danica_mags
     what: >-
@@ -1967,7 +1974,12 @@ sources:
           889 code 11 / 6 code 25 / 1 code 4, 5 contigs held by S1..SAG1 -> 391,098 contigs / 3.398 Gbp = 99.999% net
           new; genomes.json sha256 2ea62f7c05baccc7f685e25be9557f21e68a6cb0740e5186132970589176895a; objects.json sha256
           d808af5f52d1b11d03194dee0dac911041243caa2b44b7ceeabba8e8a595f172; s2_check_inputs.py NX1 problems: [];
-          awaiting /tmp headroom after r26.11.3 before moving into /tmp/if2453/s2/inputs/NX1/)
+          awaiting /tmp headroom after r26.11.3 before moving into /tmp/if2453/s2/inputs/NX1/; card C-76,
+          2026-11-26: files re-checked against these sizes and sha256, kept whole, 5 contigs held by S1..GART2;
+          r232 status recorded in /tmp/if2453/c76/NX1/r232_status.tsv: 537 genomes in GTDB R232 [473 of them also
+          in GlobDB r232; 61 of this entry's 678 and 3 of eHOMD's 20 in GTDB R232 only], 161 in neither, 198 named
+          MAGs not visible to the accession test; recorded for the later r232 cut, not used to remove;
+          planning/measurements/2026-11-26_lr2_sag1_nx1_r232.md)
     approved: under DEC-50 (entry written by card C-66 on 2026-11-24 before any fetch)
   - name: logan50_nonhuman
     what: >-
