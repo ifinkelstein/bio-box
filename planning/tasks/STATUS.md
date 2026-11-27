@@ -152,7 +152,54 @@ holiday; ftp is fine, use it if needed; omd2: fetch away; bbsag20 fetch last, ys
   13:08; card C-79 is done on its branch (`MV2` 98,920 UViGs and 3.909 Gbp; `MVEUKV` 105,902 vOTUs and 1.257 Gbp;
   both mirrored to `tower`), pushed for `ci`, not merged.
 
-**W10. Wave-4 stopped at `V2`'s `check`, 2026-11-26 16:32:54 CST (current; nothing is building).** This session was
+**W11. Wave-6 is building the 18 remaining stages of `r26.11.4`, launched 2026-11-26 19:25:15 CST (current).**
+- What runs (*measured*, `wilkcomp02`, 19:25, the first two lines of `/tmp/if2453/stages/r26-11-4-wave-6.log`): unit
+  `r26-11-4-wave-6.service`, launched as RUNBOOK "A wave of stages" gives it with `--setenv=SCAN_JOBS=10`:
+  `stage_wave.sh /tmp/if2453/stages/r26-11-4-wave-6.log PL2 PL3 CG1 MGE1 SAT1 ECE1 O1 O2 LPL1 SYM1 LRV1 LGRT1 MGE2 MV1
+  V3 LR1 GART1 GART2`; wave name `wf371550be136d522`, sharing on (card A-30: its first use on real stages). Mirror
+  `/tmp/if2453/ci/rel1126c`, one `rsync` of the clean checkout at `9a74ac0`, not synced again; the `ci` run of that
+  commit was green before the launch (run `45917897526`). To read its state:
+  `ssh if2453@wilkcomp02.ccbb.utexas.edu "tail -n 3 /tmp/if2453/stages/r26-11-4-wave-6.log"`, then the running
+  stage's `/tmp/if2453/stages/<stage>/driver.log` and `run/`.
+- `V2` is built: wave-5 (`r26-11-4-wave-5.service`, 18:28, `stage_wave.sh --resume-at V2 --from-mode check ... V2`,
+  the same mirror) ran `check` with card R-17's correction (exit 0 at 18:40:50) and `backup` (exit 0 at 18:43:48);
+  `/tmp/if2453/stages/v2/backup/DONE` is there (*measured*, the last five lines of
+  `/tmp/if2453/stages/r26-11-4-wave-5.log`). The stop of W10 cost about three hours between `V2`'s `after` (16:31)
+  and the launch of wave-6.
+- The order kept for a stop of the code: card R-17 written first, its tests seen failing, the diff of
+  `stage_check.py` read line by line by the orchestrating session, its `ci` run green (`45912658071`), the merged
+  tree run on the pod (519 passed in 236.72 s), `V2`'s `check` and `backup` on the corrected check, and the 18 stages
+  only after the `ci` run of the merged tip.
+- The rehearsal DEC-82 (4) asks for is done: `release_train.sh rehearse` with `CLUSTER_METHOD=hybrid-b1`, unit
+  `train-rh-hybrid`, from mirror `/tmp/if2453/ci/rel1126b` (the checkout at `a2831ec`),
+  `WORK=/tmp/if2453/c46/rh_hybrid`, started about 17:50 while no build ran, ended "rehearsal: OK (r26.11.2 cut over
+  S0,S1,S2; S3 excluded; r26.11.1 unchanged; pack verified; B-49 reuse verified)" with "checks: all pass"
+  (*measured*, `tail -n 4 /tmp/if2453/c46/rh_hybrid.out`); the fixture's cluster plan of `r26.11.2` holds
+  `"format": 2` and `"method": "hybrid-b1"`, and that of `r26.11.1` `"method": "cascade"` (`grep` over
+  `rh/root/l2/cluster_plan`). Its `driver.log` and the three `dry-run-*.txt` files are under
+  `/tmp/if2453/c46/rh_hybrid/` and are to be kept with the release note. It proves the driver cuts a hybrid release
+  after a cascade one; it does not reach the long one-process steps or the pruning at size (the review's §7).
+- `tower` (*measured*, 18:47, `grep -c '^OK'` and `tail -n 1` of `fetch_logs/2026-11-26_lists_01_to_20.log`): lists
+  01 to 17 are done, 11,437 files landed and none failed; the run is on list 18 (the two rescues). The tree with
+  card R-15's lists is on `tower` as `tree_e445342`; batch 7 (lists 21 and 22) is started when this run ends.
+- Card C-75 is done on its branch (`e76256c`), pushed for `ci`, not merged: `GRARE1` 4,779 genomes and 11.583 Gbp,
+  `GRARE2` 3,806 and 10.455 Gbp, `GRARE3` 3,638 and 10.335 Gbp; together 12,223 genomes in 183 phyla, 32.374 Gbp,
+  31.840 Gbp new against the root, the 19 stages of `r26.11.4` and the earlier `GRARE` stages (*measured*, its
+  report). 6,522 of the 12,223 were dropped by GlobDB r232, all 754 of the unclassified domain among them; they are
+  taken with their status recorded (W10, last item). The PI was told at about 19:00 that r232 may have dropped that
+  group for quality, and that 11 unclassified-domain genomes get genetic code 25 on a tie with low coding density;
+  this session keeps them (depth `called`), the PI's to change. The same pass wrote the 14,839 archaeal genomes of
+  r226 as ANI references (`/stor/scratch/Wilke/if2453/bio-box-staging/GRARE/globdb_r226_archaea.fna.gz`).
+- Launched at about 19:05, three Opus workers, each told the standing rules in one file of this session's scratch
+  directory (`staging_worker_rules.md`): card C-70 (`ECE2`, `MIR1`, `ASG1`), card C-78 (`DPN1`, `SYM2`, `LRP1`,
+  `MIR2`, `MGE4`; first what each archive holds), card C-81 (`GWV1`, `SAG3`; `WET1` waits because `relay_to_pod.sh`
+  refuses its file name with a space).
+- How this session works since about 18:20, at the PI's words "use opus and other appropriate agents to save tokens.
+  u orchestrate and check their work": routine work (merges with their rows, state for the two-hour reports, this
+  section) goes to Sonnet or Opus agents; the session keeps the decisions, the launches, and the reading of diffs
+  that change a guard or a check, and checks each agent's result against git, the pod and `tower`.
+
+**W10. Wave-4 stopped at `V2`'s `check`, 2026-11-26 16:32:54 CST (superseded by W11).** This session was
 stopped by its usage limit from about 14:55 to 17:20 and read the stop at 17:21.
 - What happened (*measured*, `tail /tmp/if2453/stages/r26-11-4-wave-4.log`, `ls /tmp/if2453/stages/v2/*/`, 17:21):
   `V2` mode `run` ended 16:07:28 with exit 0 and its marker (`run/DONE`, `run/complete.json`; the 72 Pfam shards at
