@@ -63,6 +63,7 @@ IUPAC = b"ACGTURYSWKMBDHVNacgturyswkmbdhvn"
 GAPS = b"-."
 CRLF = b"\r\n"
 SHOW = 200
+TASKS_PER_CHILD = 500
 SUFFIXES = (".gz", ".bz2", ".xz", ".zst", ".fasta", ".fna", ".fa", ".fas", ".ffn", ".faa", ".fsa", ".seq", ".txt")
 CENSUS_HEAD = ["member", "tar_bytes", "compression", "kind", "records", "bases", "acgtn_bases", "gap_bytes",
                "other_bytes", "headers_not_utf8", "empty_records", "min_record", "max_record", "first_header",
@@ -437,7 +438,10 @@ def _stage_set(stage, tar_path, plan, tmp, partial, work_dir, final_fa, fasta_na
                status_head, record_extra, left_out, root, root_stages, owner_inputs, later_inputs, inputs_home,
                threads, memory_limit, workers) -> dict:
     gc_results: dict[str, dict] = {}
-    pool = ProcessPoolExecutor(max_workers=workers) if workers > 1 else None
+    # each screen worker is replaced after TASKS_PER_CHILD genomes, so that no process passes the pod's 300
+    # CPU-minutes however large the set (RMD1's 13,549 genomes would give each of 3 workers more, *derived* from
+    # GBRMGD's stage: about 260 CPU-minutes for 5,283 bins over 4 processes)
+    pool = (ProcessPoolExecutor(max_workers=workers, max_tasks_per_child=TASKS_PER_CHILD) if workers > 1 else None)
     pending: list[tuple[str, object]] = []
     by_genome = {v["genome"]: v for v in plan.values()}
 

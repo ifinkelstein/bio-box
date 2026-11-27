@@ -549,6 +549,7 @@ def test_rmd1_stage_records_r232_status_by_kind_and_is_deterministic(rm):
 # the conf templates
 # ==================================================================================================================
 
+# RMD1's template is written when its staging ends; add ("RMD1", "rmd1_reef_genomes.fna.gz", "WET1") here with it.
 @pytest.mark.parametrize("stage,fasta_name,after", [("GBRMGD", "gbrmgd_bins.fna.gz", "RMD1")])
 def test_templates_pass_stage_est_and_carry_the_cards_values(stage, fasta_name, after):
     est = _load("stage_est", "stage_est.py")
@@ -570,3 +571,15 @@ def test_templates_pass_stage_est_and_carry_the_cards_values(stage, fasta_name, 
     assert set(c.expect) <= allowed
     for owner, (n, _) in c.expect.items():
         assert n > 0
+
+
+def test_stage_set_with_recycled_screen_workers_writes_the_same_bytes(gb, monkeypatch):
+    mod = _mod()
+    monkeypatch.setattr(mod, "TASKS_PER_CHILD", 1)  # every worker replaced after one genome
+    run_gbr(mod, gb, "w1")
+    run_gbr(mod, gb, "w2", workers=2)
+    t = gb["tmp"]
+    for f in ("genomes.json", "records.tsv", "genetic_codes.tsv", "r232_status.tsv"):
+        assert (t / "meta_w1" / "GBRMGD" / f).read_bytes() == (t / "meta_w2" / "GBRMGD" / f).read_bytes(), f
+    assert (t / "fasta_w1" / "GBRMGD" / "gbrmgd_bins.fna.gz").read_bytes() == (
+        t / "fasta_w2" / "GBRMGD" / "gbrmgd_bins.fna.gz").read_bytes()
