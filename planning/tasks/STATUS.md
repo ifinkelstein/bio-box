@@ -60,6 +60,17 @@ Whoever takes over needs this section, AGENTS.md, rows DEC-77 to DEC-84 of `plan
   `WET1`); **C-83** (the two coral-reef sets, `RMD1` and `GBR_MGD` as stage `GBRMGD`, which the PI added to `r26.11.5`
   with "add coral", DEC-85). When C-83 is merged, A-29 takes the two stages into the chain's end. If these workers were
   cut off, their branches hold what they committed; resume from there.
+- **Added 2026-11-27 08:50 CST: draining for a change of orchestrator.** A fourth Opus worker was started at 08:40 on
+  **A-31** (the release-diversity figure of `scripts/plot_release_diversity.py`: audit every number, then bring it up
+  to `r26.11.4`, `r26.11.5`, `r26.11.6` and what waits on `tower`; the PI's word). At 08:45 the PI said "let all agents
+  drain so i can handoff to another orcehstrator": this session starts no further agent, lets the four workers
+  (A-29 part 1, A-31, B-75, C-83) finish their cards, and for each one that reports pushes its branch so that its `ci`
+  run starts, and writes below what it left. It does not merge them: a merge of each needs its report read, B-75's
+  whole diff read (it changes `src/`), the merged tree run on the pod and a green `ci`, and is the next orchestrator's.
+  A worker of this session cannot be reached from another session: what a worker had not committed when this session
+  ended is in its worktree `/tmp/biobox-wt/<ID>` on the laptop, and its detached units on the pod (names `a29-*`,
+  `a31-*`, `b75-*`, `c83-*`) write self-describing results under `/tmp/if2453/<card>/`. The state of each at the end of
+  this session is in "H6. The drain" below.
 
 **H2. Next, in order.**
 
@@ -124,6 +135,22 @@ repeat; `relay_to_pod.sh` carries a name with a space only under `--space-as-und
 
 **H5. With the PI.** Nothing waits on him at 07:30. Kept for a later word: the 28 MB `MIR2` file on `/stor` (after
 A-29, under DEC-84 (3)); A-28; the GPU venue for W-38; the nine older audit items of "R2. For the PI" below.
+
+**H6. The drain (state of the four workers; this session updates it as each reports, and a line that still says
+"running" when you read it means the session ended first).**
+
+- **B-75** (ingest refuses a byte that is not a base): running at 08:50, waiting on its ingest measurement on the pod
+  (units `b75-*`, scratch roots under `/tmp/if2453/b75/`, which it removes at the end). Branch `task/B-75`.
+- **A-29 part 1** (the chain of `r26.11.5`): running at 08:50. Branch `task/A-29`; outputs under `/tmp/if2453/a29/`.
+- **C-83** (coral: `GBRMGD` first, then `RMD1`): running at 08:50. Branch `task/C-83`; metadata under
+  `/tmp/if2453/c83/`, large files under `/stor/scratch/Wilke/if2453/bio-box-staging/{GBRMGD,RMD1}/`. Its card has a
+  stop for `RMD1` above 60 Gbp or below 10 Gbp: that stop goes to the PI.
+- **A-31** (the diversity figure): running at 08:50. Branch `task/A-31`; outputs under `/tmp/if2453/a31/`.
+- To take a finished branch in: read its report (its last commit's note under `planning/measurements/` carries the
+  facts), push it if it is not pushed, wait for its `ci`, merge with `--no-ff`, run the merged tree on the pod with the
+  card's own test files and `tests/r0`, push, add the row, remove the worktree and the pod's `ci/<ID>` and
+  `ci-tmp/<ID>-0`. After C-83: tell A-29's follow-up to append `RMD1` and `GBRMGD` (its note says the commands), and
+  A-31's to redraw (its note says the one command).
 
 ## Orchestrator active, from 2026-11-26 07:25 CST (the auditing session, Claude; superseded by the handoff of 2026-11-27 above where they differ)
 
