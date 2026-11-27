@@ -1898,11 +1898,26 @@ sources:
       sha256 062713d450f8ea85286bc22d0e450de8c5af7b760cd1977e8d8a098618db8c5b
     staged:
       - stage: LR2
+        object: /stor/scratch/Wilke/if2453/bio-box-staging/LR2/lr2_compendia_r19.fna.gz
+        bytes: 5906399819
+        sha256: 36bb8a4e47213d5bbc44471fa44a7709c483cf1c3a7cff9c946d1fef9ea14ebe
+        metadata_dir: >-
+          /tmp/if2453/r19/LR2/ (card R-19, 2026-11-27: re-staged from the same four archives with the Bickhart bins
+          gunzipped; 44,064 genomes: 5,161 MAGs [EMERGE 2019 733, Singleton 2021 WWTP ONT 3,733, Bickhart 2022
+          Rumen HiFi 695 bins] + 38,903 Bickhart unbinned >= 5 kb HiFi contigs; 548,565 distinct contigs,
+          21.255 Gbp, 44,029 code 11 / 35 code 25; 59 contigs held by the root and r26.11.4 -> 548,506 contigs /
+          21.132 Gbp new; genomes.json sha256 423a8280574ce5fe3dc87e42a3401cd80bbc4977c6eb904c22e1408d6ddce281;
+          objects.json sha256 14c5565c05659dc6636f834c699dd7f1fff6d45b7de45b0d978d20d59a317985; s2_check_inputs.py
+          LR2 problems: []; the FASTA scans clean (r19_fasta_scan.py); r232 status in
+          /tmp/if2453/r19/c76/LR2/r232_status.tsv: all 44,064 not visible to the accession test, none removed;
+          mirrored to tower sources/LR2/r19_restage/; planning/measurements/2026-11-27_staged_fasta_scan.md)
+      - stage: LR2 (superseded by lr2_compendia_r19.fna.gz, card R-19; not a stage input)
         object: /stor/scratch/Wilke/if2453/bio-box-staging/LR2/lr2_compendia.fna.gz
         bytes: 6329546501
         sha256: 89dba3ba4098796fd3042b132089b9ea5393949d48dc7bf2783912e0b1eef377
         metadata_dir: >-
-          /tmp/if2453/c66/LR2/ (49,205 genomes: 5,108 MAGs [EMERGE 2019 733, Singleton 2021 WWTP ONT 3,733,
+          DAMAGED (card R-19: card C-66's stager read the 691 gzip-compressed Bickhart bins as text, so from record
+          504,174 the file holds compressed bytes as sequence; 20,526 headers not UTF-8). /tmp/if2453/c66/LR2/ (49,205 genomes: 5,108 MAGs [EMERGE 2019 733, Singleton 2021 WWTP ONT 3,733,
           Bickhart 2022 Rumen HiFi 642] + 44,097 Bickhart unbinned >= 5 kb HiFi contigs; 555,301 distinct contigs,
           21.672 Gbp, 1,863 circular with 20 DEC-65 DTR trims, 49,170 code 11 / 35 code 25, 59 contigs held by
           S1..SAG1+NX1 -> 555,242 contigs / 21.549 Gbp = 99.43% net new; genomes.json sha256

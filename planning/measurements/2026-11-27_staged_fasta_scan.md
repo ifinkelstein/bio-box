@@ -13,11 +13,27 @@
 - **Written:** the scan reports under `/tmp/if2453/r19/` (`wave/scan/`, `r26_11_5/scan/`, one JSON per file and one
   `<STAGE>.stage.json` per stage); the new `LR2` FASTA `lr2_compendia_r19.fna.gz` on
   `/stor/scratch/Wilke/if2453/bio-box-staging/LR2/` beside the old one; its metadata in `/tmp/if2453/r19/LR2/`; its
-  r232 status in `/tmp/if2453/r19/c76/LR2/`.
+  r232 status in `/tmp/if2453/r19/c76/LR2/`; its scan in `/tmp/if2453/r19/newlr2/scan/`; and the mirror of these on
+  `tower` in the new directory `sources/LR2/r19_restage/` (nothing else written on `tower`).
 
 ## 0. Summary
 
-R26_SUMMARY_PLACEHOLDER
+1. **The wave's 16 unstarted stages (44 files) would all pass ingest** (§2): no header that is not UTF-8, no byte
+   outside the IUPAC letters, no empty record, no read error. `MGE1`'s `iceberg3_ICE.fna` has 2 UTF-8 headers that are
+   not ASCII (an en dash), which ingest accepts. Reported to the orchestrating session at 01:53 CST.
+2. **Of the staged `r26.11.5` members (and `GV1`, `WET1`, `PL3`), only the old `LR2` file is damaged** (§3): 575,827
+   records, 20,526 headers not UTF-8, 27,396 records with bytes outside IUPAC, from record 504,174, equal to card
+   C-81's counts. Two more are reported: **`NX1` holds three 16S alignment files as genomes** (69 records, 17,393 gap
+   bytes `-`; a staging defect for a card) and `GV1` 6 gap bytes in 3 contigs.
+3. **Cause** (§4.2): card C-66's stager read the 691 gzip-compressed Bickhart bins (`bin3c.*.contigs.fa.gz`) as plain
+   text, so their compressed bytes went into the FASTA as sequence, and the unbinned set took the binned contigs a
+   second time. The four archives on the pod are sound (sha256 as at fetch; read to the end); none is on `tower`.
+4. **The new `LR2`** (§4.3, §4.4): `lr2_compendia_r19.fna.gz`, 44,064 genomes (733 + 3,733 + 695 bins + 38,903
+   unbinned), 548,565 contigs, 21.255 Gbp (old: 49,205, 555,301, 21.672), 21.132 Gbp new; it scans clean;
+   `s2_check_inputs.py` exit 0 with `problems: []`; every genome's r232 status recorded (all not visible), none
+   removed; template with real `SUM`s; mirrored to `tower` under `sources/LR2/r19_restage/`.
+5. **`s2_check_inputs.py` could not have caught it** (§5): it never opens an object; a few lines that read each object
+   with `biobox.fasta` and match its contig uids to `genomes.json` would.
 
 ## 1. The scan
 
@@ -196,7 +212,110 @@ superseded (§4.4).
 
 ### 4.3 The re-stage
 
-LR2_RESTAGE_PLACEHOLDER
+`c76_lr2_sag1_nx1_r232.py restage-lr2` (card C-76's script, which the card names for the re-staging) follows C-66's
+stager step for step (the same four archives in the same order, the same genome ids, quality labels, DTR rule
+(DEC-65), DEC-27 checks, 5 kb cut of the unbinned contigs, 80-column wrap, contig-uid headers and `bgzip`), with
+these changes:
+
+1. a tar member is gunzipped when its first two bytes are the gzip magic, whatever its name (the fix);
+2. every record is refused unless its header is UTF-8, no line precedes the first header and its sequence holds IUPAC
+   letters only, so a damaged input stops the re-stage instead of entering the FASTA (none was refused);
+3. a genome of EMERGE or Singleton keeps the genetic code of C-66's screen (its `genetic_codes.tsv` row), and the
+   bins are screened as C-66 screened them (`screen_genetic_code`, 250 kb); the script compares its EMERGE and
+   Singleton `records.tsv` rows with C-66's and reports the first difference;
+4. a metaFlye contig whose name is in a Bickhart bin is not taken as unbinned even when its uid differs from the bin's
+   (circular in `assembly_info.txt`, its terminal repeat trimmed in the unbinned pass and not in the bin, which C-66's
+   MAG rule leaves untrimmed); and a DTR trim is recorded only for a contig that is staged.
+
+Run (unit `r19-lr2-restage`, in `/stor/home/if2453/bio-box/images/bio-box_faec1f4.sif`, the root, `s2/inputs`, the
+archives and `/tmp/if2453/c66` bound read-only, `CPUQuota=200%`, one screening process and `bgzip -@ 1`):
+
+```
+c76_lr2_sag1_nx1_r232.py restage-lr2 /stor/scratch/Wilke/if2453/bio-box-staging/LR2/dl \
+    /tmp/if2453/c66/dl/metadata_MAGs_2019_EMERGE.tsv /tmp/if2453/c66/LR2 /tmp/if2453/r19/LR2 \
+    /stor/scratch/Wilke/if2453/bio-box-staging/LR2/lr2_compendia_r19.fna.gz /tmp/if2453/s2/inputs/LR2 \
+    --workers 1 --compressor bgzip --bgzip-threads 1 --root /tmp/if2453/r10/root --chain-home /tmp/if2453/s2/inputs
+```
+
+02:04 to 03:28:40 CST (*measured*, file times); `bgzip` on one thread was the bound.
+
+**The new `LR2` against the old** (*measured*, `/tmp/if2453/r19/LR2/stage_report.json` and C-66's
+`/tmp/if2453/c66/LR2/stage_report.json`):
+
+| | old (`lr2_compendia.fna.gz`, C-66) | new (`lr2_compendia_r19.fna.gz`, R-19) |
+|---|---:|---:|
+| Genomes | 49,205 | **44,064** |
+| EMERGE 2019 / Singleton 2021 MAGs | 733 / 3,733 | 733 / 3,733 (rows identical, 504,801 compared) |
+| Bickhart bins | 642 "genomes" of compressed bytes, 426,856,095 "bases" | **695 bins, 1,505,258,010 bp** |
+| Bickhart unbinned contigs (`>= 5 kb`) | 44,097, 3,377,465,007 bp | **38,903, 1,881,851,628 bp** |
+| Unbinned skipped as binned | 22 | 5,215 by uid + 1 by name = 5,216 (the binned contigs of 5 kb and more) |
+| Unbinned under 5 kb dropped | 15,931 (40,088,657 bp) | 15,931 (40,088,657 bp) |
+| Distinct contigs | 555,301 | **548,565** |
+| Bases | 21,672,103,617 | **21,254,892,153** |
+| Circular contigs / DTR trims | 1,863 / 20 | 1,678 / 19 |
+| Genetic code 11 / 25 | 49,170 / 35 | 44,029 / 35 |
+| Held by the root and the `r26.11.4` stages | 59 contigs, 123,240,285 bp | 59 contigs, 123,240,285 bp (the same `shared_records.tsv`, sha256 `b74015b3…`) |
+| New | 555,242 contigs, 21,548,863,332 bp | **548,506 contigs, 21,131,651,868 bp** |
+| FASTA bytes | 6,329,546,501 | 5,906,399,819 |
+| FASTA sha256 | `89dba3ba4098796fd3042b132089b9ea5393949d48dc7bf2783912e0b1eef377` | `36bb8a4e47213d5bbc44471fa44a7709c483cf1c3a7cff9c946d1fef9ea14ebe` |
+
+The counts agree with what the inspection predicted (*derived*): 4,466 + 695 + (60,050 − 15,931 − 5,216) = 44,064
+genomes; 504,173 + 5,489 + 38,903 = 548,565 contigs. The bases fall by 417,211,464 (*derived*): the 426,856,095
+compressed bytes go, the bins' 1,505,258,010 bases come in, and the unbinned set loses 1,495,613,379 bp to the bins.
+**No genome was removed for r232 membership.** The 5,141 fewer genomes (*derived*) are the 5,194 binned contigs C-66
+had also staged as unbinned genomes, less the 53 bins C-66's misreading had dropped.
+
+Files (*measured*, sha256): `/stor/scratch/Wilke/if2453/bio-box-staging/LR2/lr2_compendia_r19.fna.gz` 5,906,399,819 B
+`36bb8a4e47213d5bbc44471fa44a7709c483cf1c3a7cff9c946d1fef9ea14ebe`; in `/tmp/if2453/r19/LR2/`: `genomes.json`
+`423a8280574ce5fe3dc87e42a3401cd80bbc4977c6eb904c22e1408d6ddce281`, `objects.json`
+`14c5565c05659dc6636f834c699dd7f1fff6d45b7de45b0d978d20d59a317985` (path `/tmp/if2453/s2/inputs/LR2/lr2_compendia_r19.fna.gz`),
+`objects_staging.json` `71eb6f3900838a1ca5cebadd39de5103f7115e449274098e652cf8c02ce9a2d1`, `records.tsv`
+`1a40e438fc0e2e2927d87eb454c8ea1a558169b05a1600970938fdda1d3e51e9`, `genetic_codes.tsv`
+`128a1071a718abb318674e5856db185ccf1d34bd07bde0d39e2614275e51af6d`, `trims.tsv`
+`f5953424954cf32babd0ada1aa86abdaa8b3a55383d112235289dc8e51396352`, and `repeated_records.tsv`
+`06c2a972da2b53aaade81df0f723c984576ce440a64838ac5172e05ef764c432` and `shared_records.tsv`
+`b74015b35539dac07cbd7c3688e8d8be702b3b6042cf08c17b538922f68d6e58` (both equal to C-66's). C-66's
+`EMERGE_v2_novel_for_LR3.tsv.gz` (the `LR3` list) is not a stage input and stays in `/tmp/if2453/c66/LR2/`.
+
+### 4.4 Checks of the new `LR2`, its r232 status, the template and the mirror
+
+- **The new FASTA scans clean:** 548,565 records (equal to the distinct contigs), 21,254,892,153 bases (equal to the
+  stage's), 0 headers not UTF-8 or not ASCII, 0 bytes outside IUPAC, 0 empty records, no read error, sha256
+  `36bb8a4e…` as written (*measured*, unit `r19-scan-newlr2`, 03:30:19 to 03:40:18,
+  `/tmp/if2453/r19/newlr2/scan/LR2__lr2_compendia_r19.fna.gz.json`).
+- **The r232 status of card C-76, kept:** `c76_lr2_sag1_nx1_r232.py run LR2 /tmp/if2453/r19/LR2
+  .../lr2_compendia_r19.fna.gz /tmp/if2453/c74/index /tmp/if2453/r19/c76 --root /tmp/if2453/r10/root --chain-home
+  /tmp/if2453/s2/inputs` (unit `r19-lr2-r232`, in the image) wrote `/tmp/if2453/r19/c76/LR2/r232_status.tsv`
+  (sha256 `d204e98be97b893692ce81ea9bad4d4bffd6953276a0be7cde6fae3eb4e8f34c`) and `r232_report.json`
+  (`803aeb252747266231843df2d55cdccfaf491aec699e719b147860902ad8cd4a`): 44,064 genomes, none with an INSDC accession,
+  all `not_visible` (695 bins, 38,903 unbinned, 733 EMERGE, 3,733 Singleton), removed 0, as C-76 found for the old
+  stage. Ownership over the root's 13 stored stages and the 19 `r26.11.4` stages: 59 contigs held (P1 2, P2 6, P3 44,
+  PL3 3, MV1 1, GART1 3; 123,240,285 bp), 548,506 contigs and 21,131,651,868 bp new (the template's `EXPECT` lines).
+- **`s2_check_inputs.py LR2 genomes.json objects_staging.json`** (run by the same command): exit 0, `problems: []`,
+  44,064 genomes, 549,193 `genome_input` rows.
+- **`stage_est.py conf .../stages/templates/LR2.conf --stage LR2 --tree <tree>`** (in the image, unit `r19-stage-est`):
+  exit 0, `DEPTH=called`, `GENECALL_MODE=gv-meta-c25`, `CRISPR=yes`, `AFTER=GRARE3`, both notes. The template's
+  `SUM` lines are the sha256 of `genomes.json`, `objects.json` and `lr2_compendia_r19.fna.gz` above; the old file's
+  `SUM` is gone. Cost by plan §3's rate R2 (93.5 to 135.3 CPU-minutes per new Gbp, as C-76 used): about 1,976 to 2,859
+  CPU-minutes (*derived*: × 21.132), 2% under C-76's figure.
+- **Mirror to `tower`** with `scripts/orchestrator/relay_to_tower.sh`, into a new directory, because
+  `sources/LR2/` holds C-66's files under the same names and nothing on `tower` is overwritten:
+  `tower:/mnt/user/research-bulk/bio-box/sources/LR2/r19_restage/`. The nine metadata files (128,507,182 bytes,
+  `DONE: 9 verified, 0 in place and skipped, 0 failed`), the two r232 reports (`DONE: 2 verified`) and the FASTA
+  (5,906,399,819 bytes in 325 s, 18.17 MB/s, sha256 equal to the record, `DONE: 1 verified, 0 in place and skipped,
+  0 failed`), 03:41 to 03:46:53 CST (*measured*, the script's log); `SHA256SUMS` there has 12 lines, every one
+  verified in these runs.
+
+**Superseded, not deleted:** `/stor/scratch/Wilke/if2453/bio-box-staging/LR2/lr2_compendia.fna.gz` (sha256
+`89dba3ba…`), C-66's metadata in `/tmp/if2453/c66/LR2/`, C-76's status of it in `/tmp/if2453/c76/LR2/`, and their
+mirror at the top of `tower:.../sources/LR2/` are superseded by the files above and are **not** inputs of any stage.
+Card A-29 takes `LR2` from `/tmp/if2453/r19/LR2/` and `lr2_compendia_r19.fna.gz`. Whether to delete the old file on
+`/stor` (6.33 GB) is the PI's.
+
+**Open, not changed here (C-66's rules, kept as the card asks):** every Bickhart bin is labelled `mag_hq`, as C-66
+labelled them, though the archive holds all 695 DAS Tool bins and no quality table was read; and a single-contig bin
+is circular only if its header says so, so the 218 binned contigs that `assembly_info.txt` marks circular (112 bins
+hold one contig) are staged linear in their bins.
 
 ## 5. Should `s2_check_inputs.py` have caught it?
 
@@ -228,8 +347,46 @@ report.
 
 ## 6. Pod compute used
 
-COMPUTE_PLACEHOLDER
+Detached `systemd-run --user` units at `nice -n 19`, `MemorySwapMax=0`, `IOSchedulingClass=idle`, each started after
+a look at the active units (no other card's staging unit was active at any time; no build unit of `MV1` or `V3` ran:
+the wave was in `PL3`'s Pfam scan) and with no `STOP` file in the root. At most four processes of this card at a time
+(one CPU each for the scans).
+
+| Unit(s) | What | Cap | Wall | CPU |
+|---|---|---|---|---|
+| `r19-scan-1` to `-4` | the wave's 16 stages, 44 files | `CPUQuota=100%`, 8G each | 01:34:51 to 01:52:45 | 36.0 CPU-minutes (*measured*: sum of `cpu_s`, 2,157.7 s) |
+| `r19-scan-5` to `-8` | the 23 `r26.11.5` lists, 32 files | same | 01:46:41 to 02:07 | 47.1 CPU-minutes (*measured*, 2,826.4 s) |
+| `r19-rescan` | `NX1` and `GV1` with the byte-value count | same | 02:00:27 to 02:03:30 | 3.0 CPU-minutes (*measured*, 182.2 s) |
+| `r19-inspect`, `r19-inspect2` | the four `LR2` archives (§4.2); the first stopped on a `tarfile` stream call | `CPUQuota=100%` | about 2 min, 01:45:54 to 01:47:22 | at most 3.5 CPU-minutes (*derived*: wall × 1) |
+| `r19-binslist`, `r19-archsha` | `tar tzvf` of the bins; `sha256sum` of the archives | `CPUQuota=100%` | 10.7 s; 02:00:28 to 02:01:00 | 10.6 CPU-seconds (*measured*); at most 0.5 CPU-minutes (*derived*) |
+| `r19-lr2-restage` | `restage-lr2` (§4.3) | `CPUQuota=200%`, 16G | 02:04 to 03:28:40 (84.7 min) | at most 169 CPU-minutes (*derived*: 84.7 × 2); its largest process, `bgzip` on one thread, at most 85 (*derived*) |
+| `r19-lr2-r232` | `c76 ... run LR2` (§4.4) | `CPUQuota=200%`, 16G | 03:30:19 to 03:31:12 | at most 2 CPU-minutes (*derived*) |
+| `r19-scan-newlr2` | the new FASTA | `CPUQuota=100%` | 03:30:19 to 03:40:18 | 10.0 CPU-minutes (*measured*, 598.9 s) |
+| `r19-stage-est` | `stage_est.py conf` | `CPUQuota=100%` | 0.5 s | 0.48 CPU-seconds (*measured*) |
+
+No process came near 300 CPU-minutes. In all at most about 4.5 CPU-hours (*derived*: 36.0 + 47.1 + 3.0 + 3.5 + 0.5 + 169 + 2 + 10.0 = 271
+CPU-minutes, the upper bounds summed); the re-stage is most of it.
 
 ## 7. Tests
 
-TESTS_PLACEHOLDER
+- `tests/r1/test_r19_fasta_scan.py` (17 cases, each run with the normal `PATH` and with `PATH=/usr/bin:/bin`):
+  plain and gzip (by magic, also under a plain name), CRLF and blank lines, a header not UTF-8, a UTF-8 header not
+  ASCII, tab allowed, bytes outside IUPAC with value, offset and the count by value, empty records, a line before the
+  first header, compressed bytes written into a FASTA (the `LR2` case: the first offending record and its header), a
+  truncated gzip, trailing bytes that are not gzip, concatenated members, a 16 MiB unwrapped record scanned under
+  8 MiB of traced memory, the sha256, `objects.json` paths, the command line (atomic JSON, exit by status) and
+  `scan-stage` (one process per file, resume, `table`). Truth by hand. Seen failing first: every case errored on the
+  missing script (`FileNotFoundError: .../r19_fasta_scan.py`); the byte-value count was added later, its assertions
+  seen failing against the earlier script (`KeyError: 'non_iupac_byte_values'`, 2 failed).
+- `tests/r1/test_c76_lr2_sag1_nx1_r232.py`, five new `test_r19_*` cases over fixture archives in the layout of the four
+  `LR2` inputs (a gzip member named `.fa.gz` among the bins, a plain one, a gzip Singleton member, a circular binned
+  contig whose repeat is trimmed only in the unbinned pass): the magic rule and the strict reader's refusals; the bins
+  decompressed and the new FASTA clean by `r19_fasta_scan`; genomes, unbinned counts, kept C-66 codes, objects; byte
+  identity when run again; refusal of a byte that is not sequence and of an existing target; a C-66 row that comes out
+  different is reported and the command exits 1. Seen failing first against C-76's script: 10 of 10 failed
+  (`AttributeError: module 'c76_lr2_sag1_nx1_r232' has no attribute 'restage_lr2'` / `'strict_records'`).
+- Migrated (the card's template change): `test_templates_pass_stage_est_and_carry_the_cards_values` now expects `LR2`'s
+  FASTA `lr2_compendia_r19.fna.gz`, its `SUM`s in this note and this note among its `NOTE`s; seen failing before the
+  template was rewritten (`AssertionError: ... '2026-11-27_staged_fasta_scan.md' in ('...2026-11-26_lr2_sag1_nx1_r232.md',)`).
+- `env BIOBOX_TREE=/tmp/biobox-wt/R-19 sh scripts/pod_pytest.sh R-19 tests/r1/test_r19_fasta_scan.py
+  tests/r1/test_c76_lr2_sag1_nx1_r232.py tests/r1/test_r232_index.py tests/r0`: **308 passed in 18.34 s** (*measured*, `wilkcomp02`, 2026-11-27, one process).

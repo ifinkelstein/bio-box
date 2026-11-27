@@ -24,11 +24,15 @@ from __future__ import annotations
 import argparse
 import csv
 import hashlib
+import io
+import itertools
 import json
 import re
 import subprocess
 import sys
+import tarfile
 from collections import Counter
+from collections.abc import Iterable
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -206,6 +210,453 @@ def _check(stage: str, meta: Path) -> dict:
             "stderr": p.stderr[-2000:]}
 
 
+# ---- card R-19: LR2 re-staged from its four archives ---------------------------------------------------------------
+#
+# Card C-66's stager (`/tmp/if2453/c66/run_stage_lr2.py` on the pod, not in the tree) gunzipped a member of the
+# Singleton archive when its name ended in `.gz` and read the members of the other archives as plain text. The members
+# of the Bickhart bins archive are gzip files, so their compressed bytes went into `lr2_compendia.fna.gz` as sequence
+# (card R-19's note). This re-stage follows C-66's logic step for step, with three changes: a member is decompressed
+# when its first two bytes are the gzip magic, whatever its name; every record is refused unless its header is UTF-8
+# and its sequence holds IUPAC letters only; and a genome of the two sources C-66 read correctly keeps the genetic code
+# C-66's screen gave it (its `genetic_codes.tsv` row), so only the bins are screened again.
+
+LR2_ARCHIVES = {
+    "emerge": "EMERGE_MAGs_2019_long-short-hybrid.tar.gz",
+    "singleton": "MQ_HQ_MAGs_20200502.tar.gz",
+    "bins": "hifi_das.bin3c.bins.tar.gz",
+    "flye": "metaflye_hifi_asm.tar.gz",
+}
+LR2_PRESET_SOURCES = ("emerge_stordalen_2019_hifi", "singleton_2021_wwtp_ont")
+LR2_BINS_SOURCE = "bickhart_2022_rumen_hifi"  # its bins are bins of the metaFlye assembly the unbinned set is cut from
+LR2_RECORDS_HEAD = ["genome_id", "source_name", "record_ordinal", "contig_uid", "length", "circular", "kind",
+                    "assembly_quality", "genetic_code", "taxonomy"]
+LR2_GC_HEAD = ["genome_id", "source_name", "genome_bp", "n_contigs", "assembly_quality", "genetic_code", "reason",
+               "tested_alt", "cd_11", "mean_orf_11", "cd_25", "cd_4"]
+LR2_GC_KEYS = ("reason", "tested_alt", "cd_11", "mean_orf_11", "cd_25", "cd_4")
+LR2_MIN_UNBINNED = 5_000
+_IUPAC = b"ACGTURYSWKMBDHVNacgturyswkmbdhvn"
+_FASTA_EXTS = (".fa", ".fna", ".fasta", ".fa.gz", ".fna.gz", ".fasta.gz")
+
+
+def _is_fasta_member(name: str) -> bool:
+    low = name.lower()
+    base = low.rsplit("/", 1)[-1]
+    return not base.startswith(".") and any(low.endswith(e) for e in _FASTA_EXTS)
+
+
+def member_stream(tf, member):
+    """A tar member's bytes, gunzipped when its first two bytes are the gzip magic (not by its name)."""
+    import gzip as _gzip
+
+    ef = tf.extractfile(member)
+    if ef is None:
+        raise Refused(f"{member.name}: not a regular file")
+    if ef.peek(2)[:2] == b"\x1f\x8b":
+        return _gzip.GzipFile(fileobj=ef, mode="rb")
+    return ef
+
+
+def strict_records(fh, where: str):
+    """(header, sequence) of a FASTA stream, split as card C-66's reader split it (CR/LF stripped, blank lines
+    skipped); refused at a line before the first header, a header that is not UTF-8 or a byte that is not an IUPAC
+    nucleotide letter."""
+    header, seq, n = None, [], 0
+    for raw in fh:
+        if not raw.strip():
+            continue
+        ln = raw.rstrip(b"\r\n")
+        if ln.startswith(b">"):
+            if header is not None:
+                yield header, b"".join(seq)
+            n += 1
+            try:
+                header = ln[1:].decode("utf-8")
+            except UnicodeDecodeError:
+                raise Refused(f"{where}: record {n}: header is not UTF-8") from None
+            seq = []
+        else:
+            if header is None:
+                raise Refused(f"{where}: a line before the first header")
+            if ln.translate(None, _IUPAC):
+                raise Refused(f"{where}: record {n} ({header.split()[0] if header.split() else ''}): "
+                              "a byte that is not an IUPAC nucleotide letter")
+            seq.append(ln)
+    if header is not None:
+        yield header, b"".join(seq)
+
+
+def read_preset_codes(genetic_codes_tsv) -> dict[str, list[str]]:
+    """C-66's `genetic_codes.tsv`: genome id to its row (strings, as written)."""
+    with open(genetic_codes_tsv, newline="") as fh:
+        rd = csv.reader(fh, delimiter="\t")
+        head = next(rd)
+        if head != LR2_GC_HEAD:
+            raise Refused(f"{genetic_codes_tsv}: unexpected header {head}")
+        return {r[0]: r for r in rd}
+
+
+def _screen(args):
+    import c66_rt_hotspot_compendia as c66
+
+    seqs, tax = args
+    return c66.screen_genetic_code(seqs, tax, screen_max_bp=250_000)
+
+
+class _LR2Writer:
+    """The stage's FASTA and tables, written as each genome is decided (C-66's `flush_batch`, kept step for step)."""
+
+    def __init__(self, fasta_out, records_w, gc_w, genomes_fh):
+        from biobox import ids
+
+        self.ids = ids
+        self.fa, self.rec_w, self.gc_w, self.gj = fasta_out, records_w, gc_w, genomes_fh
+        self.written: set[bytes] = set()
+        self.binned: set[bytes] = set()
+        self.binned_names: set[str] = set()
+        self.props: dict[bytes, tuple] = {}
+        self.keys: set[tuple] = set()
+        self.uid_len: dict[bytes, int] = {}
+        self.counts = Counter()
+        self.bases = Counter()
+        self.genomes = Counter()
+        self.codes = Counter()
+        self.trims: list[list] = []
+        self.repeated: list[list] = []
+        self.n_genomes = 0
+
+    def _contig(self, uid: bytes, seq: bytes) -> None:
+        self.fa.write(b">" + uid.hex().encode("ascii") + b"\n")
+        for i in range(0, len(seq), 80):
+            self.fa.write(seq[i:i + 80] + b"\n")
+
+    def _genome(self, g: dict) -> None:
+        self.gj.write(("[" if self.n_genomes == 0 else ",") + json.dumps(g, separators=(",", ":")))
+        self.n_genomes += 1
+
+    def mag(self, gid, src, recs, qual, tax, gc_info: dict, preset_row: list[str] | None) -> None:
+        import c66_rt_hotspot_compendia as c66
+
+        code = int(preset_row[5]) if preset_row is not None else int(gc_info["genetic_code"])
+        g_seen, proc = set(), []
+        for hdr, seq in recs:
+            is_circ_flag = bool(c66._CIRCULAR_RE.search(hdr)) and len(recs) == 1
+            tseq, is_circ = seq, False
+            if is_circ_flag:
+                k = c66.detect_exact_dtr(seq)
+                if k > 0:
+                    tseq = seq[:-k]
+                    self.trims.append([gid, hdr.split()[0], len(seq), k, len(tseq)])
+                    self.counts["dtr_trimmed"] += 1
+                is_circ = True
+            uid = self.ids.contig_uid(tseq)
+            if uid in g_seen:
+                self.counts["within_mag_dup_contigs"] += 1
+                continue
+            g_seen.add(uid)
+            if uid in self.props and self.props[uid] != ("prokaryote", code, is_circ):
+                self.counts["dec27_property_conflicts_skipped"] += 1
+                self.repeated.append([gid, src, "dec27_property_conflict", uid.hex()])
+                return
+            proc.append((hdr, tseq, uid, is_circ))
+        if not proc:
+            return
+        key = tuple(sorted(u for _, _, u, _ in proc))
+        if key in self.keys:
+            self.counts["repeated_genomes"] += 1
+            self.repeated.append([gid, src, "duplicate_genome_contig_set", key[0].hex()])
+            return
+        self.keys.add(key)
+        g_uids, g_circ, g_bp = [], [], 0
+        for rec_ord, (hdr, seq, uid, is_circ) in enumerate(proc):
+            g_uids.append(uid)
+            self.binned.add(uid)
+            if src == LR2_BINS_SOURCE and hdr.split():
+                self.binned_names.add(hdr.split()[0])
+            if is_circ:
+                g_circ.append(uid)
+                self.counts["circular_contigs"] += 1
+            if uid not in self.written:
+                self.written.add(uid)
+                self.props[uid] = ("prokaryote", code, is_circ)
+                self.uid_len[uid] = len(seq)
+                self._contig(uid, seq)
+                self.bases[src] += len(seq)
+            g_bp += len(seq)
+            self.rec_w.writerow([gid, src, rec_ord, uid.hex(), len(seq), int(is_circ), "prokaryote", qual, code, tax])
+        self._genome({"contig_uids": [u.hex() for u in g_uids], "genetic_code": code, "kind": "prokaryote",
+                      "circular": [u.hex() for u in g_circ], "assembly_quality": qual})
+        self.counts["mag_genomes"] += 1
+        self.genomes[src] += 1
+        self.codes[code] += 1
+        if preset_row is not None:
+            self.gc_w.writerow([gid, src, g_bp, len(g_uids), qual, code, *preset_row[6:]])
+        else:
+            self.gc_w.writerow([gid, src, g_bp, len(g_uids), qual, code, *(gc_info.get(k, "") for k in LR2_GC_KEYS)])
+
+    def unbinned(self, src, cname, seq, is_circ_flag) -> None:
+        import c66_rt_hotspot_compendia as c66
+
+        s = seq.strip()
+        if len(s) < LR2_MIN_UNBINNED:
+            self.counts["unbinned_short_dropped"] += 1
+            self.counts["unbinned_short_bases"] += len(s)
+            return
+        tseq, is_circ, trim = s, False, None
+        if is_circ_flag:
+            k = c66.detect_exact_dtr(s)
+            if k > 0:
+                tseq = s[:-k]
+                trim = [f"bickhart_hifi:unbinned:{cname}", cname, len(s), k, len(tseq)]
+            is_circ = True
+        if len(tseq) < LR2_MIN_UNBINNED:
+            self.counts["unbinned_short_dropped"] += 1
+            return
+        uid = self.ids.contig_uid(tseq)
+        if uid in self.binned:
+            self.counts["unbinned_already_binned_skipped"] += 1
+            return
+        if cname in self.binned_names:
+            # a binned contig of the same assembly whose terminal repeat was trimmed here (circular in
+            # assembly_info.txt) and not in its bin: the bin holds it, so it is not an unbinned contig
+            self.counts["unbinned_binned_by_name_skipped"] += 1
+            return
+        if uid in self.written or (uid,) in self.keys:
+            self.counts["unbinned_dup_skipped"] += 1
+            return
+        if trim is not None:  # a trim is recorded for a contig that is staged (C-66 recorded it before its skips)
+            self.trims.append(trim)
+            self.counts["dtr_trimmed"] += 1
+        self.keys.add((uid,))
+        self.written.add(uid)
+        self.props[uid] = ("prokaryote", 11, is_circ)
+        self.uid_len[uid] = len(tseq)
+        self._contig(uid, tseq)
+        if is_circ:
+            self.counts["circular_contigs"] += 1
+        self.bases[src] += len(tseq)
+        self._genome({"contig_uids": [uid.hex()], "genetic_code": 11, "kind": "prokaryote",
+                      "circular": [uid.hex()] if is_circ else [], "assembly_quality": "contig"})
+        self.counts["unbinned_contigs_kept"] += 1
+        self.genomes[src] += 1
+        self.codes[11] += 1
+        self.rec_w.writerow([f"bickhart_hifi:unbinned:{cname}", src, 0, uid.hex(), len(tseq), int(is_circ),
+                             "prokaryote", "contig", 11, ""])
+
+
+def _open_fasta_out(path: Path, compressor: str, threads: int):
+    """(writer, closer) for the stage's FASTA: `bgzip` as card C-66 wrote it, or Python's gzip (the tests)."""
+    import gzip as _gzip
+
+    raw = open(path, "wb")
+    if compressor == "bgzip":
+        proc = subprocess.Popen(["bgzip", "-@", str(threads), "-c"], stdin=subprocess.PIPE, stdout=raw)
+
+        def close():
+            proc.stdin.close()
+            rc = proc.wait()
+            raw.close()
+            if rc != 0:
+                raise Refused(f"bgzip failed rc={rc}")
+        return proc.stdin, close
+    gz = _gzip.GzipFile(filename="", mode="wb", fileobj=raw, compresslevel=6, mtime=0)
+
+    def close():
+        gz.close()
+        raw.close()
+    return gz, close
+
+
+def _rows_of(records_tsv: Path, sources) -> Iterable:
+    with open(records_tsv, newline="") as fh:
+        rd = csv.reader(fh, delimiter="\t")
+        next(rd)
+        for r in rd:
+            if r[1] in sources:
+                yield r
+
+
+def restage_lr2(dl_dir, emerge_meta_tsv, old_meta, out_meta, out_fasta, final_dir, *, workers: int = 1,
+                compressor: str = "gzip", bgzip_threads: int = 2, root: Path | None = None,
+                chain_home: Path | None = None, work: Path | None = None,
+                source_release: str = "2026-11-27") -> dict:
+    """Re-stage LR2 from C-66's four archives into OUT_FASTA (a new name) and OUT_META; C-66's files are only read."""
+    from concurrent.futures import ProcessPoolExecutor
+
+    dl, old, out_meta, out_fasta = Path(dl_dir), Path(old_meta), Path(out_meta), Path(out_fasta)
+    if out_fasta.exists():
+        raise Refused(f"{out_fasta} exists")
+    if out_meta.exists() and any(out_meta.iterdir()):
+        raise Refused(f"{out_meta} exists and is not empty")
+    arch = {k: dl / v for k, v in LR2_ARCHIVES.items()}
+    for p in [*arch.values(), Path(emerge_meta_tsv), old / "genetic_codes.tsv", old / "objects_staging.json"]:
+        if not Path(p).is_file():
+            raise Refused(f"missing {p}")
+    preset = read_preset_codes(old / "genetic_codes.tsv")
+    e19 = {}
+    with open(emerge_meta_tsv, encoding="utf-8", errors="replace") as fh:
+        for r in csv.DictReader(fh, delimiter="\t"):
+            e19[(r.get("filename") or "").strip()] = r
+    import c66_rt_hotspot_compendia as c66
+
+    out_meta.mkdir(parents=True, exist_ok=True)
+    out_fasta.parent.mkdir(parents=True, exist_ok=True)
+    tmp_fasta = out_fasta.with_name(out_fasta.name + ".tmp")
+    fa, close_fa = _open_fasta_out(tmp_fasta, compressor, bgzip_threads)
+    rec_fh = open(out_meta / ".records.tsv.partial", "w", encoding="utf-8", newline="")
+    gc_fh = open(out_meta / ".genetic_codes.tsv.partial", "w", encoding="utf-8", newline="")
+    gj_fh = open(out_meta / ".genomes.json.partial", "w", encoding="utf-8")
+    rec_w, gc_w = csv.writer(rec_fh, delimiter="\t"), csv.writer(gc_fh, delimiter="\t")
+    rec_w.writerow(LR2_RECORDS_HEAD)
+    gc_w.writerow(LR2_GC_HEAD)
+    w = _LR2Writer(fa, rec_w, gc_w, gj_fh)
+    members = Counter()
+    pool = ProcessPoolExecutor(max_workers=workers) if workers > 1 else None
+
+    def flush(batch):
+        need = [i for i, b in enumerate(batch) if b[5] is None]
+        args = [([s for _, s in batch[i][2]], batch[i][4]) for i in need]
+        res = list(pool.map(_screen, args)) if pool is not None else [_screen(a) for a in args]
+        got = dict(zip(need, res))
+        for i, (gid, src, recs, qual, tax, prow) in enumerate(batch):
+            w.mag(gid, src, recs, qual, tax, got.get(i, {}), prow)
+        batch.clear()
+
+    def mags(key, src, ident):
+        batch = []
+        with tarfile.open(arch[key], "r:*") as tf:
+            for m in tf:
+                if not m.isfile() or not _is_fasta_member(m.name):
+                    continue
+                base = m.name.rsplit("/", 1)[-1]
+                fh = member_stream(tf, m)
+                members[(key, "gzip" if isinstance(fh, gzip_type()) else "plain")] += 1
+                recs = [(h, s.strip()) for h, s in strict_records(fh, f"{arch[key].name}:{m.name}") if s.strip()]
+                gid, qual, tax = ident(base)
+                prow = preset.get(gid) if src in LR2_PRESET_SOURCES else None
+                if recs:
+                    if src in LR2_PRESET_SOURCES and prow is None:
+                        raise Refused(f"{gid}: no genetic_codes.tsv row of card C-66")
+                    batch.append((gid, src, recs, qual, tax, prow))
+                if len(batch) >= 48:
+                    flush(batch)
+        flush(batch)
+
+    def e19_ident(base):
+        meta = e19.get(base, {})
+        comp = c66._safe_float(meta.get("Completeness"), 80.0)
+        cont = c66._safe_float(meta.get("Contamination"), 0.0)
+        qual = "mag_hq" if (comp > 90.0 and cont < 5.0) else "mag_mq"
+        return f"emerge2019:{base.rsplit('.', 1)[0]}", qual, (meta.get("classification") or "").strip()
+
+    def stem(base):
+        return base.replace(".gz", "").rsplit(".", 1)[0]
+
+    try:
+        mags("emerge", "emerge_stordalen_2019_hifi", e19_ident)
+        mags("singleton", "singleton_2021_wwtp_ont", lambda b: (f"singleton2021:{stem(b)}", "mag_hq", ""))
+        mags("bins", LR2_BINS_SOURCE, lambda b: (f"bickhart_bin:{stem(b)}", "mag_hq", ""))
+        flye_circ = set()
+        with tarfile.open(arch["flye"], "r:*") as tf:
+            for m in tf:
+                if m.isfile() and m.name.endswith("assembly_info.txt"):
+                    for line in io.TextIOWrapper(member_stream(tf, m), encoding="utf-8", errors="replace"):
+                        if line.startswith("#") or not line.strip():
+                            continue
+                        p = line.rstrip("\r\n").split("\t")
+                        if len(p) >= 4 and p[3].strip().upper() == "Y":
+                            flye_circ.add(p[0].strip())
+                    break
+        with tarfile.open(arch["flye"], "r:*") as tf:
+            for m in tf:
+                if m.isfile() and m.name.endswith("assembly.fasta"):
+                    where = f"{arch['flye'].name}:{m.name}"
+                    for hdr, seq in strict_records(member_stream(tf, m), where):
+                        cname = hdr.split()[0]
+                        w.unbinned("bickhart_2022_rumen_hifi_unbinned", cname, seq,
+                                   (cname in flye_circ) or bool(c66._CIRCULAR_RE.search(hdr)))
+                    break
+    finally:
+        if pool is not None:
+            pool.shutdown()
+        close_fa()
+        gj_fh.write(("[" if w.n_genomes == 0 else "") + "]\n")
+        for f in (rec_fh, gc_fh, gj_fh):
+            f.close()
+    for n in ("records.tsv", "genetic_codes.tsv", "genomes.json"):
+        (out_meta / f".{n}.partial").replace(out_meta / n)
+    tmp_fasta.replace(out_fasta)
+
+    def wtsv(name, head, rows):
+        with open(out_meta / name, "w", encoding="utf-8", newline="") as fh:
+            wr = csv.writer(fh, delimiter="\t")
+            wr.writerow(head)
+            wr.writerows(rows)
+
+    wtsv("repeated_records.tsv", ["genome_id", "source_name", "reason", "first_contig_uid"], w.repeated)
+    wtsv("trims.tsv", ["genome_id", "contig_name", "raw_len", "trimmed_k", "final_len"], w.trims)
+    shared: list[list] = []
+    if root is not None or chain_home is not None:
+        import a26_r26_11_4_chain as a26
+        import c62_metavr_inputs as c62
+
+        chain = {s: chain_home / s for s, _ in a26.R26_11_4_CHAIN} if chain_home is not None else {}
+        own = c62._owners_from_records(out_meta / "records.tsv", root, list(ROOT_STAGES) if root is not None else [],
+                                       chain, work=Path(work) if work else out_meta.parent / "_work_r19")
+        shared = [[u.hex(), own[u], w.uid_len[u]] for u in sorted(own) if u in w.uid_len]
+    wtsv("shared_records.tsv", ["contig_uid", "owner_stage", "length"], shared)
+    obj = json.loads((old / "objects_staging.json").read_text(encoding="utf-8"))
+    if len(obj) != 1:
+        raise Refused(f"{old / 'objects_staging.json'}: expected one object")
+    o = {**obj[0], "path": str(out_fasta), "source_release": source_release}
+    (out_meta / "objects_staging.json").write_text(json.dumps([o], indent=2) + "\n", encoding="utf-8")
+    (out_meta / "objects.json").write_text(
+        json.dumps([{**o, "path": str(Path(final_dir) / out_fasta.name)}], indent=2) + "\n", encoding="utf-8")
+    # the two sources C-66 read correctly come out row for row as C-66 wrote them
+    old_rows = _rows_of(old / "records.tsv", LR2_PRESET_SOURCES)
+    new_rows = _rows_of(out_meta / "records.tsv", LR2_PRESET_SOURCES)
+    compared, first_diff = 0, None
+    for a, b in itertools.zip_longest(old_rows, new_rows):
+        if a != b:
+            first_diff = {"row": compared + 1, "old": a, "new": b}
+            break
+        compared += 1
+    shared_by = Counter(r[1] for r in shared)
+    total_bp = sum(w.bases.values())
+    rep = {
+        "card": "R-19", "stage": "LR2", "fasta_path": str(out_fasta), "fasta_bytes": out_fasta.stat().st_size,
+        "fasta_sha256": _sha256(out_fasta),
+        "files_sha256": {p.name: _sha256(p) for p in sorted(out_meta.iterdir()) if p.is_file()
+                         and not p.name.startswith(".")},
+        "members": {f"{k}:{c}": n for (k, c), n in sorted(members.items())},
+        "total_genomes": w.n_genomes, "mag_genomes": w.counts["mag_genomes"],
+        "unbinned_contigs_kept": w.counts["unbinned_contigs_kept"],
+        "unbinned_short_dropped": w.counts["unbinned_short_dropped"],
+        "unbinned_short_bases": w.counts["unbinned_short_bases"],
+        "unbinned_already_binned_skipped": w.counts["unbinned_already_binned_skipped"],
+        "unbinned_binned_by_name_skipped": w.counts["unbinned_binned_by_name_skipped"],
+        "unbinned_dup_skipped": w.counts["unbinned_dup_skipped"],
+        "repeated_genomes": w.counts["repeated_genomes"],
+        "dec27_property_conflicts_skipped": w.counts["dec27_property_conflicts_skipped"],
+        "within_mag_dup_contigs": w.counts["within_mag_dup_contigs"],
+        "dtr_trimmed": w.counts["dtr_trimmed"], "circular_contigs": w.counts["circular_contigs"],
+        "distinct_contigs": len(w.written), "total_bp": total_bp,
+        "shared_contigs": len(shared), "shared_bp": sum(r[2] for r in shared),
+        "net_new_contigs": len(w.written) - len(shared), "net_new_bp": total_bp - sum(r[2] for r in shared),
+        "shared_by_stage": dict(sorted(shared_by.items())),
+        "genomes_by_source": dict(sorted(w.genomes.items())), "bases_by_source": dict(sorted(w.bases.items())),
+        "genetic_codes": {str(k): v for k, v in sorted(w.codes.items())},
+        "preset_rows_compared": compared, "preset_rows_first_difference": first_diff,
+    }
+    (out_meta / "stage_report.json").write_text(json.dumps(rep, indent=2) + "\n", encoding="utf-8")
+    return rep
+
+
+def gzip_type():
+    import gzip as _gzip
+
+    return _gzip.GzipFile
+
+
 # ---- the command -------------------------------------------------------------------------------------------------
 
 def run(stage: str, meta_dir, fasta, index_dir, out_meta_root, *, names: dict[str, str] | None = None,
@@ -258,7 +709,27 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--no-check", action="store_true")
     r.add_argument("--work", type=Path, default=None)
     r.add_argument("--report-out", type=Path, default=None)
+    s = sub.add_parser("restage-lr2", help="card R-19: LR2 from C-66's four archives, under a new FASTA name")
+    for n in ("dl_dir", "emerge_meta", "old_meta", "out_meta", "out_fasta", "final_dir"):
+        s.add_argument(n, type=Path)
+    s.add_argument("--workers", type=int, default=1)
+    s.add_argument("--compressor", choices=("bgzip", "gzip"), default="bgzip")
+    s.add_argument("--bgzip-threads", type=int, default=2)
+    s.add_argument("--root", type=Path, default=None)
+    s.add_argument("--chain-home", type=Path, default=None)
+    s.add_argument("--work", type=Path, default=None)
+    s.add_argument("--source-release", default="2026-11-27")
     a = ap.parse_args(argv)
+    if a.cmd == "restage-lr2":
+        try:
+            rep = restage_lr2(a.dl_dir, a.emerge_meta, a.old_meta, a.out_meta, a.out_fasta, a.final_dir,
+                              workers=a.workers, compressor=a.compressor, bgzip_threads=a.bgzip_threads,
+                              root=a.root, chain_home=a.chain_home, work=a.work, source_release=a.source_release)
+        except Refused as exc:
+            print(f"refused: {exc}", file=sys.stderr)
+            return 2
+        print(json.dumps(rep, indent=1, sort_keys=True))
+        return 0 if rep["preset_rows_first_difference"] is None else 1
     try:
         later = {}
         for item in a.later:
