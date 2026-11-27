@@ -404,3 +404,111 @@ the upper bounds summed); no process came near 300 CPU-minutes. Nothing was writ
 - `env BIOBOX_TREE=/tmp/biobox-wt/R-23 sh scripts/pod_pytest.sh R-23 tests/r1/test_r23_gv1_trailing_gaps.py
   tests/r1/test_r19_fasta_scan.py tests/r0`: **290 passed in 10.87 s** (*measured*, `wilkcomp02`, 2026-11-27, one
   process).
+
+## 2026-11-27, card B-75: ingest refuses a byte that is not a base (DEC-84 (1))
+
+Host `wilkcomp02`; labels as at the top of this note.
+
+### Where the check is, and what it refuses
+
+- **Callers.** `rg -n "iter_records|fasta\." src`: `biobox.fasta.iter_records` is called only by
+  `src/biobox/l0seq/store.py`, at three places: pass 1 of `ingest` (one process), `_pass1_run` (pass 1 of the batch
+  processes of `build-stage`, card B-30, and its `rescan`), and `_write_shard` (pass 2 of both, which re-reads only
+  the records pass 1 kept and refuses one whose length or `raw_digest` changed). `fetch.py` uses `fasta.read` and
+  `fasta.format_record` to write golden objects, which ingest reads later; scripts under `scripts/` read FASTA of
+  either kind with `fasta.read`. So the reader keeps no alphabet (it reads protein FASTA too), and the check sits
+  where nucleotide sequence enters the store: one generator, `store._nucleotide_records(path)`, through which both
+  pass-1 sites read. Pass 2 needs no check of its own: it stores only records pass 1 read, hashing to the digest pass
+  1 recorded.
+- **What it refuses.** A record with a byte outside the IUPAC nucleotide letters `ACGTUNRYKMSWBDHV` of either case
+  (`store.IUPAC_BASES`), and a record with no sequence. Every record is checked, a record the least contig length
+  would drop included. The test is one `bytes.translate(None, letters)` per record; the position is looked up only
+  for the error. The bytes are not changed: lower case is stored as read and the uid is of the upper case (MR-14);
+  `U` passes.
+- **What happened before** (*measured*, a probe test on `wilkcomp02` over the tree at `56d86e4`, not committed): an
+  empty record was **stored**, as a contig of length 0 (`raw_digest` `e3b0c442…`, the sha256 of no bytes), unless
+  `min_contig_len` dropped it; a `\r` inside a line was stored as a base (`ACGTAC\rGTACGT`, 13 bytes); a `-` was
+  stored (card R-20, §8.3 of `2026-11-27_staged_fasta_scan.md`).
+- **Line ends, unchanged.** `iter_records` takes each line with `rstrip(b"\r\n")`, so CRLF, several CRs before the LF
+  and a CR at the end of a last line without LF never reach the sequence and are not refused; a line of only
+  whitespace is dropped, as before. A CR inside a line, and a space or tab at a line's end (not stripped), reach the
+  sequence and are refused.
+- **The error.** `store.NotABase`, a `ValueError`, for example `<object path>: record 2 ('>bad_rec some
+  description'): byte 0x2d (b'-') at position 121 of its sequence is not an IUPAC nucleotide letter
+  (ACGTUNRYKMSWBDHV of either case); ingest refuses the object (DEC-84 (1)) and stores nothing of the stage`; for an
+  empty record `... has no sequence; ingest refuses an empty record (DEC-84 (1))`. The record number is 1-based in
+  the object, the position 1-based in the record's sequence; a header over 200 characters is cut. **What a user sees
+  under `build-stage`:** the ingest step's process (`bio-box stage ingest`, which prints a `ValueError` after
+  `refused:`) writes that line to stderr (the unit's log) and exits 2; `run-step` then writes `<stage>.ingest failed
+  with exit 2; ...; nothing published, staging left at ..., attempt recorded in
+  <tmp>/staging/<stage>.ingest.failed.json` (that record holds the exit code, not the message), and `build-stage`
+  writes `<stage>.ingest exited 2; stopping here; the next call resumes at this step`. In batch processes a pass-1
+  step stops the same way. Nothing of the stage is written: pass 1 writes only into its private scratch, which is
+  removed (a batch's run under its temporary name is unlinked), and the tables, shards, ledger, `l0_manifest` and
+  `store_params` come after it (AGENTS §3.9; tested).
+
+### Cost and byte identity on a staged stage
+
+`NX1` as card R-20 re-staged it (`/stor/scratch/Wilke/if2453/bio-box-staging/NX1/nx1_compendia_r20.fna.gz`, sha256
+`395a8401…`, 391,034 records, 3,398,310,197 bases; read only), the ingest step alone: `python -m biobox.cli stage
+ingest --root <new root> --stage NX1 --objects <objects> --tmp <scratch>` (the argv `build-stage` gives the step;
+`NX1` has no least contig length and no shard size), in `/stor/home/if2453/bio-box/images/bio-box_faec1f4.sif` (the
+image the stage driver runs), each run into a new empty root under `/tmp/if2453/b75/`, with a copy of
+`/tmp/if2453/r20/NX1/objects.json` that names the `/stor` file. Not under `run-step`, which needs a profile and
+writes its run record into the root; the CPU time is `getrusage(RUSAGE_CHILDREN)` of a wrapper
+(`/tmp/if2453/b75/bin/measure.py`). Detached units, one at a time, each started after a look at the active units
+(`PL3`'s Pfam scan and card A-29's units ran; no `MV1` or `V3` unit) with no `STOP` file: `systemd-run --user
+--collect -p MemoryMax=32G -p MemorySwapMax=0 -p CPUQuota=400% nice -n 19`, 4 threads in the environment (ingest
+itself runs one).
+
+| Unit | Tree | Wall | CPU | Peak RSS | Exit | Result |
+|---|---|---:|---:|---:|---|---|
+| `b75-without` | `56d86e4` (before this card) | 1,010.0 s | **1,005.3 CPU-s (16.76 CPU-min)** | 3.82 GiB | 0 | 391,034 records, 391,034 new sequences, 1 shard |
+| `b75-with` | this card | 1,013.5 s | **1,012.3 CPU-s (16.87 CPU-min)** | 3.81 GiB | 0 | the same |
+
+*Measured* (`/tmp/if2453/b75/logs/without.json` and `with.json`; 07:29:42 to 07:46:32 and 07:53:09 to 08:10:02 CST,
+2026-11-27). The check cost **+7.0 CPU-s, +0.70%** (*derived*: 1,012.3 / 1,005.3 − 1), inside the card's 5%; with one
+run each on a shared host at its day load, this is near the noise. The step's estimate,
+`stage.ingest_cpu_min` over 3,454,277,610 bytes of FASTA, all out of `.gz`, is **15.17 CPU-min** (*derived*, the
+function in the image over `object_sizes`; nothing held, as in an empty root; the real build holds 5 contigs of
+84,773 bp, which moves it by under 0.01): measured over estimate 1.105 without the check and 1.113 with it
+(*derived*), both inside the rate guard's 20%.
+
+**Byte identity:** the two roots hold the same 10 files, 1,199,126,508 bytes, every sha256 equal (`identical: true`;
+*measured*, `/tmp/if2453/b75/logs/compare.json`, `compare.py` over both roots). The fixture test shows the same on a
+small stage (two objects, plain and gzip, soft-masked and CRLF records, a repeat, with and without a least length).
+The two scratch roots and trees were removed once these numbers were recorded; the logs and scripts stay in
+`/tmp/if2453/b75/`.
+
+### What it refuses today, and from when
+
+By §5, nothing that is an input of a stage today and nothing the root holds; the three files it would refuse are
+superseded. **From which mirror on:** the running wave (`r26-11-4-wave-6`, unit `pl3-1`) runs from the frozen mirror
+`/tmp/if2453/ci/rel1126c/`, whose `store.py` has no check, so nothing changes for it; the check is in force for a
+build whose `PYTHONPATH` tree is a mirror of `main` at or after this card's merge (the next wave's mirror).
+
+### Tests
+
+- `tests/r1/test_b75_ingest_alphabet.py` (new): 16 bytes that are not bases (gaps at the end and inside, `*`, `X`,
+  `E`, `.`, a digit, a space inside a line and at its end, a tab, a CR inside a line, NUL, `0xe5`, `I`, `x`) at known
+  1-based positions in a second record between two clean ones, with and without a least contig length that would
+  drop that record: refused, the message naming the object, header, record number, position and byte, and no file
+  in the root or the scratch; the batch pass 1 refuses the same and leaves no run and no record; empty records
+  (between, last, only) refused; `bio-box stage ingest` prints `refused: ...` and exits 2; every IUPAC letter of
+  either case (`U`, `u`), soft-masked and `N` runs, with LF and CRLF ends, stored as read with the uid of the upper
+  case; trailing CRs stripped as before; the reader still reads protein FASTA; a clean stage byte-identical with and
+  without the check. **Seen failing first** (`wilkcomp02`, before `store.py` changed): `AttributeError: module
+  'biobox.l0seq.store' has no attribute 'NotABase'` in every refusal case and in the identity case; the CLI case
+  failed too (39 of the file's 42 cases failed); the three cases of behaviour kept (the alphabet passes,
+  line ends, the reader) passed, as they must.
+- Migrated: `tests/r1/test_c76_lr2_sag1_nx1_r232.py::test_r20_ingest_stores_a_gap_byte_as_sequence`, which recorded
+  that a `-` is stored, is now `test_r20_ingest_refuses_a_gap_byte` (the same fixture: refused at position 401 of
+  `Hoko_1 x` and at 301 of `inner`, nothing written; the clean record alone ingests). Seen failing before the change
+  (`AttributeError: ... no attribute 'NotABase'`). No other test changed.
+- `env BIOBOX_TREE=/tmp/biobox-wt/B-75 sh scripts/pod_pytest.sh B-75 tests/r1/test_b75_ingest_alphabet.py
+  tests/r1/test_c76_lr2_sag1_nx1_r232.py tests/r0`: **306 passed in 9.93 s** (*measured*, `wilkcomp02`, 2026-11-27).
+- The whole suite, `sh scripts/pod_pytest.sh B-75 --shards 2` (by day, a build running): shard 0 **2693 passed, 10
+  skipped in 9535.35 s**, shard 1 **2170 passed, 18 skipped, 3 warnings in 8039.05 s** (*measured*, `wilkcomp02`,
+  2026-11-27). So no fixture or test input of the tree that reaches ingest (the `micro_s0` genomes under
+  `tests/fixtures/`, the synthetic stores, every ring's built fixtures) holds a byte the check refuses or an empty
+  record, apart from card R-20's gap fixture, migrated above.

@@ -52,6 +52,7 @@ import hashlib
 import itertools
 import json
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -94,6 +95,35 @@ _COMP = bytes.maketrans(b"ACGTRYKMBVDHNacgtrykmbvdhn", b"TGCAYRMKVBHDNtgcayrmkvb
 
 def revcomp(seq: bytes) -> bytes:
     return seq.translate(_COMP)[::-1]
+
+
+# DEC-84 (1), card B-75: the bytes a nucleotide record may hold, the IUPAC letters of either case (`U` for RNA)
+IUPAC_BASES = b"ACGTUNRYKMSWBDHV"
+_BASES = IUPAC_BASES + IUPAC_BASES.lower()
+_NOT_A_BASE = re.compile(b"[^" + _BASES + b"]")
+
+
+class NotABase(ValueError):
+    """A record of a source object holds a byte that is not a base, or no sequence (DEC-84 (1), card B-75). A
+    ValueError, so `bio-box stage ingest` prints it after `refused:` and exits 2, and run-step publishes nothing."""
+
+
+def _nucleotide_records(path: Path):
+    """`fasta.iter_records(path)` for ingest (pass 1 reads every record through it): NotABase on a record with a
+    byte outside `IUPAC_BASES` of either case or with no sequence. The bytes are not changed (lower case is kept,
+    MR-14). The reader itself keeps no alphabet; it also reads protein FASTA."""
+    for k, rec in enumerate(fasta.iter_records(path)):
+        if rec.seq and not rec.seq.translate(None, _BASES):
+            yield rec
+            continue
+        head = rec.header if len(rec.header) <= 200 else rec.header[:200] + "..."
+        what = f"{path}: record {k + 1} ('>{head}')"
+        m = _NOT_A_BASE.search(rec.seq)
+        if m is None:
+            raise NotABase(f"{what} has no sequence; ingest refuses an empty record (DEC-84 (1))")
+        raise NotABase(f"{what}: byte 0x{rec.seq[m.start()]:02x} ({rec.seq[m.start():m.start() + 1]!r}) at position "
+                       f"{m.start() + 1} of its sequence is not an IUPAC nucleotide letter ({IUPAC_BASES.decode()} of "
+                       "either case); ingest refuses the object (DEC-84 (1)) and stores nothing of the stage")
 
 
 @dataclass(frozen=True)
@@ -487,8 +517,9 @@ def ingest(
 
     Batch ingest (card B-15; AGENTS §4.1, §4.3). The objects are taken in ascending sha256, so no
     output depends on the order of `objects`. Pass 1 streams every record once into a private
-    scratch table (sequences are hashed and dropped). When `min_contig_len` is given (card C-38d,
-    DEC-54), records shorter than `min_contig_len` bases are dropped before the held-contig check,
+    scratch table (sequences are hashed and dropped); it refuses a record with a byte that is not a base or with no
+    sequence (`NotABase`, DEC-84 (1)) before anything of the stage is written. When `min_contig_len` is given
+    (card C-38d, DEC-54), records shorter than `min_contig_len` bases are dropped before the held-contig check,
     counted under `below:<min_contig_len>` with `n_bases_in` and `n_bases_rejected` in the ingest
     ledger, and any `genome_input` on disk that disagrees is refused before anything is written.
     One DuckDB connection then decides which digests are new (an anti-join against the earlier
@@ -551,7 +582,7 @@ def ingest(
         try:
             for i, (sha, obj) in enumerate(ordered):
                 src_uid = ids.source_uid(obj.source_name, obj.source_release)
-                for k, rec in enumerate(fasta.iter_records(Path(obj.path))):
+                for k, rec in enumerate(_nucleotide_records(Path(obj.path))):
                     rlen = len(rec.seq)
                     n_in[i] = k + 1
                     bases_in[i] += rlen
@@ -1063,7 +1094,7 @@ def _pass1_run(
             size, sha = src.stat().st_size, ids.sha256_file(src)
             src_uid = ids.source_uid(obj.source_name, obj.source_release)
             n = bases = n_rej = bases_rej = 0
-            for k, rec in enumerate(fasta.iter_records(src)):
+            for k, rec in enumerate(_nucleotide_records(src)):
                 rlen = len(rec.seq)
                 n, bases = k + 1, bases + rlen
                 if min_contig_len is not None and rlen < min_contig_len:
