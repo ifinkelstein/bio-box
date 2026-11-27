@@ -719,12 +719,12 @@ def test_r20_the_command_line_restages_and_exits_zero(tmp_path: Path, capsys):
 
 
 @pytestmark_r20
-def test_r20_ingest_stores_a_gap_byte_as_sequence(tmp_path: Path):
-    """Behaviour as it is (no change to src/): `biobox.fasta.iter_records` has no alphabet check and ingest hashes and
-    stores the record's bytes, so a `-` is neither refused nor dropped. It is stored, counted in the contig's length,
-    and part of its contig_uid; the reverse strand keeps it; the gene caller takes the sequence without an error."""
-    import pyrodigal
-
+@pytest.mark.covers("B-75")
+def test_r20_ingest_refuses_a_gap_byte(tmp_path: Path):
+    """Migrated by card B-75 (DEC-84 (1)): card R-20 recorded that ingest stored a `-` as a base; ingest now refuses
+    it. `biobox.fasta.iter_records` still reads the bytes as they are; ingest stops on the first record holding a gap
+    byte, naming the object, the header, the 1-based position and the byte, and writes nothing of the stage. The
+    clean record alone ingests, its uid that of its bytes."""
     from biobox import fasta, ids
     from biobox.l0seq import SourceObject, store
 
@@ -733,24 +733,25 @@ def test_r20_ingest_stores_a_gap_byte_as_sequence(tmp_path: Path):
     clean = dna("gv-clean", 500)
     src = tmp_path / "src"
     src.mkdir()
-    p = src / "gv.fna"
-    p.write_bytes(fasta_bytes([("Hoko_1 x", tail), ("inner", inner), ("clean", clean)]))
-    assert [r.seq for r in fasta.iter_records(p)] == [tail, inner, clean]  # the reader keeps the bytes
-    root = tmp_path / "root"
+    for name, recs, hdr, pos in (("gv.fna", [("Hoko_1 x", tail), ("inner", inner), ("clean", clean)], "Hoko_1 x", 401),
+                                 ("inner.fna", [("clean", clean), ("inner", inner)], "inner", 301)):
+        p = src / name
+        p.write_bytes(fasta_bytes(recs))
+        assert [r.seq for r in fasta.iter_records(p)] == [s for _, s in recs]  # the reader keeps the bytes
+        root = tmp_path / f"root_{name}"
+        with pytest.raises(store.NotABase) as ei:
+            store.ingest([SourceObject(p, "synth", "1", "public", True)], root, "S0")
+        msg = str(ei.value)
+        assert str(p) in msg and hdr in msg and f"position {pos} " in msg and "0x2d" in msg
+        assert not root.exists() or not [f for f in root.rglob("*") if f.is_file()]
+    p = src / "clean.fna"
+    p.write_bytes(fasta_bytes([("clean", clean)]))
+    root = tmp_path / "root_clean"
     store.ingest([SourceObject(p, "synth", "1", "public", True)], root, "S0")
     s = store.SeqStore(root, ["S0"])
     try:
-        for seq in (tail, inner, clean):
-            u = ids.contig_uid(seq)
-            assert u == blake3(seq.upper()).digest(length=16)  # the uid of the bytes, gap bytes included
-            assert s.get(u) == seq
-            assert s.length_of(s.default_digest(u)) == len(seq)
-        assert s.get(ids.contig_uid(tail), 398, 402) == tail[398:]
-        with pytest.raises(KeyError):  # the same letters without the gaps are another contig, not stored
-            s.get(ids.contig_uid(tail.replace(b"-", b"")))
-        comp = bytes.maketrans(b"ACGT", b"TGCA")
-        assert s.get(ids.contig_uid(inner), strand=-1) == inner.translate(comp)[::-1]  # '-' kept on the - strand
-        assert s.get(ids.contig_uid(inner), strand=-1)[299:300] == b"-"
+        u = ids.contig_uid(clean)
+        assert u == blake3(clean.upper()).digest(length=16)
+        assert s.get(u) == clean
     finally:
         s.close()
-    pyrodigal.GeneFinder(meta=True).find_genes(tail + inner)  # the gene caller does not refuse it either
