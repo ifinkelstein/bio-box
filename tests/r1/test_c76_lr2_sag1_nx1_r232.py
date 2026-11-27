@@ -285,10 +285,13 @@ def test_templates_pass_stage_est_and_carry_the_cards_values():
     assert confs["LR2"].genecall_mode == "gv-meta-c25"
     assert confs["SAG1"].genecall_mode == "default" and confs["NX1"].genecall_mode == "default"
     # card R-19: LR2 is re-staged under a new FASTA name; its SUMs are recorded in R-19's note, the others in C-76's
-    fasta = {"LR2": "lr2_compendia_r19.fna.gz", "SAG1": "sag1_gorg.fna.gz", "NX1": "nx1_compendia.fna.gz"}
+    # card R-20: NX1 is re-staged without its three 16S alignment files; its SUMs are in R-19's note (a dated section)
+    fasta = {"LR2": "lr2_compendia_r19.fna.gz", "SAG1": "sag1_gorg.fna.gz", "NX1": "nx1_compendia_r20.fna.gz"}
     note = (REPO / NOTE).read_text(encoding="utf-8")
-    notes = {"LR2": (REPO / R19_NOTE).read_text(encoding="utf-8"), "SAG1": note, "NX1": note}
+    r19 = (REPO / R19_NOTE).read_text(encoding="utf-8")
+    notes = {"LR2": r19, "SAG1": note, "NX1": r19}
     assert R19_NOTE in confs["LR2"].notes
+    assert R19_NOTE in confs["NX1"].notes
     allowed = {"S1", "P1", "P2", "P3", "P4", "P5", "P6", "H1", "PL1", "C5", "V1", "G1", "SPX1"}
     allowed |= {s for s, _ in a26.R26_11_4_CHAIN}
     for s, c in confs.items():
@@ -506,3 +509,248 @@ def test_r19_restage_reports_a_row_of_c66_that_comes_out_different(tmp_path: Pat
     rc = m.main(["restage-lr2", str(w["dl"]), str(w["meta"]), str(w["old"]), str(tmp_path / "cli"),
                  str(tmp_path / "cli" / "x.fna.gz"), "/tmp/if2453/s2/inputs/LR2", "--compressor", "gzip"])
     assert rc == 1
+
+
+# --- card R-20: NX1 re-staged without the three 16S alignment files of the Lost City archive -------------------------
+#
+# The fixture stage has card C-66's layout (records.tsv and the other tables with CRLF, genomes.json compact with one
+# newline at the end, contig-uid headers wrapped at 80). Truth by hand: which genome is an alignment file (its records hold gap
+# bytes `-`), which contig a kept genome shares with one of them, and the bytes the kept records must keep.
+
+pytestmark_r20 = pytest.mark.covers("R-20")
+
+ALN = ("lost_city:Bipolaricaulota-16S-phylogeny", "lost_city:Methanosarcinales-16S-phylogeny",
+       "lost_city:Thermodesulfovibrionales-16S-phylogeny")
+
+
+def gapped(tag: str, n: int, gaps: int) -> bytes:
+    """An aligned row: `gaps` gap bytes spread through n letters (as the Lost City alignments hold them)."""
+    s = bytearray(dna(tag, n))
+    for i in range(gaps):
+        s[(i * 37 + 5) % n] = 0x2D
+    return bytes(s)
+
+
+NX_SEQ = {"a": dna("nx-a", 300), "b": dna("nx-b", 170), "c": dna("nx-c", 81), "x": dna("nx-x", 160),
+          "e": dna("nx-e", 240), "f": dna("nx-f", 95),
+          "al1": gapped("al1", 200, 7), "al2": gapped("al2", 200, 3), "al3": gapped("al3", 120, 11),
+          "al4": gapped("al4", 90, 2)}
+# genome, source, contigs (in C-66's order); contig x is in a MAG and in an alignment "genome" (it stays: a kept genome
+# holds it); the three alignment genomes are interleaved with real MAGs, as in C-66's records.tsv
+NX_GENOMES = [
+    ("ehomd:GCA_000000011.1", "ehomd_v11_03_genomes", ["a", "b"]),
+    ("lost_city:BinA", "lost_city_serpentinizing_mags", ["c", "x"]),
+    (ALN[0], "lost_city_serpentinizing_mags", ["al1", "al2", "x"]),
+    (ALN[1], "lost_city_serpentinizing_mags", ["al3"]),
+    ("samail:GCF_000000033.2", "ena_c66_nx1_holobiont_subsurface", ["e"]),
+    (ALN[2], "lost_city_serpentinizing_mags", ["al4"]),
+    ("rhizo:MAG1", "rhizosphere_colombia_mags", ["f"]),
+]
+GC_HEAD = ["genome_id", "source_name", "genome_bp", "n_contigs", "assembly_quality", "genetic_code", "reason",
+           "tested_alt", "cd_11", "mean_orf_11", "cd_25", "cd_4"]
+
+
+def _crlf(rows) -> bytes:
+    return b"".join(("\t".join(r) + "\r\n").encode() for r in rows)
+
+
+def _fa80(tags) -> bytes:
+    out = b""
+    for t in tags:
+        s = NX_SEQ[t]
+        out += b">" + uid(s).encode() + b"\n" + b"".join(s[i:i + 80] + b"\n" for i in range(0, len(s), 80))
+    return out
+
+
+def _rec_rows(genomes):
+    return [[g, src, str(i), uid(NX_SEQ[t]), str(len(NX_SEQ[t])), "0", "prokaryote", "mag_hq", "11", "tx"]
+            for g, src, tags in genomes for i, t in enumerate(tags)]
+
+
+def _gc_rows(genomes):
+    return [[g, src, str(sum(len(NX_SEQ[t]) for t in tags)), str(len(tags)), "mag_hq", "11", "below_100kb", "False",
+             "0.0", "0.0", "", ""] for g, src, tags in genomes]
+
+
+def _gj(genomes) -> bytes:
+    return json.dumps([{"contig_uids": [uid(NX_SEQ[t]) for t in tags], "genetic_code": 11, "kind": "prokaryote",
+                        "circular": [], "assembly_quality": "mag_hq"} for _, _, tags in genomes],
+                      separators=(",", ":")).encode() + b"\n"  # compact, one newline at the end, as C-66 wrote it
+
+
+def _first_seen(genomes):
+    seen = []
+    for _, _, tags in genomes:
+        for t in tags:
+            if t not in seen:
+                seen.append(t)
+    return seen
+
+
+def nx1_world(tmp: Path, *, genomes=NX_GENOMES, skani_rows=None) -> dict:
+    old = tmp / "c66_NX1"
+    old.mkdir(parents=True)
+    (old / "records.tsv").write_bytes(_crlf([RECORDS_HEAD, *_rec_rows(genomes)]))
+    (old / "genetic_codes.tsv").write_bytes(_crlf([GC_HEAD, *_gc_rows(genomes)]))
+    (old / "genomes.json").write_bytes(_gj(genomes))
+    (old / "shared_records.tsv").write_bytes(_crlf([["contig_uid", "owner_stage", "length"],
+                                                    [uid(NX_SEQ["a"]), "PL1", "300"],
+                                                    [uid(NX_SEQ["e"]), "MV1", "240"]]))
+    (old / "trims.tsv").write_bytes(_crlf([["genome_id", "contig_name", "raw_len", "trimmed_k", "final_len"]]))
+    (old / "repeated_records.tsv").write_bytes(_crlf([["genome_id", "source_name", "reason", "first_contig_uid"]]))
+    skani = skani_rows if skani_rows is not None else [
+        ["rhizo:MAG9", "rhizosphere_colombia_mags", "skani_within_stage_ge_96.0ani_rep:rhizo:MAG1"]]
+    (old / "skani_within_dropped.tsv").write_bytes(_crlf([["genome_id", "source_name", "reason"], *skani]))
+    obj = {"path": "/tmp/if2453/s2/inputs/NX1/nx1_compendia.fna.gz", "source_name": "c66_nx1_compendia",
+           "source_release": "2026-11-24", "license": "CC BY 4.0 / other-open / INSDC", "redistributable": True,
+           "retrieved_at": "2026-11-24T00:00:00Z"}
+    (old / "objects.json").write_text(json.dumps([obj], indent=2) + "\n")
+    (old / "objects_staging.json").write_text(json.dumps(
+        [{**obj, "path": "/stor/x/NX1/nx1_compendia.fna.gz"}], indent=2) + "\n")
+    fa = tmp / "nx1_compendia.fna.gz"
+    with gzip.GzipFile(filename="", mode="wb", fileobj=open(fa, "wb"), mtime=0) as g:
+        g.write(_fa80(_first_seen(genomes)))
+    return {"old": old, "fasta": fa, "tmp": tmp}
+
+
+def _restage_nx1(m, w, name="out", **kw):
+    return m.restage_nx1(w["old"], w["fasta"], w["tmp"] / name, w["tmp"] / name / "fa" / "nx1_compendia_r20.fna.gz",
+                         "/tmp/if2453/s2/inputs/NX1", compressor="gzip", **kw)
+
+
+KEPT = [g for g in NX_GENOMES if g[0] not in ALN]
+
+
+@pytestmark_r20
+def test_r20_restage_drops_the_alignment_files_and_keeps_every_other_byte(tmp_path: Path):
+    m = _mod()
+    w = nx1_world(tmp_path)
+    rep = _restage_nx1(m, w)
+    out = tmp_path / "out"
+    new_fa = Path(rep["fasta_path"])
+    # the kept records, byte for byte as the old file holds them, in its order; x stays (lost_city:BinA holds it)
+    with gzip.open(new_fa, "rb") as f:
+        assert f.read() == _fa80(["a", "b", "c", "x", "e", "f"])
+    scan = _load("r19_fasta_scan", "r19_fasta_scan.py").scan_file(new_fa)
+    assert scan["status"] == "clean" and scan["records"] == 6 and scan["non_iupac_bytes"] == 0
+    # every table: C-66's rows less those of the three genomes, bytes and line ends kept
+    assert (out / "records.tsv").read_bytes() == _crlf([RECORDS_HEAD, *_rec_rows(KEPT)])
+    assert (out / "genetic_codes.tsv").read_bytes() == _crlf([GC_HEAD, *_gc_rows(KEPT)])
+    assert (out / "genomes.json").read_bytes() == _gj(KEPT)
+    for n in ("shared_records.tsv", "trims.tsv", "repeated_records.tsv", "skani_within_dropped.tsv"):
+        assert (out / n).read_bytes() == (w["old"] / n).read_bytes(), n
+    o = json.loads((out / "objects.json").read_text())
+    assert o[0]["path"] == "/tmp/if2453/s2/inputs/NX1/nx1_compendia_r20.fna.gz"
+    assert o[0]["source_release"] == "2026-11-27" and o[0]["source_name"] == "c66_nx1_compendia"
+    assert json.loads((out / "objects_staging.json").read_text())[0]["path"] == str(new_fa)
+    # what was removed, and why
+    rm = (out / "removed_genomes.tsv").read_text().splitlines()
+    assert rm[0].split("\t") == ["genome_id", "source_name", "records", "bases", "gap_bytes", "reason"]
+    assert [r.split("\t")[:5] for r in rm[1:]] == [
+        [ALN[0], "lost_city_serpentinizing_mags", "3", str(200 + 200 + 160), "10"],
+        [ALN[1], "lost_city_serpentinizing_mags", "1", "120", "11"],
+        [ALN[2], "lost_city_serpentinizing_mags", "1", "90", "2"]]
+    kept_bp = sum(len(NX_SEQ[t]) for t in "abcxef")
+    assert (rep["total_genomes"], rep["removed_genomes"], rep["removed_records_tsv_rows"]) == (4, 3, 5)
+    assert (rep["distinct_contigs"], rep["total_bp"]) == (6, kept_bp)
+    assert (rep["removed_contigs"], rep["removed_bases"], rep["removed_gap_bytes"]) == (4, 610, 23)
+    assert rep["removed_contigs_kept_for_another_genome"] == 1
+    assert (rep["old_distinct_contigs"], rep["old_total_bp"]) == (10, kept_bp + 610)
+    assert rep["kept_records_byte_identical"] is True and rep["uid_mismatches"] == 0
+    assert (rep["shared_contigs"], rep["shared_bp"]) == (2, 540)
+    assert (rep["net_new_contigs"], rep["net_new_bp"]) == (4, kept_bp - 540)
+    assert rep["genomes_by_source"] == {"ehomd_v11_03_genomes": 1, "ena_c66_nx1_holobiont_subsurface": 1,
+                                        "lost_city_serpentinizing_mags": 1, "rhizosphere_colombia_mags": 1}
+    assert rep["genetic_codes"] == {"11": 4}
+    assert sha(w["fasta"]) == rep["old_fasta_sha256"]  # the staged file is only read
+
+
+@pytestmark_r20
+def test_r20_restage_is_byte_identical_when_run_again_and_leaves_the_old_stage_alone(tmp_path: Path):
+    m = _mod()
+    w = nx1_world(tmp_path)
+    before = {p.name: sha(p) for p in w["old"].iterdir()} | {"fasta": sha(w["fasta"])}
+    a, b = _restage_nx1(m, w, "a"), _restage_nx1(m, w, "b")
+    assert before == {p.name: sha(p) for p in w["old"].iterdir()} | {"fasta": sha(w["fasta"])}
+    assert a["fasta_sha256"] == b["fasta_sha256"]
+    for p in sorted((tmp_path / "a").iterdir()):
+        if p.is_file() and p.name not in ("objects_staging.json", "stage_report.json"):  # these name their own paths
+            assert sha(p) == sha(tmp_path / "b" / p.name), p.name
+
+
+@pytestmark_r20
+def test_r20_restage_refusals(tmp_path: Path):
+    m = _mod()
+    w = nx1_world(tmp_path / "w")
+    _restage_nx1(m, w)
+    with pytest.raises(m.Refused, match="exists"):
+        _restage_nx1(m, w)
+    with pytest.raises(m.Refused, match="not in .*records.tsv"):
+        _restage_nx1(m, w, "o2", drop=(*ALN, "lost_city:NoSuchBin"))
+    # a kept record holding a gap byte is refused, not written
+    bad = [*NX_GENOMES[:-1], ("rhizo:MAG1", "rhizosphere_colombia_mags", ["al4"])]
+    w2 = nx1_world(tmp_path / "w2", genomes=[g for g in bad if g[0] != ALN[2]])
+    with pytest.raises(m.Refused, match="IUPAC"):
+        _restage_nx1(m, w2, drop=ALN[:2])
+    assert not list((tmp_path / "w2" / "out" / "fa").glob("*"))  # nothing left behind, not even the .tmp
+    # a genome C-66's skani step dropped for an alignment "representative" would be lost: refused
+    w3 = nx1_world(tmp_path / "w3", skani_rows=[["lost_city:BinZ", "lost_city_serpentinizing_mags",
+                                                 f"skani_within_stage_ge_96.0ani_rep:{ALN[1]}"]])
+    with pytest.raises(m.Refused, match="skani"):
+        _restage_nx1(m, w3)
+    # genomes.json that does not follow records.tsv genome for genome
+    w4 = nx1_world(tmp_path / "w4")
+    (w4["old"] / "genomes.json").write_bytes(_gj(list(reversed(NX_GENOMES))))
+    with pytest.raises(m.Refused, match="genomes.json"):
+        _restage_nx1(m, w4)
+
+
+@pytestmark_r20
+def test_r20_the_command_line_restages_and_exits_zero(tmp_path: Path, capsys):
+    m = _mod()
+    w = nx1_world(tmp_path)
+    rc = m.main(["restage-nx1", str(w["old"]), str(w["fasta"]), str(tmp_path / "cli"),
+                 str(tmp_path / "cli" / "nx1_compendia_r20.fna.gz"), "/tmp/if2453/s2/inputs/NX1",
+                 "--compressor", "gzip"])
+    assert rc == 0
+    rep = json.loads(capsys.readouterr().out)
+    assert rep["removed_genomes"] == 3 and rep["total_genomes"] == 4 and rep["card"] == "R-20"
+    assert rep["removed_genome_ids"] == sorted(ALN)  # the default list is the three Lost City alignment files
+
+
+@pytestmark_r20
+def test_r20_ingest_stores_a_gap_byte_as_sequence(tmp_path: Path):
+    """Behaviour as it is (no change to src/): `biobox.fasta.iter_records` has no alphabet check and ingest hashes and
+    stores the record's bytes, so a `-` is neither refused nor dropped. It is stored, counted in the contig's length,
+    and part of its contig_uid; the reverse strand keeps it; the gene caller takes the sequence without an error."""
+    import pyrodigal
+
+    from biobox import fasta, ids
+    from biobox.l0seq import SourceObject, store
+
+    tail = dna("gv-tail", 400) + b"--"           # as GV1's `Hoko_1` ends
+    inner = dna("gv-in1", 300) + b"-" + dna("gv-in2", 299)
+    clean = dna("gv-clean", 500)
+    src = tmp_path / "src"
+    src.mkdir()
+    p = src / "gv.fna"
+    p.write_bytes(fasta_bytes([("Hoko_1 x", tail), ("inner", inner), ("clean", clean)]))
+    assert [r.seq for r in fasta.iter_records(p)] == [tail, inner, clean]  # the reader keeps the bytes
+    root = tmp_path / "root"
+    store.ingest([SourceObject(p, "synth", "1", "public", True)], root, "S0")
+    s = store.SeqStore(root, ["S0"])
+    try:
+        for seq in (tail, inner, clean):
+            u = ids.contig_uid(seq)
+            assert u == blake3(seq.upper()).digest(length=16)  # the uid of the bytes, gap bytes included
+            assert s.get(u) == seq
+            assert s.length_of(s.default_digest(u)) == len(seq)
+        assert s.get(ids.contig_uid(tail), 398, 402) == tail[398:]
+        with pytest.raises(KeyError):  # the same letters without the gaps are another contig, not stored
+            s.get(ids.contig_uid(tail.replace(b"-", b"")))
+        comp = bytes.maketrans(b"ACGT", b"TGCA")
+        assert s.get(ids.contig_uid(inner), strand=-1) == inner.translate(comp)[::-1]  # '-' kept on the - strand
+        assert s.get(ids.contig_uid(inner), strand=-1)[299:300] == b"-"
+    finally:
+        s.close()
+    pyrodigal.GeneFinder(meta=True).find_genes(tail + inner)  # the gene caller does not refuse it either

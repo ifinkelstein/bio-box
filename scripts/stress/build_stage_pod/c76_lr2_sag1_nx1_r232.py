@@ -17,6 +17,12 @@ the pod for an ANI test).
 Written under OUT_META_DIR/STAGE: `r232_status.tsv` (one row per genome, sorted by genome id, deterministic) and
 `r232_report.json` (counts, the stage's file table with sha256, exact `contig_uid` ownership when `--root` and
 `--chain-home` are given, the `s2_check_inputs.py` result). The stage's own files are only read.
+
+Two re-stages under new file names (the staged files are only read): `restage-lr2` (card R-19: `LR2` from its four
+archives) and `restage-nx1` (card R-20: `NX1` without the three 16S alignment files of the Lost City archive):
+
+    c76_lr2_sag1_nx1_r232.py restage-nx1 OLD_META OLD_FASTA OUT_META OUT_FASTA FINAL_DIR [--drop GENOME_ID ...]
+                                         [--compressor bgzip|gzip] [--bgzip-threads N] [--source-release DATE]
 """
 
 from __future__ import annotations
@@ -657,6 +663,258 @@ def gzip_type():
     return _gzip.GzipFile
 
 
+# ---- card R-20: NX1 re-staged without the three 16S alignment files of the Lost City archive ----------------------
+#
+# Card C-66 took every FASTA of the Lost City zip as a MAG, so three "genomes" of NX1 are 16S rRNA alignments (their
+# records hold gap bytes `-`; card R-19's scan). The re-stage reads C-66's staged FASTA and tables and writes them again
+# under a new name without those genomes: a record is left out only when no kept genome holds its contig, every kept
+# record and table row is copied byte for byte, and the kept records are checked (header UTF-8, IUPAC letters only,
+# header the contig_uid of the bytes) as they are read back from the new file.
+
+NX1_ALIGNMENTS = ("lost_city:Bipolaricaulota-16S-phylogeny", "lost_city:Methanosarcinales-16S-phylogeny",
+                  "lost_city:Thermodesulfovibrionales-16S-phylogeny")
+NX1_REASON = "16S rRNA alignment file of the source archive, not genome sequence (card R-20)"
+NX1_GENOME_TABLES = ("genetic_codes.tsv", "trims.tsv", "repeated_records.tsv")  # first column genome_id
+NX1_OPTIONAL_TABLES = ("skani_within_dropped.tsv",)
+_SKANI_REP = b"_rep:"
+
+
+def _filter_lines(src: Path, dst: Path, keep) -> tuple[int, int]:
+    """Copy the header line and every line `keep(fields)` accepts, bytes and line ends as they are; (kept, left out)."""
+    k = d = 0
+    with open(src, "rb") as fi, open(dst, "wb") as fo:
+        fo.write(fi.readline())
+        for ln in fi:
+            if keep(ln.rstrip(b"\r\n").split(b"\t")):
+                fo.write(ln)
+                k += 1
+            else:
+                d += 1
+    return k, d
+
+
+def _record_lines(fh):
+    """(header line, [sequence lines]) of a FASTA stream, every line with its own line end, blank lines kept."""
+    head, body = None, []
+    for ln in fh:
+        if ln.startswith(b">"):
+            if head is not None:
+                yield head, body
+            head, body = ln, []
+        elif head is None:
+            if ln.strip():
+                raise Refused("a line before the first header")
+        else:
+            body.append(ln)
+    if head is not None:
+        yield head, body
+
+
+def restage_nx1(old_meta, old_fasta, out_meta, out_fasta, final_dir, *, drop=NX1_ALIGNMENTS,
+                compressor: str = "gzip", bgzip_threads: int = 1, source_release: str = "2026-11-27") -> dict:
+    """NX1 without the genomes `drop`, into OUT_FASTA (a new name) and OUT_META; C-66's files are only read."""
+    import gzip as _gzip
+
+    from biobox import ids
+
+    old, old_fasta, out_meta, out_fasta = Path(old_meta), Path(old_fasta), Path(out_meta), Path(out_fasta)
+    if out_fasta.exists():
+        raise Refused(f"{out_fasta} exists")
+    if out_meta.exists() and any(out_meta.iterdir()):
+        raise Refused(f"{out_meta} exists and is not empty")
+    need = ["records.tsv", "genomes.json", "shared_records.tsv", "objects_staging.json", *NX1_GENOME_TABLES]
+    for n in need:
+        if not (old / n).is_file():
+            raise Refused(f"missing {old / n}")
+    if not old_fasta.is_file():
+        raise Refused(f"missing {old_fasta}")
+    drop = tuple(sorted(set(drop)))
+    drop_b = {g.encode() for g in drop}
+
+    # records.tsv: each genome's contigs in C-66's order, the contigs to leave out, the counts of what stays
+    order: list[bytes] = []
+    contigs_of: dict[bytes, list[bytes]] = {}
+    src_of: dict[bytes, bytes] = {}
+    kept_uids: set[bytes] = set()
+    drop_rows: Counter = Counter()
+    drop_row_bases: Counter = Counter()
+    drop_uids: dict[bytes, set[bytes]] = {}
+    with open(old / "records.tsv", "rb") as fh:
+        head = fh.readline().rstrip(b"\r\n").split(b"\t")
+        gi, si, ci, li = (head.index(c) for c in (b"genome_id", b"source_name", b"contig_uid", b"length"))
+        for ln in fh:
+            f = ln.rstrip(b"\r\n").split(b"\t")
+            g, u = f[gi], f[ci]
+            if g not in contigs_of:
+                order.append(g)
+                contigs_of[g] = []
+                src_of[g] = f[si]
+            contigs_of[g].append(u)
+            if g in drop_b:
+                drop_rows[g] += 1
+                drop_row_bases[g] += int(f[li])
+                drop_uids.setdefault(g, set()).add(u)
+            else:
+                kept_uids.add(u)
+    for g in drop:
+        if g.encode() not in contigs_of:
+            raise Refused(f"{g}: not in {old / 'records.tsv'}")
+    gone = set().union(*drop_uids.values()) - kept_uids if drop_uids else set()
+    shared_with_kept = set().union(*drop_uids.values()) & kept_uids if drop_uids else set()
+
+    # genomes.json follows records.tsv genome for genome, and is written back as C-66 wrote it
+    raw = (old / "genomes.json").read_bytes()
+    gj = json.loads(raw)
+    if len(gj) != len(order) or any([u.encode() for u in e["contig_uids"]] != contigs_of[g]
+                                    for e, g in zip(gj, order)):
+        raise Refused(f"{old / 'genomes.json'} does not follow records.tsv genome for genome")
+    body = json.dumps(gj, separators=(",", ":")).encode()
+    gj_end = raw[len(body):]  # C-66 ended the file with a newline
+    if not raw.startswith(body) or gj_end.strip():
+        raise Refused(f"{old / 'genomes.json'} is not in the compact form this re-stage writes")
+    # a genome C-66's skani step dropped for a removed representative would be lost with it
+    for n in NX1_OPTIONAL_TABLES:
+        if (old / n).is_file():
+            with open(old / n, "rb") as fh:
+                next(fh)
+                for ln in fh:
+                    f = ln.rstrip(b"\r\n").split(b"\t")
+                    rep = f[-1].split(_SKANI_REP, 1)[-1] if _SKANI_REP in f[-1] else b""
+                    if rep in drop_b:
+                        raise Refused(f"{old / n}: {f[0].decode()} was dropped by skani for {rep.decode()}, "
+                                      "a genome this re-stage removes")
+
+    out_meta.mkdir(parents=True, exist_ok=True)
+    out_fasta.parent.mkdir(parents=True, exist_ok=True)
+    tmp_fasta = out_fasta.with_name(out_fasta.name + ".tmp")
+
+    # the FASTA: every record whose contig stays, its lines as they are
+    gap_of: dict[bytes, int] = {}
+    kept_sha = hashlib.sha256()
+    n_old = old_bp = n_kept = kept_bp = removed_bp = removed_gaps = 0
+    seen: set[bytes] = set()
+    def check(hl: bytes, body: list[bytes], where: str, k: int) -> str:
+        """The record's header (refused unless UTF-8) and its sequence (refused unless IUPAC letters only)."""
+        try:
+            h = hl[1:].rstrip(b"\r\n").decode("utf-8")
+        except UnicodeDecodeError:
+            raise Refused(f"{where}: record {k}: header is not UTF-8") from None
+        name = h.split()[0] if h.split() else ""
+        if any(x.rstrip(b"\r\n").translate(None, _IUPAC) for x in body):
+            raise Refused(f"{where}: record {k} ({name}): a byte that is not an IUPAC nucleotide letter")
+        return name
+
+    fa, close_fa = _open_fasta_out(tmp_fasta, compressor, bgzip_threads)
+    try:
+        try:
+            with _gzip.open(old_fasta, "rb") as fh:
+                for hl, body in _record_lines(fh):
+                    n_old += 1
+                    u = hl[1:].rstrip(b"\r\n").split(None, 1)[0] if hl[1:].strip() else b""
+                    n = sum(len(x.rstrip(b"\r\n")) for x in body)
+                    old_bp += n
+                    if u in gone:
+                        g = sum(x.count(b"-") for x in body)
+                        gap_of[u] = g
+                        removed_bp += n
+                        removed_gaps += g
+                        continue
+                    check(hl, body, str(old_fasta), n_old)
+                    if u not in kept_uids:
+                        raise Refused(f"{old_fasta}: record {n_old} ({u.decode()}) is in no genome")
+                    if u in seen:
+                        raise Refused(f"{old_fasta}: record {n_old} ({u.decode()}) appears twice")
+                    seen.add(u)
+                    gap_of[u] = 0
+                    for x in (hl, *body):
+                        fa.write(x)
+                        kept_sha.update(x)
+                    n_kept += 1
+                    kept_bp += n
+        finally:
+            close_fa()
+        if seen != kept_uids:
+            raise Refused(f"{len(kept_uids - seen)} contigs of the kept genomes are not in {old_fasta}")
+        if gone - set(gap_of):
+            raise Refused(f"{len(gone - set(gap_of))} contigs of the removed genomes are not in {old_fasta}")
+
+        # read the new file back: the same bytes as the kept records of the old one, every record clean and keyed
+        # by the contig_uid of its bytes
+        back, mismatches, n_back = hashlib.sha256(), 0, 0
+        with _gzip.open(tmp_fasta, "rb") as fh:
+            for hl, body in _record_lines(fh):
+                for x in (hl, *body):
+                    back.update(x)
+                n_back += 1
+                name = check(hl, body, str(out_fasta), n_back)
+                if ids.contig_uid(b"".join(x.rstrip(b"\r\n") for x in body)).hex() != name:
+                    mismatches += 1
+    except BaseException:
+        tmp_fasta.unlink(missing_ok=True)
+        raise
+    identical = back.hexdigest() == kept_sha.hexdigest() and n_back == n_kept
+    tmp_fasta.replace(out_fasta)
+
+    # the tables, less the removed genomes' rows (and the removed contigs' rows of shared_records.tsv)
+    part = {}
+    for n in ("records.tsv", *NX1_GENOME_TABLES):
+        p = out_meta / f".{n}.partial"
+        part[n] = _filter_lines(old / n, p, lambda f: f[0] not in drop_b)
+    part["shared_records.tsv"] = _filter_lines(old / "shared_records.tsv", out_meta / ".shared_records.tsv.partial",
+                                               lambda f: f[0] not in gone)
+    for n in NX1_OPTIONAL_TABLES:
+        if (old / n).is_file():
+            part[n] = _filter_lines(old / n, out_meta / f".{n}.partial", lambda f: f[0] not in drop_b)
+    kept_gj = [e for e, g in zip(gj, order) if g not in drop_b]
+    (out_meta / ".genomes.json.partial").write_bytes(json.dumps(kept_gj, separators=(",", ":")).encode() + gj_end)
+    for n in [*part, "genomes.json"]:
+        (out_meta / f".{n}.partial").replace(out_meta / n)
+    removed_rows = [[g, src_of[g.encode()].decode(), str(drop_rows[g.encode()]), str(drop_row_bases[g.encode()]),
+                     str(sum(gap_of.get(u, 0) for u in drop_uids[g.encode()])), NX1_REASON] for g in drop]
+    with open(out_meta / "removed_genomes.tsv", "w", encoding="utf-8", newline="") as fh:
+        wr = csv.writer(fh, delimiter="\t", lineterminator="\n")
+        wr.writerow(["genome_id", "source_name", "records", "bases", "gap_bytes", "reason"])
+        wr.writerows(removed_rows)
+    obj = json.loads((old / "objects_staging.json").read_text(encoding="utf-8"))
+    if len(obj) != 1:
+        raise Refused(f"{old / 'objects_staging.json'}: expected one object")
+    o = {**obj[0], "path": str(out_fasta), "source_release": source_release}
+    (out_meta / "objects_staging.json").write_text(json.dumps([o], indent=2) + "\n", encoding="utf-8")
+    (out_meta / "objects.json").write_text(
+        json.dumps([{**o, "path": str(Path(final_dir) / out_fasta.name)}], indent=2) + "\n", encoding="utf-8")
+
+    with open(out_meta / "shared_records.tsv", newline="") as fh:
+        rd = csv.reader(fh, delimiter="\t")
+        next(rd)
+        shared = [(r[0], r[1], int(r[2])) for r in rd]
+    kept_genomes = [g for g in order if g not in drop_b]
+    rep = {
+        "card": "R-20", "stage": "NX1",
+        "old_fasta_path": str(old_fasta), "old_fasta_bytes": old_fasta.stat().st_size,
+        "old_fasta_sha256": _sha256(old_fasta),
+        "fasta_path": str(out_fasta), "fasta_bytes": out_fasta.stat().st_size, "fasta_sha256": _sha256(out_fasta),
+        "files_sha256": {p.name: _sha256(p) for p in sorted(out_meta.iterdir()) if p.is_file()
+                         and not p.name.startswith(".")},
+        "removed_genome_ids": list(drop), "removed_genomes": len(drop),
+        "removed_records_tsv_rows": sum(drop_rows.values()),
+        "removed_contigs": len(gone), "removed_bases": removed_bp, "removed_gap_bytes": removed_gaps,
+        "removed_contigs_kept_for_another_genome": len(shared_with_kept),
+        "old_genomes": len(order), "old_distinct_contigs": n_old, "old_total_bp": old_bp,
+        "total_genomes": len(kept_genomes), "distinct_contigs": n_kept, "total_bp": kept_bp,
+        "records_tsv_rows": part["records.tsv"][0],
+        "kept_stream_sha256": kept_sha.hexdigest(), "read_back_sha256": back.hexdigest(),
+        "kept_records_byte_identical": identical, "uid_mismatches": mismatches,
+        "shared_contigs": len(shared), "shared_bp": sum(r[2] for r in shared),
+        "shared_by_stage": dict(sorted(Counter(r[1] for r in shared).items())),
+        "net_new_contigs": n_kept - len(shared), "net_new_bp": kept_bp - sum(r[2] for r in shared),
+        "genomes_by_source": dict(sorted(Counter(src_of[g].decode() for g in kept_genomes).items())),
+        "genetic_codes": {str(k): v for k, v in sorted(Counter(e["genetic_code"] for e in kept_gj).items())},
+        "table_rows_kept_and_removed": {n: list(v) for n, v in sorted(part.items())},
+    }
+    (out_meta / "stage_report.json").write_text(json.dumps(rep, indent=2) + "\n", encoding="utf-8")
+    return rep
+
+
 # ---- the command -------------------------------------------------------------------------------------------------
 
 def run(stage: str, meta_dir, fasta, index_dir, out_meta_root, *, names: dict[str, str] | None = None,
@@ -719,7 +977,25 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--chain-home", type=Path, default=None)
     s.add_argument("--work", type=Path, default=None)
     s.add_argument("--source-release", default="2026-11-27")
+    x = sub.add_parser("restage-nx1", help="card R-20: NX1 without its three 16S alignment files, under a new name")
+    for n in ("old_meta", "old_fasta", "out_meta", "out_fasta", "final_dir"):
+        x.add_argument(n, type=Path)
+    x.add_argument("--drop", action="append", default=None,
+                   help="a genome id to leave out (default: the three Lost City 16S alignment files)")
+    x.add_argument("--compressor", choices=("bgzip", "gzip"), default="bgzip")
+    x.add_argument("--bgzip-threads", type=int, default=1)
+    x.add_argument("--source-release", default="2026-11-27")
     a = ap.parse_args(argv)
+    if a.cmd == "restage-nx1":
+        try:
+            rep = restage_nx1(a.old_meta, a.old_fasta, a.out_meta, a.out_fasta, a.final_dir,
+                              drop=tuple(a.drop) if a.drop else NX1_ALIGNMENTS, compressor=a.compressor,
+                              bgzip_threads=a.bgzip_threads, source_release=a.source_release)
+        except Refused as exc:
+            print(f"refused: {exc}", file=sys.stderr)
+            return 2
+        print(json.dumps(rep, indent=1, sort_keys=True))
+        return 0 if rep["kept_records_byte_identical"] and rep["uid_mismatches"] == 0 else 1
     if a.cmd == "restage-lr2":
         try:
             rep = restage_lr2(a.dl_dir, a.emerge_meta, a.old_meta, a.out_meta, a.out_fasta, a.final_dir,
