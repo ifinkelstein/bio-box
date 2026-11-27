@@ -390,3 +390,210 @@ CPU-minutes, the upper bounds summed); the re-stage is most of it.
   template was rewritten (`AssertionError: ... '2026-11-27_staged_fasta_scan.md' in ('...2026-11-26_lr2_sag1_nx1_r232.md',)`).
 - `env BIOBOX_TREE=/tmp/biobox-wt/R-19 sh scripts/pod_pytest.sh R-19 tests/r1/test_r19_fasta_scan.py
   tests/r1/test_c76_lr2_sag1_nx1_r232.py tests/r1/test_r232_index.py tests/r0`: **308 passed in 18.34 s** (*measured*, `wilkcomp02`, 2026-11-27, one process).
+
+## 8. `NX1` re-staged without its three 16S alignment files, and what ingest does with a gap byte (card R-20, 2026-11-27)
+
+Added 2026-11-27 by card R-20, from §3's report. Host `wilkcomp02`; labels as at the top of this note. **Read only:**
+C-66's `/tmp/if2453/c66/NX1/` and `/stor/scratch/Wilke/if2453/bio-box-staging/NX1/nx1_compendia.fna.gz`, C-76's
+`/tmp/if2453/c76/NX1/`, the root, `/tmp/if2453/s2/inputs/` (the chain, and `GV1`'s inputs for §8.5). **Written:**
+`/stor/scratch/Wilke/if2453/bio-box-staging/NX1/nx1_compendia_r20.fna.gz` (new name, beside the old file), the
+metadata in `/tmp/if2453/r20/NX1/`, the r232 status in `/tmp/if2453/r20/c76/NX1/`, the scan in `/tmp/if2453/r20/scan/`,
+`/tmp/if2453/r20/gv1_gaps.json`, logs and three small check scripts in `/tmp/if2453/r20/logs/`, and the mirror on
+`tower` in the new directory `sources/NX1/r20_restage/`. Nothing under `/stor` or on `tower` was overwritten or
+deleted.
+
+### 8.1 The re-stage
+
+`c76_lr2_sag1_nx1_r232.py restage-nx1` reads C-66's staged FASTA and tables and writes them again under new names
+without the genomes it is given (by default the three Lost City alignment files of §3). A record is left out only when
+no kept genome holds its contig; every kept record (header and sequence lines, line ends as they are) and every kept
+table row is copied byte for byte; `genomes.json` is checked to follow `records.tsv` genome for genome and to be in
+C-66's compact form, and is written in the same form; a genome C-66's `skani` step dropped for a removed
+representative would refuse the run (none was). Every kept record is refused unless its header is UTF-8 and its bytes
+IUPAC letters, and the new file is read back: the sha256 of its decompressed bytes must equal that of the kept records
+as read from the old file, and each header must be the `contig_uid` (`biobox.ids`) of its record. Run (unit
+`r20-restage`, in `/stor/home/if2453/bio-box/images/bio-box_faec1f4.sif`, `CPUQuota=200%`, `bgzip -@ 1`):
+
+```
+c76_lr2_sag1_nx1_r232.py restage-nx1 /tmp/if2453/c66/NX1 \
+    /stor/scratch/Wilke/if2453/bio-box-staging/NX1/nx1_compendia.fna.gz /tmp/if2453/r20/NX1 \
+    /stor/scratch/Wilke/if2453/bio-box-staging/NX1/nx1_compendia_r20.fna.gz /tmp/if2453/s2/inputs/NX1 \
+    --compressor bgzip --bgzip-threads 1
+```
+
+04:51:13 to 05:01:05 CST (*measured*, unit start and file times). A first start at 04:49 was refused before it wrote
+anything: C-66's `genomes.json` ends in a newline the script did not yet expect (the fixture now has it).
+
+**Removed** (*measured*, `/tmp/if2453/r20/NX1/removed_genomes.tsv`; reason "16S rRNA alignment file of the source
+archive, not genome sequence"):
+
+| Genome | Rows (contigs) | Bytes | Gap bytes `-` |
+|---|---:|---:|---:|
+| `lost_city:Bipolaricaulota-16S-phylogeny` | 18 | 28,656 | 9,109 |
+| `lost_city:Methanosarcinales-16S-phylogeny` | 34 | 22,984 | 1,074 |
+| `lost_city:Thermodesulfovibrionales-16S-phylogeny` | 17 | 28,305 | 7,210 |
+| total | 69 | 79,945 | 17,393 |
+
+The 69 rows are 69 distinct contigs, none of them held by a kept genome or by another stage; 17,393 is §3's count of
+gap bytes in the whole file, so no gap byte is left (*measured*, `stage_report.json`). The three were code 11, all
+`not_visible` in C-76's table.
+
+**The new `NX1` against the old** (*measured*, `/tmp/if2453/r20/NX1/stage_report.json`, C-66's
+`/tmp/if2453/c66/NX1/stage_report.json`):
+
+| | old (`nx1_compendia.fna.gz`, C-66) | new (`nx1_compendia_r20.fna.gz`, R-20) |
+|---|---:|---:|
+| Genomes | 896 | **893** (Lost City 32 → 29; eHOMD 20, ENA lichen and Samail 678, polar mats 20, rhizosphere 146 unchanged) |
+| Distinct contigs (FASTA records) | 391,103 | **391,034** |
+| `genome_input` rows (`records.tsv` rows) | 391,117 | **391,048** |
+| Bases | 3,398,390,142 | **3,398,310,197** |
+| Genetic code 11 / 25 / 4 | 889 / 6 / 1 | 886 / 6 / 1 |
+| Held by the root and the `r26.11.4` stages | 5 contigs, 84,773 bp (PL1 2, PL3 2, MV1 1) | the same 5 (`shared_records.tsv` byte-identical, sha256 `14f03620…`) |
+| New | 391,098 contigs, 3,398,305,369 bp | **391,029 contigs, 3,398,225,424 bp** |
+| FASTA bytes | 1,041,939,827 | 984,388,438 |
+| FASTA sha256 | `9da4516e264df7125a845848658915706e7079f04bf01b2fdd7ec1bbb17e3863` | `395a840112ce6e1a113487b0b34a57935a5a6ab033d40b8020e86f4cb4639176` |
+
+The differences are the 69 rows (*derived*: 391,103 − 69 = 391,034; 391,117 − 69 = 391,048; 3,398,390,142 − 79,945 =
+3,398,310,197; 3,398,305,369 − 79,945 = 3,398,225,424). The old file is 57,551,389 bytes larger than the new
+(*derived*), more than the 79,945 bytes removed: the old file is one plain gzip stream (its header carries a file name and
+no `BC` field; *measured*, `xxd -l 18`) and the new one is BGZF from `bgzip`, as R-19's `LR2`; so only decompressed
+bytes are compared.
+
+**Byte identity of the kept records:** the decompressed stream of the old file less the 69 records and the
+decompressed new file have the same sha256, `02b2e17c1ad4c98afc81a401d0f5db939937a11cb94e48c861978783fc88bbf4`
+(`kept_records_byte_identical: true`), and all 391,034 headers are the `contig_uid` of their bytes
+(`uid_mismatches: 0`) (*measured*, `stage_report.json`). Every table is C-66's less the removed genomes' rows, its bytes
+and CRLF line ends kept: `records.tsv` 391,048 kept / 69 out, `genetic_codes.tsv` 893 / 3, `skani_within_dropped.tsv`
+26 / 0, `shared_records.tsv` 5 / 0 (sha256 unchanged), `trims.tsv` and `repeated_records.tsv` header only (sha256
+unchanged).
+
+Files (*measured*, sha256): in `/tmp/if2453/r20/NX1/`: `genomes.json`
+`e31b9b1970d71939595fe82c0b007a8af30d79dee54789716fa97fb45c8e642b`, `objects.json`
+`bfb7726a13d85e1f4d03ff16f4031502fe3187e6582d93e449dd5d48f5d215d7` (path
+`/tmp/if2453/s2/inputs/NX1/nx1_compendia_r20.fna.gz`, `source_release` `2026-11-27` as R-19 set it for `LR2`; licence and
+`redistributable: true` as C-66 recorded them), `objects_staging.json`
+`61af1b92a96d12242069db997a25a66d91691d771e01e2d22fe249c2bcc8059a`, `records.tsv`
+`d9dcb5f68dcaa2904c469bbe126cbe5761810a802e8c1081208b8f0d719f1955`, `genetic_codes.tsv`
+`3c74c3971117acd58f49dab1cab8a05598aa4fe167f1c252388e646c5e61e9b6`, `skani_within_dropped.tsv`
+`68bbce115a8b979b242e7191ada63d6f3dc2775b3685a8c9cfa83a56792fdc32`, `removed_genomes.tsv`
+`91b6ef91f7bbb3f006093fe7064407cb2a0232b49a60c176c4f3abb262e0ec4e`, `stage_report.json`
+`739a0d686195f5e65d2d04e44a71529edb76938beefa9a7aee94e341ef33a3d6`, and `shared_records.tsv`, `trims.tsv`,
+`repeated_records.tsv` equal to C-66's.
+
+### 8.2 Checks, the r232 status, the template and the mirror
+
+- **The new FASTA scans clean:** 391,034 records, 3,398,310,197 bases (both equal to the stage's), 0 headers not UTF-8
+  or not ASCII, 0 bytes outside IUPAC, 0 empty records, no read error, sha256 `395a8401…` as written (*measured*, unit
+  `r20-scan`, 05:01:39 to 05:03:17 CST, `r19_fasta_scan.py scan`, the pod's `/usr/bin/python3`,
+  `/tmp/if2453/r20/scan/NX1__nx1_compendia_r20.fna.gz.json`).
+- **The r232 status of C-76, kept for the 893:** `c76_lr2_sag1_nx1_r232.py run NX1 /tmp/if2453/r20/NX1
+  .../nx1_compendia_r20.fna.gz /tmp/if2453/c74/index /tmp/if2453/r20/c76 --root /tmp/if2453/r10/root --chain-home
+  /tmp/if2453/s2/inputs` (unit `r20-r232`, in the image, 05:03:46 to 05:04:22) wrote
+  `/tmp/if2453/r20/c76/NX1/r232_status.tsv` (sha256 `d9c191b3d087b13a7c7c47f696d8206952e47c028f88c1431c35d5e244388cb5`)
+  and `r232_report.json` (`608b19d9a548c93f22c048107b1a65536d579f27cf97f2af9f76079350ef9cb6`). The status table is
+  **C-76's `/tmp/if2453/c76/NX1/r232_status.tsv` less its three rows of the removed genomes, byte for byte** (896 rows
+  − 3 = 893; the sha256 of C-76's table less those rows equals the new one; *measured*, `/tmp/if2453/r20/logs/
+  r20_status_cmp.py`). Counts: 473 in GTDB R232 and GlobDB r232, 64 in GTDB R232 only, 161 in neither, **195** not
+  visible (was 198); 537 in GTDB R232; 698 with an accession; removed 0 for r232. Ownership over the root's 13 stored
+  stages and the 19 `r26.11.4` stages: 5 contigs held (PL1 2, 17,964 bp; PL3 2, 13,775 bp; MV1 1, 53,034 bp), 391,029
+  contigs and 3,398,225,424 bp new, equal to `stage_report.json` (the template's `EXPECT` lines).
+- **`s2_check_inputs.py NX1 genomes.json objects_staging.json`** (run by the same command): exit 0, `problems: []`,
+  893 genomes, 391,048 `genome_input` rows.
+- **`stage_est.py conf .../stages/templates/NX1.conf --stage NX1 --tree <tree>`** (`python3 -I`, the pod's host Python):
+  exit 0, `DEPTH=called`, default gene-calling mode, `CRISPR=yes`, `AFTER=SAG1`, both notes. The template's `SUM` lines
+  are the sha256 of `genomes.json`, `objects.json` and `nx1_compendia_r20.fna.gz` above; the old file's `SUM` is gone.
+  Cost by plan §3's rate R1 (24.8 CPU-minutes per new Gbp, as C-76 used): about 84 CPU-minutes (*derived*: 24.8 ×
+  3.398), as before.
+- **Mirror to `tower`** with `scripts/orchestrator/relay_to_tower.sh`, into the new directory
+  `tower:/mnt/user/research-bulk/bio-box/sources/NX1/r20_restage/` (`sources/NX1/` holds C-76's first pass and
+  `stage_inputs_full/` holds C-66's files; nothing there is overwritten): the eleven metadata files (70,552,344 bytes,
+  `DONE: 11 verified, 0 in place and skipped, 0 failed`), the two r232 reports (`DONE: 2 verified`) and the FASTA
+  (984,388,438 bytes in 32 s, 30.76 MB/s, sha256 equal to the record, `DONE: 1 verified`), 05:06:24 to 05:07:18 CST
+  (*measured*, the script's log); `SHA256SUMS` there has 14 lines, every one verified in these runs.
+
+**Superseded, not deleted:** `/stor/scratch/Wilke/if2453/bio-box-staging/NX1/nx1_compendia.fna.gz` (sha256 `9da4516e…`),
+C-66's metadata in `/tmp/if2453/c66/NX1/`, C-76's status of it in `/tmp/if2453/c76/NX1/`, and their mirror in
+`tower:.../sources/NX1/stage_inputs_full/` are superseded by the files above and are **not** inputs of any stage (C-76's
+first-pass `nx1_compendia_r232.fna.gz` was superseded already, its note §6). Card A-29 takes `NX1` from
+`/tmp/if2453/r20/NX1/` and `nx1_compendia_r20.fna.gz`. Whether to delete the old file on `/stor` (1.04 GB) is the PI's.
+
+### 8.3 What ingest does with a gap byte `-`: it stores it
+
+Read from `src/` at commit `77881e8` (no change to `src/`):
+
+- `src/biobox/fasta.py:47-72`, `iter_records`, the only reader of a source object at ingest: a line that starts with
+  `>` opens a record and its header is decoded as UTF-8 (line 65; that decode is what refuses a header that is not
+  UTF-8); a line before the first header raises (lines 68-69); **every other non-blank line is appended to the sequence
+  as bytes (line 70) with no alphabet check**. Nothing in the module looks at the sequence's letters.
+- `src/biobox/l0seq/store.py:554-566` (`ingest`, pass 1) and `:1066-1077` (`_pass1_run`, the batched pass 1 of
+  `build-stage`): the length is `len(rec.seq)`, the stored-bytes key `ids.raw_digest(rec.seq)` and the contig key
+  `ids.contig_uid(rec.seq)`; the only reason to leave a record out is `min_contig_len` (lines 558-563 and 1069-1074).
+- `src/biobox/ids.py:10-12`: `contig_uid(seq) = blake3(seq.upper())`, so the `-` is part of the contig's identity.
+- `src/biobox/l0seq/store.py:773-775` (`_write_shard`, pass 2): the record's bytes are stored after a length and
+  digest check against pass 1.
+- `src/biobox/l0seq/store.py:92-96`, `revcomp`: the complement table maps the IUPAC letters only, so a `-` stays a `-`
+  on the minus strand. `src/biobox/stage.py:765-772` (`fasta_counts`, the estimate) counts it as a base.
+
+So **a `-` is neither refused nor dropped: it is stored as a base of the contig**, counted in its length and hashed into
+its `contig_uid`; slices and the reverse strand return it. Test (behaviour as it is):
+`tests/r1/test_c76_lr2_sag1_nx1_r232.py::test_r20_ingest_stores_a_gap_byte_as_sequence` ingests a fixture with a
+record ending in `--` (as `GV1`'s do) and one with an inner `-`: ingest succeeds, `SeqStore.get` returns the bytes with
+the gaps, `length_of` counts them, the uid is that of the gapped bytes (the same letters without the gaps are not
+stored), the minus strand keeps the `-` in place, and `pyrodigal.GeneFinder(meta=True).find_genes` takes the gapped
+sequence without an error (how it scores the `-` is not tested here).
+
+**`GV1`'s three contigs** (*measured*, read only, unit `r20-gv1gaps`, 05:05:35 to 05:06:01 CST, `biobox.fasta` and
+`biobox.ids` in the image over `/tmp/if2453/s2/inputs/GV1/gvmags_v2_all_18kgenomes.fna` and its `records.tsv`;
+`/tmp/if2453/r20/gv1_gaps.json`): all six gap bytes are the last two bytes of three contigs of one genome, `Hoko`
+(`confirmed/Hoko.fna`): `Hoko_1` (450,697 bytes, record 13,777), `Hoko_3` (407,935, record 13,779) and `Hoko_4`
+(120,468, record 13,780), each ending `--`. `GV1`'s `records.tsv` gives each the `contig_uid` of its bytes with the gaps
+(`800cb43e…`, `8bed7beb…`, `a88c0ca1…`), as ingest computes it, so the stage is consistent and **the build will not stop
+on them**. What follows if `GV1` is built as staged: the three contigs enter the store with two trailing `-` each (6
+bytes that are not bases), their lengths are 2 too long, and their `contig_uid`s are those of the gapped bytes; a later
+correction cannot rewrite them (AGENTS §3.10) and would give three new contigs (the uids without the gaps are
+`346a88ae…`, `256656ff…`, `6267248e…`). **Proposed, not done:** before `GV1` is built, re-stage it the way this card
+re-staged `NX1`, under a new FASTA name, with the trailing `-` of these three records removed (terminal padding of the
+source's FASTA, not sequence), their uids and lengths recomputed in `genomes.json` and `records.tsv`, and the
+ownership checked again; every other record byte for byte. If `GV1` must be built first, the six bytes are harmless to
+the build and can be recorded instead. A separate question for a card (not here): whether ingest, or
+`s2_check_inputs.py` (card R-21), should refuse a byte outside IUPAC; today nothing in the path does.
+
+### 8.4 Pod compute used
+
+Detached `systemd-run --user` units at `nice -n 19`, `MemoryMax=16G`, `MemorySwapMax=0`, `IOSchedulingClass=idle`,
+each started after a look at the active units (the wave was in `PL3`'s Pfam scan throughout, no `MV1` or `V3` unit ran;
+card R-21's `r21-oldlr2` was the one other staging unit, from about 05:01) and with no `STOP` file in the root. One
+unit of this card at a time.
+
+| Unit | What | Cap | Wall | CPU |
+|---|---|---|---|---|
+| `r20-restage` (first start) | refused on reading `genomes.json` | `CPUQuota=200%` | seconds, 04:49 | under 0.1 CPU-minutes (*estimate*) |
+| `r20-restage` | §8.1 | `CPUQuota=200%` | 04:51:13 to 05:01:05 (9.9 min) | at most 19.7 CPU-minutes (*derived*: 9.9 × 2) |
+| `r20-scan` | the new FASTA | `CPUQuota=100%` | 05:01:39 to 05:03:17 | 1.65 CPU-minutes (*measured*, `cpu_s` 99.0) |
+| `r20-r232` | `c76 ... run NX1` (§8.2) | `CPUQuota=200%` | 05:03:46 to 05:04:22 | at most 1.2 CPU-minutes (*derived*) |
+| `r20-gv1gaps` | §8.3 | `CPUQuota=100%` | 05:05:35 to 05:06:01 | at most 0.5 CPU-minutes (*derived*) |
+
+Run directly, each under a second: `r20_gj_diff.py` (§8.1's refusal), `r20_status_cmp.py` (§8.2), `stage_est.py conf`.
+In all at most about 23 CPU-minutes (*derived*: 0.1 + 19.7 + 1.65 + 1.2 + 0.5); no process came near 300 CPU-minutes.
+The units bound `/tmp/if2453` read-write (the root is under it; the scripts only read it) and the NX1 staging directory
+read-write for the new file only.
+
+### 8.5 Tests
+
+- `tests/r1/test_c76_lr2_sag1_nx1_r232.py`, five new `test_r20_*` cases (each with the normal `PATH` and with
+  `PATH=/usr/bin:/bin`) over a fixture stage in C-66's layout (CRLF tables, compact `genomes.json` with a final newline,
+  contig-uid headers wrapped at 80; three alignment genomes with gap bytes interleaved with MAGs; one contig an alignment
+  genome shares with a MAG): the new FASTA equal to the kept records written by hand and clean by `r19_fasta_scan`,
+  every table C-66's less the removed rows, the removed table and counts, objects; byte identity when run again and the
+  old stage untouched; refusals (an existing target, a genome not in `records.tsv`, a kept record with a gap byte, a
+  `skani` representative that is removed, a `genomes.json` out of step); the command line; and the ingest behaviour of
+  §8.3. Seen failing first: all 8 runs of the four restage cases failed (`AttributeError: module 'c76_lr2_sag1_nx1_r232' has no
+  attribute 'restage_nx1'`; the command line `invalid choice: 'restage-nx1'`). The ingest case passed at once, as it
+  must: it states the behaviour of `src/` as it is, which this card does not change.
+- Migrated (the card's template change): `test_templates_pass_stage_est_and_carry_the_cards_values` now expects
+  `NX1`'s FASTA `nx1_compendia_r20.fna.gz`, its `SUM`s in this note and this note among its `NOTE`s; seen failing before
+  the template was rewritten (`AssertionError: assert 'planning/measurements/2026-11-27_staged_fasta_scan.md' in
+  ('planning/measurements/2026-11-26_lr2_sag1_nx1_r232.md',)`).
+- `env BIOBOX_TREE=/tmp/biobox-wt/R-20 sh scripts/pod_pytest.sh R-20 tests/r1/test_c76_lr2_sag1_nx1_r232.py
+  tests/r1/test_r19_fasta_scan.py tests/r1/test_r232_index.py tests/r0`: **318 passed in 17.50 s** (*measured*,
+  `wilkcomp02`, 2026-11-27, one process).

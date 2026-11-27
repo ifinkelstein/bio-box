@@ -1977,7 +1977,11 @@ sources:
     redistributable: true
     fetched: >-
       2026-11-24 on wilkcomp02 (MD5 matched, 0 refusals): Brazelton-2022-Lost-City-fluids-MAGs-v1.2.zip 108,269,292 B
-      sha256 1e6a437b8563f140f54ec1da9efdf99ae2b3d1d32ee1272921854996638405d9 (32 MAGs staged in NX1)
+      sha256 1e6a437b8563f140f54ec1da9efdf99ae2b3d1d32ee1272921854996638405d9 (29 MAGs staged in NX1; card
+      C-66 also staged the zip's three 16S rRNA alignment files Bipolaricaulota-, Methanosarcinales- and
+      Thermodesulfovibrionales-16S-phylogeny as MAGs, 69 aligned rows with 17,393 gap bytes; card R-20,
+      2026-11-27, re-staged NX1 without them as nx1_compendia_r20.fna.gz, see the NX1 staged lines of
+      ena_c66_nx1_holobiont_subsurface and planning/measurements/2026-11-27_staged_fasta_scan.md §8)
     approved: under DEC-50 (entry written by card C-66 on 2026-11-24 before any fetch)
   - name: polar_cyanobacteria_mats_mags
     what: >-
@@ -2038,10 +2042,26 @@ sources:
       1,306 B sha256 a85e83e0b982c3637f2465aba99ae462bf03dcb30539b30a6cffd4f4dab08c8d (0/14 novel)
     staged:
       - stage: NX1
+        object: /stor/scratch/Wilke/if2453/bio-box-staging/NX1/nx1_compendia_r20.fna.gz
+        bytes: 984388438
+        sha256: 395a840112ce6e1a113487b0b34a57935a5a6ab033d40b8020e86f4cb4639176
+        metadata_dir: >-
+          /tmp/if2453/r20/NX1/ (card R-20, 2026-11-27: card C-66's NX1 less the three 16S rRNA alignment files of
+          the Lost City zip that C-66 staged as MAGs [69 aligned rows, 79,945 bytes, 17,393 of them gap bytes '-'];
+          every other record of nx1_compendia.fna.gz and every other row of C-66's tables copied byte for byte;
+          893 genomes, 391,034 distinct contigs, 3,398,310,197 bp, 886 code 11 / 6 code 25 / 1 code 4; 5 contigs
+          held by the root and r26.11.4 -> 391,029 contigs / 3,398,225,424 bp new; genomes.json sha256
+          e31b9b1970d71939595fe82c0b007a8af30d79dee54789716fa97fb45c8e642b; objects.json sha256
+          bfb7726a13d85e1f4d03ff16f4031502fe3187e6582d93e449dd5d48f5d215d7; s2_check_inputs.py NX1 problems: [];
+          the FASTA scans clean (r19_fasta_scan.py); r232 status in /tmp/if2453/r20/c76/NX1/r232_status.tsv,
+          C-76's rows of the 893 byte for byte; mirrored to tower sources/NX1/r20_restage/;
+          planning/measurements/2026-11-27_staged_fasta_scan.md §8)
+      - stage: NX1 (superseded by nx1_compendia_r20.fna.gz, card R-20; not a stage input)
         object: /stor/scratch/Wilke/if2453/bio-box-staging/NX1/nx1_compendia.fna.gz
         bytes: 1041939827
         sha256: 9da4516e264df7125a845848658915706e7079f04bf01b2fdd7ec1bbb17e3863
         metadata_dir: >-
+          HOLDS THREE 16S ALIGNMENT FILES AS GENOMES (card R-19's scan; removed by card R-20).
           /tmp/if2453/c66/NX1/ (896 distinct MAGs after 26 skani 96% ANI dedup, 391,103 distinct contigs, 3.398 Gbp,
           889 code 11 / 6 code 25 / 1 code 4, 5 contigs held by S1..SAG1 -> 391,098 contigs / 3.398 Gbp = 99.999% net
           new; genomes.json sha256 2ea62f7c05baccc7f685e25be9557f21e68a6cb0740e5186132970589176895a; objects.json sha256
