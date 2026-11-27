@@ -446,7 +446,7 @@ def _repo_confs():
 def test_the_repository_has_a_conf_for_each_stage_whose_note_gives_every_value():
     assert {p.stem for p in _repo_confs()} == {
         "V2", "GV1", "G1", "SPX1", "C1", "C2", "C3", "C4", "C6", "PL2", "PL3", "CG1", "MGE1", "SAT1", "ECE1", "O1", "O2", "LPL1", "SYM1", "LRV1", "LGRT1", "MGE2", "MV1", "V3", "LR1", "GART1", "GART2",
-    }  # A-17, A-18, C-52, C-61, C-57, C-55, C-65, C-59, C-59a, C-58, C-67, C-64, A-26
+    } | set(_a29().R26_11_5_CHAIN)  # A-17, A-18, C-52, C-61, C-57, C-55, C-65, C-59, C-59a, C-58, C-67, C-64, A-26, A-29
 
 
 def test_pl2_and_pl3_confs_follow_dec63_and_dec65():
@@ -481,7 +481,7 @@ def test_each_repository_conf_is_valid_and_its_sums_and_figures_are_its_notes(pa
 def test_gv1_comes_after_v2_judges_its_gene_calling_against_the_notes_figure_and_expects_v2s_contigs():
     est = _module("stage_est")
     c = est.read_conf(STAGES / "GV1.conf", "GV1", tree=REPO)
-    assert c.after == ("V2", "PL3", "GART2")
+    assert c.after == ("NX1",)
     assert c.judge["genecall"][0] == 236.0
     assert c.expect["V2"][0] == 17649
     assert c.expect["SPX1"][0] == 3
@@ -500,7 +500,7 @@ def test_a24_pl2_pl3_gv1_follow_dec71_build_order():
     assert "GV1" not in c3.after and "GV1" not in c3.expect
     assert sum(n for n, _ in c3.expect.values()) == 7746
     cg = est.read_conf(STAGES / "GV1.conf", "GV1", tree=REPO)
-    assert cg.after == ("V2", "PL3", "GART2")
+    assert cg.after == ("NX1",)
     assert cg.expect["H1"][0] == 6
     assert cg.expect["SPX1"][0] == 3
     assert cg.expect["V2"][0] == 17649
@@ -517,7 +517,7 @@ def test_a26_r26_11_4_strict_linear_chain_and_deferred_gv1():
         "SYM1", "LRV1", "LGRT1", "MGE2", "MV1", "V3", "LR1", "GART1", "GART2",
     )
     assert len(chain) == 19
-    assert len(_repo_confs()) == 27
+    assert len(_repo_confs()) == 27 + len(set(_a29().R26_11_5_CHAIN) - {"GV1"})  # GV1 was of the 27
     confs = {st: est.read_conf(STAGES / f"{st}.conf", st, tree=REPO) for st in chain}
     assert confs["V2"].after == ("G1", "SPX1")
     assert confs["PL2"].after == ("G1", "SPX1", "V2")
@@ -534,7 +534,7 @@ def test_a26_r26_11_4_strict_linear_chain_and_deferred_gv1():
     assert clr.depth == "called" and clr.library is None and clr.crispr
     assert clr.min_contig_len == 5000 and clr.genecall_mode == "gv-meta-c25"
     cg = est.read_conf(STAGES / "GV1.conf", "GV1", tree=REPO)
-    assert cg.after == ("V2", "PL3", "GART2")
+    assert cg.after == ("NX1",)
     assert cg.expect["V2"][0] == 17649
     assert cg.expect["PL3"][0] == 2
     assert cg.expect["MV1"][0] > 0
@@ -604,6 +604,256 @@ def test_a26_chain_ownership_and_objects_rewrite(tmp_path):
     rewritten = json.loads(dst_obj.read_text())
     assert rewritten[0]["path"] == "/tmp/if2453/s2/inputs/MV1/metavr_mv1.fna"
     assert rewritten[0]["redistributable"] is False
+
+
+# card A-29: the r26.11.5 chain, its promoted confs and its ownership run ----------------------------------------
+#
+# The member list is the one ordered tuple `a29_r26_11_5_chain.R26_11_5_CHAIN`, which the ownership run, the conf
+# writer and these tests read (the orchestrating session, 2026-11-27: DEC-85 appends RMD1 and GBRMGD later). The
+# facts below are independent of it: plan 2026-11-26_r26_11_5_staging_plan.md §4 (as answered, STATUS W5 (3), (4))
+# for each stage's values, §5 for the holders that must come before the sets cut against them, DEC-79 (1) less ASG1
+# and MGE4 for who is out.
+
+A29_NOTE = "planning/measurements/2026-11-27_a29_r26_11_5_confs.md"
+_PF = ("pfam", "38.2", "gathering")
+# stage: (depth, library, gene-call mode, least contig length, CRISPR), plan §4 as answered
+A29_PLAN_S4 = {
+    "GRARE1": ("called", None, "default", None, True), "GRARE2": ("called", None, "default", None, True),
+    "GRARE3": ("called", None, "default", None, True),
+    "LR2": ("called", None, "gv-meta-c25", None, True),  # Q3: one stage, gv-meta-c25; no 5 kb floor (§4.2, STATUS)
+    "SAG1": ("called", None, "default", None, True), "NX1": ("called", None, "default", None, True),
+    "GV1": ("annotated", _PF, "default", None, True),
+    "EGV1": ("annotated", _PF, "gv-meta", None, True),
+    "ECE2": ("annotated", _PF, "default", None, True),  # plasmids in meta mode by their kind
+    "MIR1": ("annotated", _PF, "default", None, True),  # kind virus: pyrodigal-gv in any case
+    "SAG2": ("called", None, "default", None, True),
+    "DPN1": ("called", None, "default", None, True),  # Q4: annotated only up to about 1.5 Gbp new; 1.79 measured
+    "SYM2": ("annotated", _PF, "default", None, True), "LRP1": ("annotated", _PF, "default", None, True),
+    "MIR2": ("annotated", _PF, "gv-meta", None, True),
+    "MV2": ("called", None, "default", None, True),
+    "MVEUKV": ("annotated", _PF, "default", None, True),  # Q4: annotated
+    "KAVHIFI": ("called", None, "default", None, True), "INPH2604": ("annotated", _PF, "default", None, True),
+    "GWV1": ("called", None, "default", None, True), "SAG3": ("called", None, "default", None, True),
+    "WET1": ("called", None, "default", None, True),
+}
+
+
+def _a29():
+    return _module("a29_r26_11_5_chain")
+
+
+@pytest.fixture(params=["normal-path", "tools-hidden"])
+def a29_path(request, monkeypatch):
+    if request.param == "tools-hidden":  # GitHub Actions has none of the pod's tools; nothing here needs one
+        monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    return request.param
+
+
+@pytest.mark.covers("A-29")
+def test_a29_r26_11_5_is_one_strict_linear_chain_after_gart2():
+    est, mod = _module("stage_est"), _a29()
+    chain = mod.R26_11_5_CHAIN
+    assert chain[0] == "GRARE1" and len(set(chain)) == len(chain)
+    assert not set(chain) & {"ASG1", "MGE4"}, "DEC-79 (1) members reported out of r26.11.5"
+    assert not set(chain) & set(mod.R26_11_4_CHAIN)
+    pos = {s: i for i, s in enumerate(chain)}
+    assert pos["GV1"] == pos["NX1"] + 1
+    for holder, cut in (("GV1", "MIR1"), ("GV1", "MVEUKV"), ("MV2", "GWV1"), ("SAG1", "SAG3"), ("SAG2", "SAG3"),
+                        ("MV2", "MVEUKV")):
+        assert pos[holder] < pos[cut], f"plan §5: {holder} before {cut}"
+    confs = {s: est.read_conf(STAGES / f"{s}.conf", s, tree=REPO) for s in chain}
+    assert confs["GRARE1"].after == ("GART2",)
+    for prev, cur in zip(chain, chain[1:]):
+        assert confs[cur].after == (prev,), f"{cur}.conf must strictly follow {prev}"
+    assert confs["GV1"].after == ("NX1",) and confs["SAG2"].after == ("MIR1",) and confs["MV2"].after == ("MIR2",)
+    assert len(_repo_confs()) == 27 + len(set(chain) - {"GV1"})  # GV1 was of the 27
+
+
+@pytest.mark.covers("A-29")
+def test_a29_each_promoted_conf_has_the_plans_depth_library_mode_length_and_crispr():
+    est, mod = _module("stage_est"), _a29()
+    assert set(mod.R26_11_5_CHAIN) <= set(A29_PLAN_S4), "a stage of the chain without its plan §4 values"
+    for s in mod.R26_11_5_CHAIN:
+        c = est.read_conf(STAGES / f"{s}.conf", s, tree=REPO)
+        assert (c.depth, c.library, c.genecall_mode, c.min_contig_len, c.crispr) == A29_PLAN_S4[s], s
+
+
+@pytest.mark.covers("A-29")
+def test_a29_each_promoted_conf_keeps_its_templates_files_values_and_expect_lines():
+    est, mod = _module("stage_est"), _a29()
+    for s in mod.R26_11_5_CHAIN:
+        t = est.read_conf(STAGES / "templates" / f"{s}.conf", s, tree=REPO)
+        c = est.read_conf(STAGES / f"{s}.conf", s, tree=REPO)
+        assert c.sums == t.sums and c.inputs == t.inputs == Path(f"/tmp/if2453/s2/inputs/{s}"), s
+        assert c.judge == t.judge and c.accepted == t.accepted, s
+        assert set(t.notes) <= set(c.notes) and A29_NOTE in c.notes, s
+        for o, v in t.expect.items():
+            assert c.expect[o] == v, f"{s}: the staging card's EXPECT line for {o} is kept"
+        before = mod.R26_11_5_CHAIN[:mod.R26_11_5_CHAIN.index(s)]
+        for o, (n, src) in c.expect.items():
+            if o not in t.expect:
+                assert o in before and n > 0 and src == A29_NOTE, f"{s}: added EXPECT {o} {n} {src}"
+        text = (STAGES / f"{s}.conf").read_text()
+        assert text.startswith(f"# Promoted by card A-29 from stages/templates/{s}.conf")
+        for stale in ("kept on /stor", "(kept on\n# /stor", "left in place, not used"):
+            assert stale not in text, f"{s}: DEC-84 (3) deleted the first files on /stor"
+
+
+def _a29_world(tmp_path, *, bb_expect="S1 1\nAA1 1", fasta_extra=b"", listed_extra=None):
+    """A root with S1 (u0) and a stale partition of AA1; AA1 as an r26.11.4 stage (genomes.json only); BB1 and CC1
+    staged with their FASTA elsewhere (objects_staging.json) and templates whose SUM lines are the files'."""
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    from biobox import ids
+
+    seqs = [bytes(random.Random(i).choice(b"ACGT") for _ in range(300 + 100 * i)) for i in range(5)]
+    u = [ids.contig_uid(s) for s in seqs]
+    root = tmp_path / "root"
+    for st, us in (("S1", [u[0]]), ("AA1", [u[1], u[4]])):
+        d = root / "l0seq" / "contig_index" / f"stage={st}"
+        d.mkdir(parents=True)
+        pq.write_table(pa.table({"contig_uid": pa.array(us, type=pa.binary(16)),
+                                 "is_default_variant": pa.array([True] * len(us))}), d / "part-00000.parquet")
+
+    def genomes(gs):
+        return json.dumps([{"contig_uids": [x.hex() for x in g], "genetic_code": 11, "kind": "prokaryote",
+                            "circular": [], "assembly_quality": "contig"} for g in gs])
+
+    home = tmp_path / "inputs"
+    (home / "AA1").mkdir(parents=True)
+    (home / "AA1" / "genomes.json").write_text(genomes([[u[0]], [u[1]]]))
+    tree = tmp_path / "tree"
+    (tree / "planning" / "measurements").mkdir(parents=True)
+    (tree / "planning" / "DECISIONS.md").write_text("| DEC-1 |\n")
+    for n in ("2026-01-01_staging.md", A29_NOTE.split("/")[-1]):
+        (tree / "planning" / "measurements" / n).write_text("x\n")
+    tdir = tree / "scripts" / "stress" / "build_stage_pod" / "stages" / "templates"
+    tdir.mkdir(parents=True)
+    stor = tmp_path / "stor"
+    stor.mkdir()
+    metas = {}
+    spec = {"BB1": ([seqs[0], seqs[1], seqs[2]], [[u[0]], [u[1], u[2]]], False, "GART2", bb_expect),
+            "CC1": ([seqs[2], seqs[3], seqs[4]], [[u[2]], [u[3], u[4]]], True, "BB1", "")}
+    for st, (recs, gs, gz, after, expect) in spec.items():
+        meta = tmp_path / "meta" / st
+        meta.mkdir(parents=True)
+        name = f"{st.lower()}.fna" + (".gz" if gz else "")
+        body = "".join(f">r{i}\n{s.decode()[:150]}\n{s.decode()[150:]}\n" for i, s in enumerate(recs)).encode()
+        if st == "BB1":
+            body += fasta_extra
+        (stor / name).write_bytes(gzip.compress(body, mtime=0) if gz else body)
+        if st == "BB1" and listed_extra is not None:
+            gs = gs + [[listed_extra]]
+        (meta / "genomes.json").write_text(genomes(gs))
+        obj = {"source_name": st, "source_release": "1", "license": "CC0", "redistributable": True}
+        (meta / "objects_staging.json").write_text(json.dumps([{"path": str(stor / name), **obj}]))
+        (meta / "objects.json").write_text(json.dumps([{"path": f"/tmp/if2453/s2/inputs/{st}/{name}", **obj}]))
+        sums = "".join(f"SUM={hashlib.sha256(p.read_bytes()).hexdigest()} {p.name}\n"
+                       for p in (meta / "genomes.json", meta / "objects.json", stor / name))
+        exp = "".join(f"EXPECT=held_by {ln} planning/measurements/2026-01-01_staging.md\n"
+                      for ln in expect.splitlines())
+        (tdir / f"{st}.conf").write_text(
+            f"# Stage {st}\n# PRE-BUILD TEMPLATE (promoted by card A-29).\nSTAGE={st}\n"
+            "NOTE=planning/measurements/2026-01-01_staging.md\n"
+            f"INPUTS=/tmp/if2453/s2/inputs/{st}\n{sums}DEPTH=called\nCRISPR=yes\n# Build order.\nAFTER={after}\n"
+            f"{exp}# No least contig length.\n")
+        metas[st] = meta
+    return root, tree, home, metas, seqs
+
+
+def _a29_compute(mod, tmp_path, root, tree, home, metas):
+    return mod.compute(root, tree, home, metas, tmp_path / "work", workers=1, root_stages=("S1",),
+                       r26_11_4=("AA1",), chain=("BB1", "CC1"))
+
+
+@pytest.mark.covers("A-29")
+def test_a29_ownership_is_exact_prefix_ownership_over_root_r26_11_4_and_the_chain(tmp_path, a29_path):
+    mod = _a29()
+    root, tree, home, metas, seqs = _a29_world(tmp_path)
+    doc = _a29_compute(mod, tmp_path, root, tree, home, metas)
+    assert doc["problems"] == [] and doc["discrepancies"] == []
+    assert doc["stages"]["AA1"] == {"total_contigs": 2, "held_by": {"S1": 1}, "held_contigs": 1, "new_contigs": 1}
+    bb, cc = doc["stages"]["BB1"], doc["stages"]["CC1"]
+    assert bb["held_by"] == {"AA1": 1, "S1": 1} and bb["held_bases_by"] == {"S1": 300, "AA1": 400}
+    assert (bb["new_contigs"], bb["new_bases"], bb["total_bases"]) == (1, 500, 1200)
+    # u4 sits in the root's stale AA1 partition, which is not read: CC1 owns it, BB1 holds u2
+    assert cc["held_by"] == {"BB1": 1} and (cc["new_contigs"], cc["new_bases"]) == (2, 600 + 700)
+    assert doc["root_partitions_not_read"] == {"AA1": {"files": 1, "contigs": 2}}
+    assert doc["after"] == {"BB1": "GART2", "CC1": "BB1"} and doc["new_bases_r26_11_5"] == 1800
+    assert mod.added_expect(doc, "CC1", {}) == [("BB1", 1)] and mod.added_expect(doc, "BB1", {}) == []
+
+
+@pytest.mark.parametrize("case", ["wrong-count", "missing-line", "stage-not-before"])
+@pytest.mark.covers("A-29")
+def test_a29_a_template_expect_line_that_differs_is_a_discrepancy(tmp_path, a29_path, case):
+    mod = _a29()
+    bb = {"wrong-count": "S1 2\nAA1 1", "missing-line": "S1 1", "stage-not-before": "S1 1\nAA1 1\nCC1 0"}[case]
+    root, tree, home, metas, _ = _a29_world(tmp_path, bb_expect=bb)
+    doc = _a29_compute(mod, tmp_path, root, tree, home, metas)
+    want = {"wrong-count": {"stage": "BB1", "owner": "S1", "template": 2, "found": 1},
+            "missing-line": {"stage": "BB1", "owner": "AA1", "template": None, "found": 1},
+            "stage-not-before": {"stage": "BB1", "owner": "CC1", "template": 0, "found": None,
+                                 "why": "the template names a stage that is not before it"}}[case]
+    assert doc["discrepancies"] == [want] and doc["problems"] == []
+    with pytest.raises(ValueError, match="discrepancies"):
+        mod.write_confs(tree, doc, chain=("BB1", "CC1"))
+
+
+@pytest.mark.covers("A-29")
+def test_a29_staged_files_that_differ_from_the_template_or_from_the_genomes_are_problems(tmp_path, a29_path):
+    from biobox import ids
+
+    mod = _a29()
+    stray = b"ACGT" * 50
+    root, tree, home, metas, _ = _a29_world(tmp_path, fasta_extra=b">stray\n" + stray + b"\n",
+                                            listed_extra=ids.contig_uid(b"T" * 99))
+    (metas["CC1"] / "objects.json").write_text(json.dumps([{"path": "/tmp/elsewhere/cc1.fna.gz"}]))
+    doc = _a29_compute(mod, tmp_path, root, tree, home, metas)
+    p = doc["problems"]
+    assert "BB1: 1 listed contigs in no object" in p and "BB1: 1 records in no genome" in p
+    assert any(x.startswith("CC1: objects.json: sha256") for x in p)
+    assert "CC1: objects.json names /tmp/elsewhere/cc1.fna.gz, not a file of INPUTS /tmp/if2453/s2/inputs/CC1" in p
+    with pytest.raises(ValueError, match="problems"):
+        mod.write_confs(tree, doc, chain=("BB1", "CC1"))
+
+
+@pytest.mark.covers("A-29")
+def test_a29_write_confs_promotes_each_template_with_the_chains_after_and_expect_lines(tmp_path, a29_path):
+    est, mod = _module("stage_est"), _a29()
+    root, tree, home, metas, _ = _a29_world(tmp_path)
+    stages = tree / "scripts" / "stress" / "build_stage_pod" / "stages"
+    mod.write_confs(tree, None, chain=("BB1", "CC1"))  # before the ownership run: AFTER= and the note only
+    c = est.read_conf(stages / "CC1.conf", "CC1", tree=tree)
+    assert c.after == ("BB1",) and c.expect == {} and A29_NOTE in c.notes
+    doc = _a29_compute(mod, tmp_path, root, tree, home, metas)
+    mod.write_confs(tree, doc, measured="measured, here", chain=("BB1", "CC1"))
+    b = est.read_conf(stages / "BB1.conf", "BB1", tree=tree)
+    c = est.read_conf(stages / "CC1.conf", "CC1", tree=tree)
+    t = est.read_conf(stages / "templates" / "BB1.conf", "BB1", tree=tree)
+    assert b.after == ("GART2",) and b.expect == t.expect and b.sums == t.sums
+    assert c.after == ("BB1",) and c.expect == {"BB1": (1, A29_NOTE)}
+    text = (stages / "CC1.conf").read_text()
+    assert text.startswith("# Promoted by card A-29 from stages/templates/CC1.conf")
+    assert "# Held by the r26.11.5 stages before it, by exact contig_uid over the chain (card A-29; measured, here):\n" \
+           f"EXPECT=held_by BB1 1 {A29_NOTE}\n# No least contig length.\n" in text
+    assert "# No r26.11.5 stage before it holds a contig of it (card A-29; measured, here).\n" in \
+        (stages / "BB1.conf").read_text()
+    with pytest.raises(ValueError, match="is not"):
+        mod.write_confs(tree, doc, chain=("CC1", "BB1"))
+
+
+@pytest.mark.covers("A-29")
+def test_a29_a_comment_correction_must_find_its_text_once(a29_path):
+    mod = _a29()
+    tpl = "STAGE=ZZ1\nNOTE=planning/measurements/x.md\n# kept on /stor\nAFTER=YY1\n"
+    out = mod.promote(tpl, "ZZ1", after="XX1", fixes=(("kept on /stor", "deleted (DEC-84 (3))"),))
+    assert "AFTER=XX1\n" in out and "deleted (DEC-84 (3))" in out and "kept on /stor" not in out
+    assert f"NOTE=planning/measurements/x.md\nNOTE={A29_NOTE}\n" in out
+    with pytest.raises(ValueError, match="not in the template once"):
+        mod.promote(tpl, "ZZ1", after="XX1", fixes=(("no such words", "x"),))
+    for st, fixes in mod.COMMENT_FIXES.items():  # each correction of the real templates applies once
+        mod.promote((STAGES / "templates" / f"{st}.conf").read_text(), st, after=mod.chain_after(st), fixes=fixes)
 
 
 @pytest.mark.parametrize("extra,why", [
