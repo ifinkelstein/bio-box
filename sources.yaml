@@ -3209,7 +3209,18 @@ sources:
     stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/DSV70/ (SOURCE_URLS.tsv and SHA256SUMS there)
     note: >-
       R-11 (2026-11-26): the MAGs (DSV70_mag.tar.gz, 7,422 MQ/HQ MAGs by the job list) did not land; what landed is
-      the assemblies, two trees and the NTU table
+      the assemblies, two trees and the NTU table. R-24 (2026-11-27): chain_r22.sh (18_later_rescue.tsv) transferred
+      DSV70_mag.tar.gz in 5,466 s (derived, 2026-11-27T12:31:39Z to 14:02:45Z; 0 curl stderr errors) and fetch_to_tower.sh
+      unlinked it on FAIL_GZIP (gzip 1.14 -t, md5 -). Range probes on tower (2026-11-27, curl -sSIL and -r;
+      planning/measurements/2026-11-27_dsv70_archive_check.md) show HTTP/1.1 200 OK, Content-Length 4,435,296,005 bytes
+      (measured; Content-Type application/x-gzip, no Content-Encoding, Accept-Ranges bytes, ETag
+      "1085d3f05-65071af6dd040", Last-Modified 2026-04-27T14:11:05Z), a valid Unix gzip header (1f 8b 08 00 00 00 00 00
+      00 03, measured) wrapping POSIX ustar entries DSV70_mag/ and DSV70_mag/444-23-R2-1-1360_bin.152.fa at byte 0 (not
+      plain tar/bzip2/xz/zstd/HTML), and an intact 8-byte gzip trailer at bytes 4,435,295,997..4,435,296,004 (CRC32
+      0x7440dcbf, ISIZE 0x69414800 -> 14,650,787,840 B = 1,430,741 x 10,240-byte tar records at 3 x 2^32 + ISIZE,
+      derived), diagnosing mid-stream corruption in the server's .tar.gz object. Do not retry 18_later_rescue.tsv via
+      fetch_to_tower.sh (it will unlink again on FAIL_GZIP); fetch the 7,422 MAGs (estimate, job list) by accession from
+      NCBI BioProject PRJNA1244896 instead (DSV70_assemblies.tar.gz and both trees are already intact on tower)
     approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25)"
   - name: tower_lr_compost
     what: >-
