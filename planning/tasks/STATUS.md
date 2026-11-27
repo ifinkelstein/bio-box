@@ -177,6 +177,73 @@ A-29, under DEC-84 (3)); A-28; the GPU venue for W-38; the nine older audit item
   `ci-tmp/<ID>-0`. After C-83: tell A-29's follow-up to append `RMD1` and `GBRMGD` (its note says the commands), and
   A-31's to redraw (its note says the one command).
 
+**H7. End of the drain, 2026-11-27 11:40 CST (pod clock): the state at the change of orchestrator. It supersedes the
+per-worker lines of H6; the steps of H6's last item stand.** No agent of the leaving session is running. Four branches
+are pushed and none is merged.
+
+- **The pod** (*measured*, `wilkcomp02`, 11:39, `tail -n 2 /tmp/if2453/stages/r26-11-4-wave-6.log` and
+  `systemctl --user list-units`): wave-6 built `PL3` (end 10:18:54, exit 0, backup marker; 11 h 15 min for the stage,
+  about 75 Pfam shards, the largest step 233.76 CPU-minutes) and started `CG1` at 10:18:54; `CG1` ran its own full
+  rehearsal (`cg1-rh-e`: it is a `called` stage, so the rehearsal it could share differs from `PL2`'s). Built: `V2`,
+  `PL2`, `PL3`; 16 to go. One other unit of ours is active: `c83-rmd1-stage` (below). Expected end of the wave: late
+  Sunday 2026-11-29 to Monday morning (*estimate*).
+- **`task/A-29`** (`b6b2dea`; `ci` run `46014874383` green): part 1 of the `r26.11.5` chain is complete. 21 confs
+  promoted and `GV1.conf` from its template; chain `GART2 → GRARE1 GRARE2 GRARE3 LR2 SAG1 NX1 GV1 EGV1 ECE2 MIR1 SAG2
+  DPN1 SYM2 LRP1 MIR2 MV2 MVEUKV KAVHIFI INPH2604 GWV1 SAG3 WET1`; exact ownership with 0 problems and 0 discrepancies
+  against the staging cards' lines, 9,549,503 contigs and 102,664,525,449 bp new (*measured*, unit `a29-own`); all 22
+  stages pass `s2_check_inputs.py` (20 with the full byte pass, `LR2` and `GWV1` `--tables-only`); 48 confs pass
+  `stage_est.py conf`; 551 passed on the pod. Build cost of the 22 stages about 15,600 to 20,800 CPU-minutes
+  (*derived*, the plan's rates). It migrated one test outside its Files (`tests/r1/test_r23_gv1_trailing_gaps.py`,
+  which pinned the old `GV1.conf`), on the orchestrating session's word about `GV1`. Its note
+  (`planning/measurements/2026-11-27_a29_r26_11_5_confs.md`) says how `RMD1` and `GBRMGD` are appended and what part 2
+  needs (about 45 GB to copy).
+- **`task/A-31`** (`2c85cd0`; `ci` run `46011881367` green): the release-diversity figure audited and redrawn to
+  `r26.11.6` (`planning/measurements/2026-11-27_release_diversity/`). Every measured value of the five released
+  releases matched the root; removed: an NR50 projection of about 64 M for `r26.11.4` that no decision row states.
+  Open: its UniRef50 (41.24 M) and UniRef100 (227.09 M) lines are lower than figures cited elsewhere in the tree
+  (53.6 M, 277.5 M) and were not re-verified; the PI was told. After A-29 and C-83 are merged, one command redraws it
+  with A-29's ownership (the note's section 0).
+- **`task/B-75`** (`3436e52`; `ci` run `46037269561` in progress at 11:39): ingest refuses a byte outside
+  `ACGTUNRYKMSWBDHV` of either case and an empty record (`store.NotABase`, in `src/biobox/l0seq/store.py`, both pass-1
+  sites; the shared reader is unchanged). The leaving session read the whole diff of `src/` and found it sound. Cost
+  +0.70% on `NX1`'s ingest (1,005.3 against 1,012.3 CPU-s, *measured*), outputs byte-identical; the whole suite on the
+  pod: 2,693 passed, 10 skipped and 2,170 passed, 18 skipped (two shards). It also refuses what was stored before: a
+  carriage return inside a line, a trailing space or tab, an empty record. In force for any build from a mirror made
+  after its merge; not for wave-6.
+- **`task/C-83`** (`50ce991`, pushed at 11:39, `ci` not yet read): `GBRMGD` is done: 5,283 bins, 466,872 contigs,
+  10,238,417,378 bp, all new; depth `called`; checked with the byte pass; mirrored to `tower`. `RMD1` is unfinished:
+  the archive holds 13,549 prokaryote genomes (13,446 MAGs, 103 isolates), 40,388,129,994 bp, so the card's stop is
+  not in play (*measured*, its census). Unit `c83-rmd1-stage` (started 09:17) is staging it by itself: it writes
+  `/stor/scratch/Wilke/if2453/bio-box-staging/RMD1/rmd1_reef_genomes.fna.gz`, `/tmp/if2453/c83/meta/RMD1/`, and its
+  report `/tmp/if2453/c83/work/rmd1_report.json` (log `/tmp/if2453/c83/logs/rmd1_stage.{out,err,time}`). It has
+  succeeded when the unit is inactive, `meta/RMD1/` exists, the report shows `s2_check` exit 0 with no problems and the
+  time file shows exit status 0. Then, in order (the worker's list; the wrappers are in `/tmp/if2453/c83/bin/`):
+  (a) `rmd1_ani.sh` in a detached unit at 8 threads; (b) `c83_run.sh overlap` of `GBRMGD` with `RMD1`; (c)
+  `records.tsv` to `/stor` beside the FASTA (it is over 64 MB), sha256 checked; (d) `templates/RMD1.conf` from
+  `GBRMGD.conf` with the report's sums, `DEPTH=called`, `CRISPR=yes`, `AFTER=WET1` and the `EXPECT` lines; (e)
+  `c83_est.sh RMD1`; (f) the mirror to `tower:sources/RMD1/`; (g) the note's sections 3 to 5, the `sources.yaml`
+  lines, the catalog row, the template test's parameter; (h) the card's test command, commit. A new worker for this is
+  briefed with the card, `planning/measurements/2026-11-27_coral_inputs.md` on the branch, and this list.
+- **`tower`** (*measured*, 11:39, `fetch_logs/2026-11-27_chain_r22.log`): the chain is on list 22 (`EEMC1`) with four
+  connections since 08:03: 3,012 files in 216 minutes, about 14 a minute, so about 3.6 days for the list (*derived*).
+  Before it: list 18 ended with `FAIL_GZIP DSV70/DSV70_mag.tar.gz` (the whole file came down in 1.5 h and failed its
+  gzip test, so it was not kept: find out what the provider serves before another retry); list 19 was a retry by
+  mistake (`skip=690`): the Tara archive `SMAGs_contigs_individual.fna.tar.gz` is in list 20. A second chain,
+  `fetch_logs/after_chain_retry20.sh` (log `fetch_logs/2026-11-27_retry20.log`), waits for the first and then runs
+  list 20. The chain script prints "exit 0" after each list whatever the result (it reads `$?` after a command
+  substitution): read each list's `DONE` line, not that number.
+- **Deleted on `/stor` at the PI's words** (DEC-84 (3) for the first three; "deletedead files", 2026-11-27, between the
+  reports of 08:47 and 10:47, for the last two), each after a check that nothing names it, sha256 first: `DPN1/dpn1_dpann_genomes.fna.gz`,
+  `LR2/lr2_compendia.fna.gz`, `NX1/nx1_compendia.fna.gz`, `NX1/nx1_compendia_r232.fna.gz` (`ca595eef…`),
+  `SAG1/sag1_gorg_r232.fna.gz` (`e598a257…`). The last two were card C-76's first, reduced pass. Still there by
+  design: `MIR2/mir2_bulzu_2025_plv_virophage.fna` (a live input until A-29 part 2).
+- **The PI plans to start searching `r26.11.3` now** ("when can i start using this setup for discovery"; told: today
+  on `r26.11.3`, about Tuesday or Wednesday for `r26.11.4`, a week later for `r26.11.5`, all *estimates*). A large
+  search shares the thread cap with the build: schedule it at night or between stages.
+- **Next, in order:** read B-75's and C-83's `ci`; merge A-29, A-31, B-75 (each with the merged tree run on the pod);
+  finish and merge C-83; append `RMD1` and `GBRMGD` to the chain and redraw the figure; write the rows. Then H2 from
+  its item 4 on (the release train of `r26.11.4` when the wave ends).
+
 ## Orchestrator active, from 2026-11-26 07:25 CST (the auditing session, Claude; superseded by the handoff of 2026-11-27 above where they differ)
 
 The Antigravity orchestrator closed with the handoff below. The PI gave the restart to this session: "coordinate this
