@@ -54,6 +54,12 @@ Whoever takes over needs this section, AGENTS.md, rows DEC-77 to DEC-84 of `plan
   M, changes `src/`, the orchestrator reads its whole diff), **A-29** (the chain of `r26.11.5`; see H2), **C-82**
   (`ASG1` for `r26.11.6`). Parked by the PI: A-28 (outside compute), W-38 (protein language models; needs a GPU venue).
 - Everything else of 2026-11-26 and 27 is merged with a row below (240 rows before R-21 and R-23).
+- **Added 2026-11-27 08:15 CST.** R-21 and R-23 are merged (`a506977`, `8a5691c`; 242 rows). Three Opus workers were
+  started between 07:45 and 08:15, each on its own branch and worktree (`/tmp/biobox-wt/<ID>`): **B-75**; **A-29 part 1**
+  (the tests, ownership over the chain, the confs promoted; told the facts of H2 item 3 and that two more stages follow
+  `WET1`); **C-83** (the two coral-reef sets, `RMD1` and `GBR_MGD` as stage `GBRMGD`, which the PI added to `r26.11.5`
+  with "add coral", DEC-85). When C-83 is merged, A-29 takes the two stages into the chain's end. If these workers were
+  cut off, their branches hold what they committed; resume from there.
 
 **H2. Next, in order.**
 
