@@ -4,7 +4,7 @@ Host or image, standard library only; read-only on the data root:
 
     python3 -I train_check.py --root ROOT --before BEFORE.tsv --after AFTER.tsv \
         --release R --stages S0,S1 [--earlier PREV] [--manifest-hash HASH] \
-        [--pack-id ID] [--examples-summary FILE] --out DIR
+        [--pack-id ID] [--examples-summary FILE] [--saturation-summary FILE] --out DIR
 """
 
 from __future__ import annotations
@@ -43,6 +43,35 @@ def names_release(path: str, rel: str) -> bool:
     )
 
 
+def summarize_saturation(sat: dict) -> str:
+    tot = sat.get("totals", {})
+    comp = tot.get("complete_orf", {})
+    pairs = tot.get("syntenic_pairs", {})
+    parts = [
+        f"complete-ORF NR50 `{int(comp.get('s_obs', 0)):,}` "
+        f"(`k>=3`: `{int(comp.get('ge3', 0)):,}`, `k>=5`: `{int(comp.get('ge5', 0)):,}`, "
+        f"`C_hat={float(comp.get('c_hat', 1.0)):.4f}`, Chao1 `{float(comp.get('chao1', 0.0)):,.0f}`)",
+        f"syntenic pairs `k>=3`: `{int(pairs.get('pairs_ge3', 0)):,}` "
+        f"(`C_hat={float(pairs.get('c_hat_pairs', 1.0)):.4f}`)",
+    ]
+    se = sat.get("since_earlier")
+    if isinstance(se, dict) and se.get("new_stages"):
+        stages_str = ",".join(se["new_stages"])
+        gbp = float(se.get("new_stored_gbp", 0.0))
+        r3 = se.get("net_new_ge3_per_gbp")
+        r3_str = f"`{float(r3):,.0f}`/Gbp: " if r3 is not None else ""
+        pr3 = se.get("net_new_pairs_ge3_per_gbp")
+        pr3_str = f" (`{float(pr3):,.0f}`/Gbp)" if pr3 is not None else ""
+        parts.append(
+            f"new over `{stages_str}` (`+{gbp:.2f}` Gbp): "
+            f"`+{int(se.get('net_new_ge3', 0)):,}` `k>=3` NR50 "
+            f"({r3_str}`{int(se.get('brand_new_ge3', 0)):,}` brand-new + "
+            f"`{int(se.get('promoted_to_ge3', 0)):,}` promoted), "
+            f"`+{int(se.get('net_new_pairs_ge3', 0)):,}` `k>=3` pairs{pr3_str}"
+        )
+    return "; ".join(parts)
+
+
 def format_announcement(
     *,
     release: str,
@@ -53,6 +82,7 @@ def format_announcement(
     added_bytes: int,
     pack_id: str | None = None,
     examples_verdict: str | None = None,
+    saturation_line: str | None = None,
 ) -> str:
     lines = [
         f"# Release `{release}` announcement draft",
@@ -67,6 +97,8 @@ def format_announcement(
         lines.append(f"- **Search pack:** `{pack_id}` (verified)")
     if examples_verdict:
         lines.append(f"- **Worked examples (`scripts/release_examples.sh`):** {examples_verdict}")
+    if saturation_line:
+        lines.append(f"- **Saturation (`release_saturation.py`):** {saturation_line}")
     lines.extend([
         "",
         "## Suggested summary line",
@@ -90,6 +122,7 @@ def run_check(
     manifest_hash: str | None = None,
     pack_id: str | None = None,
     examples_summary: Path | None = None,
+    saturation_summary: Path | None = None,
     out: Path,
 ) -> int:
     root = Path(root)
@@ -155,6 +188,10 @@ def run_check(
                 counts[r[5]] = counts.get(r[5], 0) + 1
         examples_verdict = ", ".join(f"{v} {k}" for k, v in sorted(counts.items()))
 
+    saturation_line = None
+    if saturation_summary and Path(saturation_summary).is_file():
+        saturation_line = summarize_saturation(json.loads(Path(saturation_summary).read_text()))
+
     ann_text = format_announcement(
         release=release,
         stages=stages,
@@ -164,6 +201,7 @@ def run_check(
         added_bytes=total_bytes,
         pack_id=pack_id,
         examples_verdict=examples_verdict,
+        saturation_line=saturation_line,
     )
     (out / "announcement.md").write_text(ann_text)
 
@@ -197,6 +235,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--manifest-hash", default=None)
     ap.add_argument("--pack-id", default=None)
     ap.add_argument("--examples-summary", type=Path, default=None)
+    ap.add_argument("--saturation-summary", type=Path, default=None)
     ap.add_argument("--out", required=True, type=Path)
     a = ap.parse_args(argv)
     stages = [s for s in a.stages.split(",") if s]
@@ -210,6 +249,7 @@ def main(argv: list[str] | None = None) -> int:
         manifest_hash=a.manifest_hash,
         pack_id=a.pack_id,
         examples_summary=a.examples_summary,
+        saturation_summary=a.saturation_summary,
         out=a.out,
     )
 
