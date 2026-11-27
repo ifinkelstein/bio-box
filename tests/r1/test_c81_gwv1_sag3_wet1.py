@@ -696,15 +696,256 @@ def test_split_genomes_writes_one_file_per_genome(sg, tmp_path):
 
 
 # ==================================================================================================================
+# WET1
+# ==================================================================================================================
+
+# The archive holds MAG00001..3 (MAG00004 is in the table, dereplicated away); every contig name is a sample's
+# assembly name, which the stager prefixes with the MAG id. MAG00002 is in GTDB R232 under PRJNA1430164 by its bin name;
+# MAG00003 is called Mycoplasma by GTDB-Tk (code 4); one MAG00001 contig is held by V2, one MAG00002 contig by SAG3.
+WET = {
+    "MAG00001": [("BYD1_k127_1", seq_of(501, 2200)), ("BYD1_k127_2", seq_of(502, 1300))],
+    "MAG00002": [("BYD1_k127_3", seq_of(503, 2400)), ("BYD1_k127_4", seq_of(504, 900))],
+    "MAG00003": [("ZJ2_k127_1", seq_of(505, 2500))],
+}
+WET_META = [
+    ("MAG00001", "BYD1_bin.10", "SMP0001", "d__Bacteria;p__Acidobacteriota;g__QHXN01;s__", "95.97", "0.93", "High-quality"),
+    ("MAG00002", "BYD1_bin.11", "SMP0001", "d__Archaea;p__Thermoproteota;g__Nitrosotalea;s__", "91.2", "8.08", "Medium-quality"),
+    ("MAG00003", "ZJ2_bin.1", "SMP0002", "d__Bacteria;p__Bacillota;g__Mycoplasma;s__", "61.8", "1.59", "Medium-quality"),
+    ("MAG00004", "ZJ2_bin.2", "SMP0002", "d__Bacteria;p__Bacillota;g__Bacillus;s__", "71.0", "1.0", "Medium-quality"),
+]
+WET_HEAD = ["ID", "Name", "Sample ID", "Kingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species",
+            "GTDB_classification", "Completeness (%)", "Contamination (%)", "GC (%)", "N50 (bp)", " Genome size (bp)",
+            "Quality score", "Num_5S_rRNA", "Num_16S_rRNA", "Num_23S_rRNA", "Num_tRNA", "Quality_tier (MIMAG)"]
+
+
+def write_wet_xlsx(path: Path) -> None:
+    rows = [["Table S2. The detailed information of all MAGs used in the study"], WET_HEAD]
+    for i, n, s, c, comp, cont, q in WET_META:
+        rows.append([i, n, s, "Bacteria", "", "", "", "", "", "", c, comp, cont, "50", "1000", "2000", "80", "0", "0",
+                     "0", "10", q])
+    wb = ('<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/'
+          '2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>'
+          '<sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets></workbook>')
+    rels = ('<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/'
+            '2006/relationships"><Relationship Id="rId1" Type="x" Target="worksheets/sheet1.xml"/></Relationships>')
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr("xl/workbook.xml", wb)
+        z.writestr("xl/_rels/workbook.xml.rels", rels)
+        z.writestr("xl/worksheets/sheet1.xml", _sheet_xml(rows, {}))
+
+
+def write_wet_zip(path: Path, members=WET, *, extra: dict[str, bytes] | None = None) -> None:
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("dereplicated_genomes/", b"")
+        for mag in sorted(members, reverse=True):  # archive order is not name order
+            z.writestr(f"dereplicated_genomes/{mag}.fa", _fa(members[mag]))
+        for n, d in (extra or {}).items():
+            z.writestr(n, d)
+
+
+def write_wet_gtdb(d: Path) -> None:
+    d.mkdir()
+    head = ["accession", "ncbi_bioproject", "ncbi_isolate", "ncbi_strain_identifiers", "ncbi_biosample",
+            "ncbi_wgs_master"]
+    ar = [["GB_GCA_000000201.1", "PRJNA1430164", "BYD1_bin.11", "none", "SAMN1", "JBAA00000000.1"]]
+    bac = [["GB_GCA_000000202.1", "PRJNA1430164", "none", "ZJ9_bin.9", "SAMN2", "JBAB00000000.1"],
+           ["GB_GCA_000000203.1", "PRJNA999", "BYD1_bin.10", "none", "SAMN3", "JBAC00000000.1"]]
+    for name, rows in (("ar53_metadata_r232.tsv.gz", ar), ("bac120_metadata_r232.tsv.gz", bac)):
+        (d / name).write_bytes(gzip.compress(("\n".join("\t".join(r) for r in [head, *rows]) + "\n").encode(),
+                                             mtime=0))
+
+
+def write_wet_index(d: Path) -> None:
+    d.mkdir()
+    gt = [("GCA_000000201", "GCA_000000201", True, "GCA_000000201", "Nitrosotalea sp1"),
+          ("GCA_000000202", "GCA_000000202", False, "GCA_000000201", "Nitrosotalea sp1"),
+          ("GCA_000000203", "GCA_000000203", True, "GCA_000000203", "Other sp")]
+    pq.write_table(pa.table({
+        "accession": [g[0] for g in gt], "genbank_accession": [g[1] for g in gt],
+        "is_representative": [g[2] for g in gt], "representative": [g[3] for g in gt],
+        "species": [g[4] for g in gt]}), d / "gtdb_r232.parquet")
+    pq.write_table(pa.table({
+        "globdb_id": ["GCA_000000201"], "insdc_accession": ["GCA_000000201"], "original_id": [None],
+        "cluster_id": [None]}), d / "globdb_r232.parquet")
+
+
+@pytest.fixture()
+def wt(tmp_path: Path) -> dict:
+    z = tmp_path / "Dereplicated_genomes.zip"
+    write_wet_zip(z)
+    x = tmp_path / "MAG_meta.xlsx"
+    write_wet_xlsx(x)
+    g = tmp_path / "gtdb"
+    write_wet_gtdb(g)
+    i = tmp_path / "index"
+    write_wet_index(i)
+    held = tmp_path / "chain" / "V2"
+    held.mkdir(parents=True)
+    (held / "genomes.json").write_text(json.dumps([{"contig_uids": [cuid(WET["MAG00001"][1][1])]}]))
+    later = tmp_path / "later" / "SAG3"
+    later.mkdir(parents=True)
+    (later / "genomes.json").write_text(json.dumps([{"contig_uids": [cuid(WET["MAG00002"][0][1])]}]))
+    return {"zip": z, "xlsx": x, "gtdb": g, "index": i, "held": held, "later": later, "tmp": tmp_path}
+
+
+def run_wet1(mod, w: dict, tag: str, **kw):
+    t = w["tmp"]
+    return mod.stage_wet1(
+        w["zip"], w["xlsx"], w["index"], w["gtdb"], t / f"meta_{tag}", t / f"fasta_{tag}", root=None, root_stages=(),
+        owner_inputs={"V2": w["held"]}, later_inputs={"SAG3": w["later"]}, inputs_home=Path("/tmp/if2453/s2/inputs"),
+        work=t / f"work_{tag}", **kw)
+
+
+def test_mag_meta_is_read_under_its_title_row_and_the_zip_census_names_every_entry(wt, tmp_path):
+    mod = _mod()
+    m = mod.mag_meta(wt["xlsx"])
+    assert sorted(m) == ["MAG00001", "MAG00002", "MAG00003", "MAG00004"]
+    assert (m["MAG00002"]["name"], m["MAG00002"]["sample"], m["MAG00002"]["classification"]) == (
+        "BYD1_bin.11", "SMP0001", "d__Archaea;p__Thermoproteota;g__Nitrosotalea;s__")
+    mem, census = mod.wet1_members(wt["zip"])
+    assert [g for _, g in mem] == ["MAG00003", "MAG00002", "MAG00001"]  # archive order
+    assert census == {"entries": 4, "directories": 1, "mags": 3, "other": []}
+    odd = tmp_path / "odd.zip"
+    write_wet_zip(odd, {"MAG00001": WET["MAG00001"]}, extra={"README.txt": b"x", "dereplicated_genomes/a/b.fa": b">a\nA\n"})
+    assert mod.wet1_members(odd)[1]["other"] == ["README.txt", "dereplicated_genomes/a/b.fa"]
+
+
+def test_project_crosswalk_matches_gtdb_rows_of_the_bioproject_by_bin_name(wt):
+    mod = _mod()
+    by_name, n_rows = mod.gtdb_project_crosswalk(wt["gtdb"], "PRJNA1430164", {"BYD1_bin.10", "BYD1_bin.11",
+                                                                             "ZJ9_bin.9"})
+    # BYD1_bin.10 is in R232 only under another BioProject, so it is not this MAG
+    assert by_name == {"BYD1_bin.11": ["GCA_000000201"], "ZJ9_bin.9": ["GCA_000000202"]} and n_rows == 2
+
+
+def test_wet1_stage_records_r232_status_prefixes_names_and_is_deterministic(wt):
+    mod = _mod()
+    rep1 = run_wet1(mod, wt, "a")
+    rep2 = run_wet1(mod, wt, "b")
+    t = wt["tmp"]
+    meta, fa = t / "meta_a" / "WET1", t / "fasta_a" / "WET1" / "wet1_gwm.fna.gz"
+    assert not (meta / "removed.tsv").exists()
+    st = {r["genome"]: r for r in _rows(meta / "r232_status.tsv")}
+    assert {g: r["r232_status"] for g, r in st.items()} == {
+        "MAG00001": "not_in_gtdb_r232", "MAG00002": "in_gtdb_and_globdb_r232", "MAG00003": "not_in_gtdb_r232"}
+    assert (st["MAG00002"]["gtdb_r232_accession"], st["MAG00002"]["name"]) == ("GCA_000000201", "BYD1_bin.11")
+    genomes = json.loads((meta / "genomes.json").read_text())
+    assert [g["contig_uids"] for g in genomes] == [[cuid(q) for _, q in WET[m]] for m in sorted(WET)]
+    assert [g["genetic_code"] for g in genomes] == [11, 11, 4]
+    assert {g["kind"] for g in genomes} == {"prokaryote"}
+    assert [g["assembly_quality"] for g in genomes] == ["mag_hq", "mag_mq", "mag_mq"]  # MAG_meta's MIMAG tier
+    names = [ln[1:] for ln in _gz_lines(fa) if ln.startswith(">")]
+    assert names == [f"{m}|{h}" for m in sorted(WET, reverse=True) for h, _ in WET[m]]
+    assert [(r["genome"], r["owner_stage"]) for r in _rows(meta / "shared_records.tsv")] == [("MAG00001", "V2")]
+    assert [(r["genome"], r["holder"]) for r in _rows(meta / "later_records.tsv")] == [("MAG00002", "SAG3")]
+    objs = json.loads((meta / "objects.json").read_text())
+    assert objs[0]["path"] == "/tmp/if2453/s2/inputs/WET1/wet1_gwm.fna.gz" and objs[0]["redistributable"] is True
+    r = rep1
+    assert (r["mags"], r["genomes"], r["table_rows"], r["table_not_in_archive"]) == (3, 3, 4, 1)
+    assert r["r232_status"] == {"in_gtdb_and_globdb_r232": 1, "not_in_gtdb_r232": 2}
+    assert r["gtdb_rows_of_bioproject"] == 2 and r["held_by"] == {"V2": 1} and r["later_held_by"] == {"SAG3": 1}
+    for f in ("genomes.json", "objects.json", "records.tsv", "repeated_records.tsv", "shared_records.tsv",
+              "later_records.tsv", "genetic_codes.tsv", "r232_status.tsv"):
+        assert (meta / f).read_bytes() == (t / "meta_b" / "WET1" / f).read_bytes(), f
+    assert fa.read_bytes() == (t / "fasta_b" / "WET1" / "wet1_gwm.fna.gz").read_bytes()
+    assert {k: v for k, v in rep1["sha256"].items() if k != "objects_staging.json"} == {
+        k: v for k, v in rep2["sha256"].items() if k != "objects_staging.json"}
+    chk = subprocess.run([sys.executable, str(BSP / "s2_check_inputs.py"), "WET1", str(meta / "genomes.json"),
+                          str(meta / "objects_staging.json")], capture_output=True, text=True, check=False)
+    assert chk.returncode == 0, chk.stdout + chk.stderr
+    assert json.loads(chk.stdout)["problems"] == []
+
+
+def test_wet1_refuses_a_quality_tier_it_cannot_name():
+    mod = _mod()
+    assert (mod.mimag_quality("High-quality"), mod.mimag_quality("Medium-quality")) == ("mag_hq", "mag_mq")
+    with pytest.raises(mod.Refused, match="Low-quality"):
+        mod.mimag_quality("Low-quality")
+
+
+def test_wet1_refuses_a_member_the_table_lacks_and_writes_nothing(wt, tmp_path):
+    mod = _mod()
+    z = tmp_path / "x.zip"
+    write_wet_zip(z, {**WET, "MAG09999": [("Q_k127_1", seq_of(9, 900))]})
+    with pytest.raises(mod.Refused, match="MAG09999"):
+        run_wet1(mod, {**wt, "zip": z}, "x")
+    assert not (wt["tmp"] / "meta_x" / "WET1").exists()
+    d = wt["tmp"] / "fasta_x" / "WET1"
+    assert not d.exists() or list(d.iterdir()) == []
+
+
+def test_genus_genomes_and_split_genomes_keep_only_what_is_asked(wt, tmp_path):
+    mod = _mod()
+    tax = tmp_path / "non_gtdb_stages.tsv"
+    tax.write_text("ID\tstage\ttaxonomy\nG_1\tGART1\td__Bacteria;p__Acidobacteriota;g__QHXN01;s__\n"
+                   "G_2\tGART1\td__Bacteria;p__X;g__Other;s__\n")
+    assert mod.genus_genomes(tax, {"QHXN01", "Nitrosotalea"}) == {"G_1"}
+    run_wet1(mod, wt, "k")
+    meta, fa = wt["tmp"] / "meta_k" / "WET1", wt["tmp"] / "fasta_k" / "WET1" / "wet1_gwm.fna.gz"
+    files = mod.split_genomes(meta, [fa], tmp_path / "split", keep={"MAG00002"})
+    assert sorted(files) == ["MAG00002"]
+
+
+def test_split_genomes_reads_a_records_table_whose_column_is_genome_id(tmp_path):
+    mod = _mod()
+    meta = tmp_path / "NX1"
+    meta.mkdir()
+    a, b = seq_of(601, 900), seq_of(602, 800)
+    (meta / "records.tsv").write_text(f"genome_id\tsource_name\trecord_ordinal\tcontig_uid\nX:1\ts\t0\t{cuid(a)}\n"
+                                      f"X:2\ts\t0\t{cuid(b)}\n")
+    fa = tmp_path / "nx1.fna"
+    fa.write_text(_fa([("c1", a), ("c2", b)]))
+    files = mod.split_genomes(meta, fa, tmp_path / "out")
+    assert sorted(files) == ["X:1", "X:2"] and files["X:1"].name == "X_1.fna"
+
+
+def test_split_genomes_writes_bytes_as_they_are_even_when_they_are_not_utf8(tmp_path):
+    mod = _mod()
+    meta = tmp_path / "S"
+    meta.mkdir()
+    a = b"ACGT\xe5ACGT"
+    (meta / "records.tsv").write_text(
+        f"genome\tcontig_uid\nG1\t{blake3(a.upper()).digest(length=16).hex()}\n")
+    fa = tmp_path / "s.fna"
+    fa.write_bytes(b">c1\n" + a + b"\n")
+    files = mod.split_genomes(meta, fa, tmp_path / "out")
+    assert files["G1"].read_bytes() == b">c1\n" + a + b"\n"
+
+
+def test_split_genomes_refuses_an_unlisted_record_unless_asked_to_count_it(tmp_path):
+    mod = _mod()
+    meta = tmp_path / "S"
+    meta.mkdir()
+    a, b = seq_of(701, 900), seq_of(702, 800)
+    (meta / "records.tsv").write_text(f"genome\tcontig_uid\nG1\t{cuid(a)}\n")
+    fa = tmp_path / "s.fna"
+    fa.write_text(_fa([("c1", a), ("c2", b)]))
+    with pytest.raises(mod.Refused, match="in no genome"):
+        mod.split_genomes(meta, fa, tmp_path / "o1")
+    unlisted = []
+    files = mod.split_genomes(meta, fa, tmp_path / "o2", unlisted=unlisted)
+    assert sorted(files) == ["G1"] and unlisted == ["c2"]
+
+
+def test_merge_best_keeps_each_genomes_best_hit_over_groups():
+    mod = _mod()
+    a = {"g1": {"ani": 97.0, "af": 60.0, "stage": "LR2", "genome": "x"},
+         "g2": {"ani": 99.0, "af": 70.0, "stage": "LR2", "genome": "y"}}
+    b = {"g1": {"ani": 98.0, "af": 55.0, "stage": "GART1", "genome": "z"}}
+    assert mod.merge_best([a, b]) == {"g1": b["g1"], "g2": a["g2"]}
+
+
+# ==================================================================================================================
 # the conf templates
 # ==================================================================================================================
 
-@pytest.mark.parametrize("stage,fasta_name", [("GWV1", "gwv1_gwvc.fna.gz"), ("SAG3", "sag3_omz.fna.gz")])
+@pytest.mark.parametrize("stage,fasta_name", [("GWV1", "gwv1_gwvc.fna.gz"), ("SAG3", "sag3_omz.fna.gz"),
+                                              ("WET1", "wet1_gwm.fna.gz")])
 def test_templates_pass_stage_est_and_carry_the_cards_values(stage, fasta_name):
     est = _load("stage_est", "stage_est.py")
     c = est.read_conf(TEMPLATES / f"{stage}.conf", stage, tree=REPO)
     assert (c.depth, c.crispr, c.library) == ("called", True, None)
-    assert c.after == {"GWV1": ("INPH2604",), "SAG3": ("GWV1",)}[stage]
+    assert c.after == {"GWV1": ("INPH2604",), "SAG3": ("GWV1",), "WET1": ("SAG3",)}[stage]
     assert str(c.inputs) == f"/tmp/if2453/s2/inputs/{stage}" and c.min_contig_len is None
     assert c.genecall_mode == "default"  # kind="virus" is called by pyrodigal-gv in any case (genecall.mode_of)
     assert NOTE in c.notes

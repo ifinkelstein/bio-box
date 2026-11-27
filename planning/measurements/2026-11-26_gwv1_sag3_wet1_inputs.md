@@ -1,17 +1,18 @@
 # Groundwater viruses (`GWV1`), OMZ single cells (`SAG3`) and wetland MAGs (`WET1`): relay, contents, staging (card C-81, DEC-79)
 
-- **Date and host:** 2026-11-26, `wilkcomp02`. Every number carries a label (AGENTS §6): *measured* (on `wilkcomp02`,
-  2026-11-26, by the command or file named), *derived* (formula and inputs), *estimate*, or *published*.
+- **Date and host:** 2026-11-26 (`WET1`: 2026-11-26 22:55 to 2026-11-27, after card R-18), `wilkcomp02`. Every
+  number carries a label (AGENTS §6): *measured* (on `wilkcomp02`, those days, by the command or file named),
+  *derived* (formula and inputs), *estimate*, or *published*.
 - **Script:** `scripts/stress/build_stage_pod/c81_gwv1_sag3_wet1.py` (`gwv1-stage`, `gwv1-ani`, `sag3-census`,
-  `sag3-stage`, `sag3-ani`); tests `tests/r1/test_c81_gwv1_sag3_wet1.py`; templates
-  `scripts/stress/build_stage_pod/stages/templates/GWV1.conf` and `SAG3.conf`. No `WET1.conf`: `WET1` waits (§5).
+  `sag3-stage`, `sag3-ani`, `wet1-stage`, `wet1-ani`); tests `tests/r1/test_c81_gwv1_sag3_wet1.py`; templates
+  `scripts/stress/build_stage_pod/stages/templates/GWV1.conf`, `SAG3.conf` and `WET1.conf`.
 - **Read only:** the relayed files (§1), card C-74's index `/tmp/if2453/c74/index/` and GTDB R232's metadata
   `/tmp/if2453/c74/GTDB_R232_META/`, the data root `/tmp/if2453/r10/root`, `/tmp/if2453/s2/inputs/` (the `r26.11.4`
   stages and `GV1`), and the staged metadata of the `r26.11.5` stages on the pod (§2.3). Nothing was written to the
   root or to `/tmp/if2453/s2/inputs/`; nothing under `/stor` was overwritten; the GlobDB r226 archive was not read.
-- **Written:** `gwv1_gwvc.fna.gz` and `sag3_omz.fna.gz` (each over 64 MB) to
-  `/stor/scratch/Wilke/if2453/bio-box-staging/{GWV1,SAG3}/`, with `GWV1`'s 78 MB `records.tsv` (§4); the other
-  metadata to `/tmp/if2453/c81/meta/{GWV1,SAG3}/`; reports,
+- **Written:** `gwv1_gwvc.fna.gz`, `sag3_omz.fna.gz` and `wet1_gwm.fna.gz` (each over 64 MB) to
+  `/stor/scratch/Wilke/if2453/bio-box-staging/{GWV1,SAG3,WET1}/`, with `GWV1`'s 78 MB and `WET1`'s 143 MB `records.tsv`
+  (§4); the other metadata to `/tmp/if2453/c81/meta/{GWV1,SAG3,WET1}/`; reports,
   ANI tables and inspection files to `/tmp/if2453/c81/work/`.
 
 ## 0. Summary
@@ -19,20 +20,21 @@
 | | `GWV1` | `SAG3` | `WET1` |
 |---|---:|---:|---:|
 | Set | Groundwater Virome Catalogue, 280,420 vOTUs of 5 kb and more | OMZ single-cell compendium, 3,570 assembled SAGs | GWM wetlands, 4,164 dereplicated MAGs |
-| Genomes staged | 280,420 | 3,570 cells, 3,568 genomes (2 repeated contig sets, DEC-27) | **waits** (§5) |
-| Contigs (distinct) | 280,420 | 299,181 | |
-| bp staged | 3,740,796,061 | 2,405,536,267 distinct (2,408,106,251 in all records) | |
-| Held by the root or `r26.11.4` (exact `contig_uid`) | 70 contigs, 18,912,716 bp (all `H1`) | 1,280 contigs, 28,838,169 bp (`GART1`, `G1`, `GART2`, `PL3`, `MV1`, `V2`) | |
-| Held by the `r26.11.5` stages on the pod before it | 0 | 52,307 contigs, 852,786,641 bp (`SAG1` 50,613: 1,100 GORG-Tropics cells; `GRARE1` 690; `MV2` 2; `MVEUKV` 2) | |
-| New bp (after both) | 3,721,883,345 | 1,523,911,457 | |
-| r232 status | (viruses: not asked) | in GTDB R232 574 (of which in GlobDB r232 439), not in GTDB R232 2,855, not visible 141 | |
-| ANI, recorded (nothing cut) | 320 of 11,216 sampled vOTUs (2.9 %) meet the vOTU threshold with `MV1`, `V2`, `V3` or `MV2` | 1,739 of 3,568 meet ANI 96 / AF 50 with `SAG1`, `SAG2` or r226 archaea of the same genus (1,104 are the same cell) | |
-| Left out | nothing (no repeat, no refusal) | nothing but 2 repeated contig sets listed once (DEC-27) | the whole set, for now |
-| `s2_check_inputs.py` | exit 0, `problems: []`, `gene_call_mode` `{"virus": "gv-meta"}` | exit 0, `problems: []`, codes `[11, 25]` | |
-| Template | `DEPTH=called`, `CRISPR=yes`, `AFTER=INPH2604`, `EXPECT=held_by H1 70` | `DEPTH=called`, `CRISPR=yes`, `AFTER=GWV1`, six `EXPECT` lines (§3.3) | none |
+| Genomes staged | 280,420 | 3,570 cells, 3,568 genomes (2 repeated contig sets, DEC-27) | 4,164 |
+| Contigs (distinct) | 280,420 | 299,181 | 1,749,962 |
+| bp staged | 3,740,796,061 | 2,405,536,267 distinct (2,408,106,251 in all records) | 12,615,693,814 distinct (12,615,718,580 in all records) |
+| Held by the root or `r26.11.4` (exact `contig_uid`) | 70 contigs, 18,912,716 bp (all `H1`) | 1,280 contigs, 28,838,169 bp (`GART1`, `G1`, `GART2`, `PL3`, `MV1`, `V2`) | 64 contigs, 193,761 bp (`GART1` 58, `GART2` 6) |
+| Held by the `r26.11.5` stages on the pod before it | 0 | 52,307 contigs, 852,786,641 bp (`SAG1` 50,613: 1,100 GORG-Tropics cells; `GRARE1` 690; `MV2` 2; `MVEUKV` 2) | 127 contigs, 356,472 bp (`GRARE1` 66, `GRARE2` 37, `GRARE3` 24) |
+| New bp (after both) | 3,721,883,345 | 1,523,911,457 | 12,615,143,581 |
+| r232 status | (viruses: not asked) | in GTDB R232 574 (of which in GlobDB r232 439), not in GTDB R232 2,855, not visible 141 | not in GTDB R232 4,164 (R232 holds no genome of `PRJNA1430164`) |
+| ANI, recorded (nothing cut) | 320 of 11,216 sampled vOTUs (2.9 %) meet the vOTU threshold with `MV1`, `V2`, `V3` or `MV2` | 1,739 of 3,568 meet ANI 96 / AF 50 with `SAG1`, `SAG2` or r226 archaea of the same genus (1,104 are the same cell) | 79 of 4,164 (1.9 %) meet ANI 96 / AF 50 with `NX1`, `KAVHIFI`, `DPN1`, same-genus `GART1/2`, `GRARE1..3` or r226 archaea (`LR2`'s FASTA is damaged, §5.5) |
+| Left out | nothing (no repeat, no refusal) | nothing but 2 repeated contig sets listed once (DEC-27) | nothing (1,540 MAGs of the table were dereplicated away by the providers) |
+| `s2_check_inputs.py` | exit 0, `problems: []`, `gene_call_mode` `{"virus": "gv-meta"}` | exit 0, `problems: []`, codes `[11, 25]` | exit 0, `problems: []`, codes `[11, 25]` |
+| Template | `DEPTH=called`, `CRISPR=yes`, `AFTER=INPH2604`, `EXPECT=held_by H1 70` | `DEPTH=called`, `CRISPR=yes`, `AFTER=GWV1`, six `EXPECT` lines (§3.3) | `DEPTH=called`, `CRISPR=yes`, `AFTER=SAG3`, `EXPECT` for `GART1` 58 and `GART2` 6 |
 
-All *measured* (the scripts' reports `/tmp/if2453/c81/work/{gwv1,sag3}_report.json`). Against the C-72 note's
-estimates (*estimate*: `GWV1` 3.6 to 4.0 Gbp, `SAG3` 2.3 to 2.5 Gbp): `GWV1` 3.741 Gbp is inside; `SAG3`'s 2.408 Gbp
+All *measured* (the scripts' reports `/tmp/if2453/c81/work/{gwv1,sag3,wet1}_report.json`). Against the C-72 note's
+estimates (*estimate*: `GWV1` 3.6 to 4.0 Gbp, `SAG3` 2.3 to 2.5 Gbp, `WET1` 12 to 13 Gbp): `GWV1` 3.741 Gbp and
+`WET1` 12.616 Gbp are inside; `SAG3`'s 2.408 Gbp
 is inside, but its new bases, 1.524 Gbp, are 34 % under the lower bound (*derived*: 1 − 1.524 / 2.3), because 1,100
 of its cells are `SAG1`'s (§3.3). The estimate was of the set's size, which is met; the shortfall is reported here
 (AGENTS §6) and was not taken as a stop, since nothing in the card's plan depends on `SAG3`'s new bases.
@@ -263,8 +265,8 @@ skani used 351.9 CPU-seconds (*measured*, children's rusage). **Nothing is cut b
 match to a held stage is recorded; the card does not say `SAG3` is deduplicated against `SAG1` or `SAG2`, and a
 different cell of the same species is a different genome). Reading: beyond the 1,104 GORG-Tropics cells it repeats,
 635 `SAG3` cells (*derived*: 384 + 196 + 55) fall in a species `SAG1`, `SAG2` or GlobDB r226's archaea already has.
-The card's bacterial same-genus references from GlobDB r226 need the r226 archive stream, which belongs with `WET1`
-and was not run (CATALOG_GOAL §4.1).
+The card's bacterial same-genus references from GlobDB r226 would need the r226 archive stream, which was not run
+for the reason of §5.3 (CATALOG_GOAL §4.1).
 
 ## 4. Staged files
 
@@ -290,6 +292,16 @@ and was not run (CATALOG_GOAL §4.1).
 | `genetic_codes.tsv` | same | 624,764 | `00a3e33892b79d7d9156f95aa76874b4f6458e9b28627a98c82b10a9cd04cb76` |
 | `sag_match.tsv` | same | 373,216 | `4936a65edfa707c546fcc2eab4985c13c98dabb8182805571411d5b46bad54f3` |
 | `r232_status.tsv` | same | 662,415 | `3fc100d20d16f1a989fd042453a090e1ce6fe96ffefe971085e66a9105ce02fc` |
+| `wet1_gwm.fna.gz` | `/stor/scratch/Wilke/if2453/bio-box-staging/WET1/` | 3,923,325,226 | `e77e9f6afa156b2706167c0d3149178ba35c1fde7aa10b44571a65b4c4b7bba9` |
+| `records.tsv` | same (over 64 MB) | 142,712,258 | `1de4ab81bfaee24366ce4ae0bc92c3e5ba369d93ae023e039c5adb0865e85c14` |
+| `genomes.json` | `/tmp/if2453/c81/meta/WET1/` | 63,444,540 | `b931b90abd9c98065add177a9dde5257ab5875ebd53adad52bc5e8ed94056b2b` |
+| `objects.json` | same | 462 | `2d4c6a24ab834954997f9d8fc88b91a9397a89e1fbc19281cc935f8e6cd55a00` |
+| `objects_staging.json` | same | 483 | `764fbb0b8fcd73e124b5c1f57ef3fba05896d006143274d966afb880e1f58684` |
+| `repeated_records.tsv` | same | 39 | `d109495ee76e4643c181eae183c452c9a84560f97a79bbe22d6630780368c565` |
+| `shared_records.tsv` | same | 4,208 | `99c0413f8e9178806c14f768cd1c4458d348fee95578be360538dca756468a47` |
+| `later_records.tsv` | same | 8,420 | `8121ed5613103a5389c0b384267fb53c4ae2b94cdf24d83b365ad1d3c422e2c5` |
+| `genetic_codes.tsv` | same | 745,885 | `01dcb9d25a7a13c72a5fceb28672a0b0494ca6bc34a0a55777b8af84ed9870d7` |
+| `r232_status.tsv` | same | 822,613 | `868d1657b217eac601e928c84263e70207b933d6bf1eed2f868ae1b3f380ce4e` |
 
 All *measured* (`ids.sha256_file`, the scripts' reports). `objects.json` names `/tmp/if2453/s2/inputs/<STAGE>/<FASTA>`
 (card A-29 copies there); `objects_staging.json` the file on `/stor`. The templates' `SUM` lines are the rows for
@@ -303,35 +315,119 @@ All *measured* (`ids.sha256_file`, the scripts' reports). `objects.json` names `
 the script's log, 2026-11-26): `GWV1`: the FASTA, 1,183,215,792 B in 96 s (12.33 MB/s), then the eight metadata files,
 `DONE: 1 verified` and `DONE: 8 verified, 0 failed`, `SHA256SUMS` on `tower` 9 lines;
 `SAG3`: the FASTA, 759,962,632 B in 42 s (18.09 MB/s), then the ten metadata files, `DONE: 1 verified` and
-`DONE: 10 verified, 0 failed`, `SHA256SUMS` 11 lines. Both to `tower:/mnt/user/research-bulk/bio-box/sources/{GWV1,SAG3}/`.
+`DONE: 10 verified, 0 failed`, `SHA256SUMS` 11 lines. `WET1` (2026-11-27): the FASTA and `records.tsv` from `/stor`,
+`DONE: 2 verified, 0 in place and skipped, 0 failed` (`records.tsv` 142,712,258 B in 6 s), then the eight metadata
+files, `DONE: 8 verified, 0 in place and skipped, 0 failed`, `SHA256SUMS` 10 lines; the mirror ran while the ANI step
+of §5.5 ran, which writes only to `work/` and changes no staged file. All to
+`tower:/mnt/user/research-bulk/bio-box/sources/{GWV1,SAG3,WET1}/`; no name there has a space.
 
-## 5. `WET1` waits: the relay refuses the archive's name
+## 5. `WET1`
 
-`WET1`'s genome archive on `tower` is `Dereplicated genomes.zip` (3,885,785,718 bytes, sha256
-`3b63926fb66fcff2522d47e34f2f12128a25bdbb39e97c6917a390d8d9d70f8b` in `tower`'s `SHA256SUMS`, *measured* by `ls -la` and
-the file read with `scp`). `relay_to_pod.sh --dry-run` with that `SHA256SUMS` as the list, 2026-11-26 18:54 CST
-(*measured*), exit 2, before any remote call:
+### 5.1 The relay, and the two names of the archive
 
-```
-relay_to_pod: list line 2: refused path (only letters, digits, . _ = + , - and /; no . or .. or leading -)
-```
+`WET1`'s genome archive is, on `tower` and at the provider, **`Dereplicated genomes.zip`** (3,885,785,718 bytes,
+sha256 `3b63926fb66fcff2522d47e34f2f12128a25bdbb39e97c6917a390d8d9d70f8b` in `tower`'s `SHA256SUMS`). The first
+`relay_to_pod.sh --dry-run` (2026-11-26 18:54 CST, *measured*) refused the space, exit 2, before any remote call:
+`relay_to_pod: list line 2: refused path (only letters, digits, . _ = + , - and /; no . or .. or leading -)`. Card
+R-18 then gave the relay `--space-as-underscore`, the change this note had proposed. With it (*measured*, the
+script's output, 2026-11-26): the dry run printed the map, `copy Dereplicated genomes.zip 3885785718 (pod name
+Dereplicated_genomes.zip)`; the run copied 3,885,785,718 bytes in 237 s (16.40 MB/s), sha256 equal to the record, to
+`/stor/scratch/Wilke/if2453/bio-box-staging/WET1/dl/`. **On the pod the archive is `Dereplicated_genomes.zip`, the
+relay's mapping of the provider's name**; nothing on `tower` was renamed or linked, and `tower`'s mirror of the staged
+files (§4) has no space in any name. `MAG_meta.xlsx` (806,764 bytes, sha256
+`b3ef27facf8e36eb6ef4bcbaf1304d34e6a28c8545c6fa0feb4ed635ce6e00f0`) went to `/tmp/if2453/c81/dl/WET1/` (0 s).
 
-Nothing on `tower` was renamed or linked and nothing was copied by hand. `MAG_meta.xlsx` (806,764 bytes) has a safe
-name, but without the genomes there is nothing to stage, so it was not relayed either. The card's one stream of the
-GlobDB r226 archive for `WET1`'s same-genus references belongs to `WET1` and was not run.
+### 5.2 What the archive and the table hold
 
-**The smallest change to `relay_to_pod.sh` that would carry such a name safely** (not made: the script is not in this
-card's files): keep the list check for every name the pod sees, and admit a space only in the name read on `tower`.
-(1) A second pattern for the list's path, the present `COMP` with a space added inside a component
-(`[A-Za-z0-9._=+,-]+( [A-Za-z0-9._=+,-]+)*`), so no quote, `$`, backslash, tab or leading or trailing space ever
-passes; (2) the name on the pod is the tower name with each space turned to `_` (`dest=${rel// /_}`), checked against
-the present `PATH_RE` and for a clash with another listed name (two names that map to one are refused); (3) the
-`.partial`, the destination, `SHA256SUMS` and the log use that name, while `tower` is read at the original name, which
-the remote commands already pass inside single quotes (`cat -- '$SRC/$rel'`) or through `read -r` (the `stat` loop),
-where a space is inert. About ten lines and one test (a fake `tower` file `a b.zip` lands as `a_b.zip`; a list holding
-both `a b.zip` and `a_b.zip` is refused). Then `WET1` is relayed as `Dereplicated_genomes.zip`, its zip listed, and
-the card's `WET1` part runs (the GlobDB r226 stream for same-genus references, the `PRJNA1430164` accessions against
-C-74's index, `DEPTH=called`).
+- `Dereplicated_genomes.zip` (*measured*, a read-only `zipfile` listing in the image, and `wet1_members` in the stage
+  report): **4,165 entries: one directory `dereplicated_genomes/` and 4,164 files `dereplicated_genomes/MAGnnnnn.fa`**,
+  12,847,878,267 bytes uncompressed, nothing else (no `__MACOSX`). The publication's 4,164 dereplicated genomes
+  (*published*, C-72 note §2.4): equal. Contig names are each sample's assembly names (`BYD1_k127_11492162`), without
+  the MAG id.
+- `MAG_meta.xlsx`: one sheet, a title row ("Table S2. The detailed information of all MAGs used in the study") and a
+  header row, then **5,704 MAGs** (the publication's 5,704 before dereplication: equal), each with its id
+  (`MAG00001`), bin name (`BYD1_bin.10`), sample (`SMP0001`), GTDB-Tk classification, CheckM completeness and
+  contamination, quality score and MIMAG tier. 1,540 of them are not in the archive (dereplicated away, *derived*:
+  5,704 − 4,164). **The table gives no accession**: no BioSample, no GenBank assembly.
+
+### 5.3 The accession test, and why the GlobDB r226 stream was not run
+
+With no accession in the table, the test asks GTDB R232's own metadata (`ar53`, `bac120`) for every genome of
+BioProject `PRJNA1430164` (the card's) and matches its `ncbi_isolate` or `ncbi_strain_identifiers` to the MAG's bin
+name; a match would go through C-74's `lookup` as for `SAG3`. **GTDB R232 holds no genome of `PRJNA1430164`**
+(0 rows, *measured*), which fits a project published in June 2026, after R232's April freeze. So every MAG is
+`not_in_gtdb_r232` (4,164, 12,615,718,580 bp); none is removed. GlobDB r232 cannot be asked without an INSDC accession:
+the r232 status rests on C-74's index and R232's metadata, as for the other stages.
+
+The card's one stream of the GlobDB r226 archive was there to fetch same-genus references for `skani` 96 / AF 50 as a
+**dedup**, that is, a cut. The standing rules have turned every such cut into a record (no genome in hand is left out
+for r226 or r232 membership; an ANI match is recorded, not cut), and the card names no other use of those references.
+So, as the orchestrating session asked, **the r226 archive was not streamed** (about 3.6 h, *estimate*, for a table
+nobody would act on); the comparison with GlobDB r226 rests on C-74's index and on the r226 genomes already on the pod:
+the `GART1`, `GART2` and `GRARE1..3` genomes of the same genera, and C-75's r226 archaea (§5.5).
+
+### 5.4 Staging and overlap (`wet1-stage`, report `work/wet1_report.json`)
+
+Rule (card C-77's, as for `SAG3`): the MAGs in id order for the metadata, the archive's order for the FASTA; whole
+contigs; the code screened per MAG (`c58.screen_genetic_code`, 11, 25, 4, the GTDB-Tk classification as the hint);
+every contig name given the MAG id and `|` (all 1,749,972, *measured*: none begins with its MAG id; every name in the
+file unique, refused otherwise); `kind="prokaryote"`, `assembly_quality` from the MIMAG tier (`mag_hq` or `mag_mq`;
+another tier is refused); one BGZF FASTA.
+
+| | Value (*measured*) |
+|---|---:|
+| MAGs / FASTA records | 4,164 / 1,749,972 |
+| Genomes listed (DEC-27 repeated sets) | 4,164 (0) |
+| Distinct contigs (bp) | 1,749,962 (12,615,693,814); 10 contigs in more than one MAG |
+| Genetic codes | code 11: 4,160; code 25: 4; conflicts 0 |
+| Held by the root or `r26.11.4` (exact `contig_uid`, build order) | 64 contigs, 193,761 bp: `GART1` 58 (169,130 bp), `GART2` 6 (24,631) |
+| Held by `r26.11.5` stages before it on the pod | 127 contigs, 356,472 bp: `GRARE1` 66 (182,953), `GRARE2` 37 (91,903), `GRARE3` 24 (81,616) |
+| **New after both** | **1,749,771 contigs, 12,615,143,581 bp** |
+| `s2_check_inputs.py WET1` (with `objects_staging.json`) | exit 0, `problems: []`, 4,164 genomes, 1,749,972 `genome_input` rows, codes `[11, 25]` |
+
+The later holders read, in plan §5's order: `GRARE1..3`, `LR2`, `SAG1`, `NX1`, `GV1`, `EGV1`, `ECE2`, `MIR1`
+(`/tmp/if2453/c70/meta/`), `SAG2`, `DPN1`, `SYM2`, `LRP1`, `MIR2` (`/tmp/if2453/c78/meta/`, `DPN1` after its second
+run of 22:59), `MV2`, `MVEUKV`, `KAVHIFI`, `INPH2604`, `GWV1`, `SAG3`; `ASG1` and `MGE4` had no metadata on the pod.
+`redistributable: true` (the Zenodo record states `cc-by-4.0`, read by card C-72 part 1; DEC-80 (3)). `WET1`'s
+`records.tsv` (142,712,258 B, over 64 MB) was moved, as `GWV1`'s, to `/stor/scratch/Wilke/if2453/bio-box-staging/WET1/`
+(`cp -n`, sha256 equal, `/tmp` copy removed).
+
+### 5.5 ANI against MAG stages on the pod and r226 genomes of the same genera (recorded, not cut)
+
+`c81_gwv1_sag3_wet1.py wet1-ani` (*measured*, `/tmp/if2453/c81/work/wet1_ani/summary.json`, `wet1_ani_hits.tsv` and
+one skani table per group, 2026-11-27 00:55 to 01:24): one FASTA per `WET1` MAG as queries; each reference group in
+its own `skani dist -t 8 --min-af 50` process (default sketch), so that no process holds every sketch; a MAG meets when
+ANI >= 96 over an aligned fraction >= 50 % (the larger of the two, card C-66's rule); the best hit over groups is kept.
+The 4,164 MAGs carry 1,636 GTDB genera (MAG_meta's GTDB-Tk names).
+
+| Reference group | How chosen | Genomes | MAGs meeting (in the group) | Best hit there | skani CPU-s |
+|---|---|---:|---:|---:|---:|
+| `NX1` | whole | 896 | 3 | 1 | 90.5 |
+| `KAVHIFI` (bacterial MAGs) | whole | 2,214 | 0 | 0 | 93.1 |
+| `DPN1` (DPANN genomes) | whole | 1,840 | 0 | 0 | 78.0 |
+| `GART1` | GlobDB r226 genus (`non_gtdb_stages.tsv`) one of `WET1`'s | 889 | 6 | 6 | 105.6 |
+| `GART2` | same | 1,002 | 2 | 2 | 71.3 |
+| `GRARE1` | same | 369 | 17 | 13 | 73.1 |
+| `GRARE2` | same | 303 | 8 | 8 | 76.4 |
+| `GRARE3` | same | 645 | 20 | 20 | 81.7 |
+| GlobDB r226 archaea (card C-75's set) | GTDB genus one of `WET1`'s | 2,007 | 36 | 29 | 92.9 |
+| **any** | | 10,165 | | **79 of 4,164 (1.9 %)** | 762.6 |
+
+All *measured*; the percentage *derived*. **Nothing is cut by it.** Reading: few wetland MAGs fall in a species of the
+r226 genomes the pod holds (the r226 genomes of the same genera that are not on the pod were not compared, §5.3), which
+agrees with the publication's 3,639 of 4,164 putative novel species against GTDB (*published*).
+
+**`LR2` is not among the references, because its staged FASTA is damaged** (found here; not this card's to mend). The
+first two `wet1-ani` runs stopped in `LR2`'s file, first on a sequence byte `0xe5`, then on a header that is not UTF-8.
+`/stor/scratch/Wilke/if2453/bio-box-staging/LR2/lr2_compendia.fna.gz` has the sha256 card C-66 recorded
+(`89dba3ba4098796fd3042b132089b9ea5393949d48dc7bf2783912e0b1eef377`, *measured* by `sha256sum`), so it is the file as
+staged. A read-only scan (`/tmp/if2453/c81/bin/scan_lr2.py`, unit `c81-lr2-scan`, 1 CPU, 00:55 to 01:04; output
+`/tmp/if2453/c81/logs/lr2_scan.out`) found, of 575,827 records: **20,526 headers that are not UTF-8, 27,396 records with
+bytes that are not letters, and 26,484 records whose `contig_uid` is in no genome of `LR2`'s `records.tsv`**. All of
+them start at record 504,175 (the last good header before it is a hex `contig_uid`, `d497c8fd...`). The headers and
+sequences from there on look like compressed binary data written into the FASTA. `LR2`'s `records.tsv` lists 555,301
+contigs; the FASTA holds 575,827 records. `WET1`'s ownership test (§5.4) read `LR2`'s `genomes.json`, which is intact,
+not this FASTA. `LR2`'s build would stop at ingest on these records (*inferred*: `biobox.fasta` decodes every header).
 
 ## 6. Pod compute used
 
@@ -350,10 +446,16 @@ one other staging unit, `c70-mir1-stage2`, so never three in all; none while `MV
 | `c81-sag3` | `sag3-stage` (3 code-screen workers, DuckDB 2 threads) | `CPUQuota=400%` | 19:34:57 to 19:46:39 (11.7 min) | at most 47 CPU-minutes (*derived*: 11.7 × 4); 8.9 at 3.4 min (*measured*) |
 | `c81-gwv1-ani` | `gwv1-ani`, 21 skani processes of 8 threads | `CPUQuota=800%` | 19:37:33 to 20:26:53 (49.3 min) | skani 80.8 CPU-minutes (*measured*, children's rusage), largest process 27.3 |
 | `c81-sag3-ani` | `sag3-ani`, one skani process of 6 threads | `CPUQuota=600%` | about 19:48 to 19:59:34 | skani 5.9 CPU-minutes (*measured*) |
+| `c81-wet1-xlsx` | `MAG_meta.xlsx` as TSV | `CPUQuota=100%` | 1.8 s | 1.8 CPU-seconds (*measured*) |
+| `c81-wet1` | `wet1-stage` (3 code-screen workers, DuckDB 2 threads) | `CPUQuota=400%` | 23:07 to about 00:01 (54 min) | at most 216 CPU-minutes (*derived*: 54 × 4; several processes) |
+| `c81-wet1-ani`, `-ani2`, `-ani3` | stopped in `LR2`'s damaged FASTA (§5.5): a byte `0xe5`, a record in no genome, a header not UTF-8 | `CPUQuota=800%` | 00:01 to 00:16, 00:19 to 00:34, 00:36 to 00:52 | 12.9 CPU-minutes at 00:11 for the first (*measured*); the others alike |
+| `c81-lr2-scan` | read-only scan of `LR2`'s FASTA | `CPUQuota=100%` | 00:55 to 01:04 | at most 9 CPU-minutes (*derived*) |
+| `c81-wet1-ani4` | `wet1-ani` without `LR2`, 9 skani processes of 8 threads | `CPUQuota=800%` | 00:55 to 01:24 | skani 12.7 CPU-minutes (*measured*), largest process 1.8 |
 
-No process came near 300 CPU-minutes. The card's estimate (8 threads for skani, 2 to 4 h, *estimate*, with the r226
-stream that waits with `WET1`): about 1.7 h of wall for the two sets here (*derived*: 18:58 to 20:27, units
-overlapping).
+No process came near 300 CPU-minutes. The card's estimate (8 threads for skani, 2 to 4 h, *estimate*, with an r226
+stream that was not run, §5.3): about 1.7 h of wall for `GWV1` and `SAG3` (*derived*: 18:58 to 20:27, units
+overlapping) and about 2.5 h for `WET1` (*derived*: 22:55 to 01:24, of which 50 min were the three stopped ANI runs). The wave's `PL3` Pfam build ran beside the `WET1` units; at most one unit of
+this card ran at a time then, and no other staging unit was active.
 
 ## 7. Tests
 
@@ -378,6 +480,14 @@ tests/r1/test_c81_gwv1_sag3_wet1.py`, with the script not yet in the tree): **37
 `c81_gwv1_sag3_wet1.py`, no templates). The six-pair cut of the GTDB-Tk sheet was found by the first run on the real
 table (`refused: ... Outputs_GTDB-TK names AB-754_C22 twice`); the fixture was given that case first and the SAG3
 tests seen failing (16 failed: 12 because the stager refused the fixture's table, 4 the templates not yet filled)
-before the reader was changed. Final
+before the reader was changed. The `WET1` tests (MAG_meta under its title row, the zip census, the BioProject
+crosswalk, the stage end to end twice with `s2_check_inputs.py`, a member the table lacks refused, genus selection,
+`merge_best`, the template) were written after card R-18 and seen failing first (*measured*, 2026-11-26: **14
+failed**, `module 'c81_gwv1_sag3_wet1' has no attribute 'mag_meta'` and the like); then the MIMAG tier
+(`mag_hq`/`mag_mq`, which `s2_check_inputs.py` requires; 6 failed first), a `genome_id` column (cards C-58, C-66; 2
+failed first) and a reference record holding the byte `0xe5`, which the first `wet1-ani` run met in `LR2`'s FASTA
+(written now as bytes, never decoded; 2 failed first), and a reference record in no genome, counted instead of
+refused when the caller asks (2 failed first). Final
 (*measured*, same host and day, `env BIOBOX_TREE=/tmp/biobox-wt/C-81 sh scripts/pod_pytest.sh C-81
-tests/r1/test_c81_gwv1_sag3_wet1.py tests/r1/test_r232_index.py tests/r0`, one process): **285 passed, 1 skipped in 26.36 s** (the skip: the skani test under the tools-hidden `PATH`).
+tests/r1/test_c81_gwv1_sag3_wet1.py tests/r1/test_r232_index.py tests/r0`, one process): **285 passed, 1 skipped in 26.36 s** for `GWV1` and `SAG3`; with `WET1`, after the merge of card R-18
+(2026-11-27): **307 passed, 1 skipped in 34.71 s** (the skip: the skani test under the tools-hidden `PATH`).

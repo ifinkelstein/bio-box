@@ -5743,9 +5743,22 @@ sources:
       nothing yet: 2 files named in 2026-11-26_c72_part1.tsv, listed here before the fetch (card C-72, part 1)
     stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/WET1/
     fetched_pod: >-
-      nothing (card C-81, 2026-11-26): scripts/orchestrator/relay_to_pod.sh refuses the name "Dereplicated genomes.zip"
-      (a space) before any remote call, so WET1 waits for a change to that script; nothing on tower was renamed or
-      linked, nothing was copied by hand (planning/measurements/2026-11-26_gwv1_sag3_wet1_inputs.md §5)
+      2 of 2 files copied from tower:/mnt/user/research-bulk/bio-box/sources_incoming/WET1/ to wilkcomp02 by
+      scripts/orchestrator/relay_to_pod.sh (cards C-73, R-18), 2026-11-26 22:55 to 22:59 CST, each sha256 equal to
+      tower's SHA256SUMS (the provider was not asked again): "Dereplicated genomes.zip" (3,885,785,718 bytes, sha256
+      3b63926fb66fcff2522d47e34f2f12128a25bdbb39e97c6917a390d8d9d70f8b) with --space-as-underscore, so on the pod it
+      is /stor/scratch/Wilke/if2453/bio-box-staging/WET1/dl/Dereplicated_genomes.zip (the relay's mapping of the
+      provider's name; tower keeps the provider's name); MAG_meta.xlsx (806,764, sha256
+      b3ef27facf8e36eb6ef4bcbaf1304d34e6a28c8545c6fa0feb4ed635ce6e00f0) to /tmp/if2453/c81/dl/WET1/. A first
+      --dry-run without the option (18:54) had been refused for the space, before card R-18
+    staged: >-
+      card C-81, 2026-11-27: all 4,164 dereplicated MAGs of the archive (1,749,972 records, 1,749,962 distinct contigs,
+      12,615,718,580 bp; codes 11 and 25; GTDB R232 holds no genome of PRJNA1430164, so none is in R232 and none removed
+      on r232 status; 64 contigs held by GART1 and GART2, 127 by GRARE1..3) as stage WET1 in /tmp/if2453/c81/meta/WET1/
+      and /stor/scratch/Wilke/if2453/bio-box-staging/WET1/ (wet1_gwm.fna.gz and the 143 MB records.tsv) on wilkcomp02,
+      then to tower:/mnt/user/research-bulk/bio-box/sources/WET1/; the GlobDB r226 archive was not streamed (its only
+      use, a same-genus cut, is a record under the standing rules); planning/measurements/2026-11-26_gwv1_sag3_wet1_inputs.md
+      §5. redistributable: true (DEC-80 (3): the record states cc-by-4.0)
     approved: "by the PI, 2026-11-26 about 08:03 CST: \"for each of the four decisions, go ahead with your recommendations\" (DEC-79 (4))"
   - name: tower_globdb_r232_tables
     what: >-

@@ -1,5 +1,16 @@
-"""Card C-81 (DEC-79): stage the Groundwater Virome Catalogue (`GWV1`) and the OMZ single-cell compendium (`SAG3`).
-The wetland MAGs (`WET1`) wait: the relay refuses its archive's name (`Dereplicated genomes.zip`), see the note.
+"""Card C-81 (DEC-79): stage the Groundwater Virome Catalogue (`GWV1`), the OMZ single-cell compendium (`SAG3`) and
+the GWM wetland MAGs (`WET1`).
+
+    python c81_gwv1_sag3_wet1.py wet1-stage ZIP XLSX INDEX_DIR GTDB_META_DIR META_OUT FASTA_OUT [as sag3-stage]
+    python c81_gwv1_sag3_wet1.py wet1-ani META_DIR FASTA OUT [--whole NAME=META:FASTA[,FASTA]] [--by-genus ...]
+        [--taxonomy non_gtdb_stages.tsv] [--archaea FASTA:LIST] [--threads 8]
+
+`WET1` (zenodo 20263536): `Dereplicated genomes.zip` (on the pod as `Dereplicated_genomes.zip`, card R-18's relay
+mapping) holds `dereplicated_genomes/<MAG id>.fa`; `MAG_meta.xlsx` describes every MAG (bin name, sample, GTDB-Tk
+classification) and gives no accession, so the accession test takes GTDB R232's rows of BioProject `PRJNA1430164` by
+bin name (`ncbi_isolate`, `ncbi_strain_identifiers`); every MAG is staged as card C-77 staged single cells
+(`assembly_quality="mag"`, every contig name given its MAG id and `|`); `wet1-ani` records ANI >= 96 / AF >= 50 against
+staged MAG sets on the pod and card C-75's r226 archaea of the same genera, one skani process per group; nothing is cut.
 
     python c81_gwv1_sag3_wet1.py gwv1-stage FNA_GZ INFO_TXT META_OUT FASTA_OUT [--root ROOT] [--root-stages ...]
         [--chain-home /tmp/if2453/s2/inputs] [--later NAME=DIR ...] [--inputs-home ...] [--work DIR] [--report-out F]
@@ -912,22 +923,44 @@ def _rows_tsv(path: Path) -> list[dict]:
         return list(csv.DictReader(fh, delimiter="\t"))
 
 
-def split_genomes(meta: Path, fasta_path: Path, out_dir: Path) -> dict[str, Path]:
+def _records_tsv(meta: Path) -> Path:
+    """A staged set's records.tsv: in META, or (a file over 64 MB, AGENTS §7.3) beside its FASTA on /stor."""
+    p = Path(meta) / "records.tsv"
+    if p.is_file():
+        return p
+    for o in json.loads((Path(meta) / "objects_staging.json").read_text()):
+        q = Path(o["path"]).parent / "records.tsv"
+        if q.is_file():
+            return q
+    raise Refused(f"{meta}: no records.tsv")
+
+
+def split_genomes(meta: Path, fasta_path, out_dir: Path, keep: set[str] | None = None,
+                  unlisted: list[str] | None = None) -> dict[str, Path]:
     """One FASTA per genome of a staged set (contig -> genome by records.tsv's contig_uid, first genome listed),
-    written under out_dir; returns genome -> file."""
+    written under out_dir, only the genomes in KEEP when it is given; FASTA_PATH is one file or a list; returns
+    genome -> file."""
+    paths = [Path(fasta_path)] if isinstance(fasta_path, (str, Path)) else [Path(p) for p in fasta_path]
     first: dict[str, str] = {}
-    with open(Path(meta) / "records.tsv", newline="") as fh:
-        for r in csv.DictReader(fh, delimiter="\t"):
-            first.setdefault(r["contig_uid"], r["genome"])
+    with open(_records_tsv(Path(meta)), newline="") as fh:
+        rd = csv.DictReader(fh, delimiter="\t")
+        col = "genome" if "genome" in (rd.fieldnames or []) else "genome_id"  # cards C-58 and C-66 name it genome_id
+        for r in rd:
+            first.setdefault(r["contig_uid"], r[col])
     out_dir.mkdir(parents=True, exist_ok=True)
     files: dict[str, Path] = {}
     used: set[str] = set()
     handles: dict[str, object] = {}
     try:
-        for r in fasta.iter_records(Path(fasta_path)):
+        for r in (rec for p in paths for rec in fasta.iter_records(p)):
             g = first.get(ids.contig_uid(r.seq).hex())
             if g is None:
-                raise Refused(f"{fasta_path}: record {r.accession} is in no genome of {meta}/records.tsv")
+                if unlisted is None:
+                    raise Refused(f"{paths[0]}: record {r.accession} is in no genome of {meta}/records.tsv")
+                unlisted.append(r.accession)  # the caller asked to count, not refuse (an ANI reference set)
+                continue
+            if keep is not None and g not in keep:
+                continue
             if g not in files:
                 fname = re.sub(r"[^A-Za-z0-9_.-]", "_", g) + ".fna"
                 if fname in used:
@@ -936,11 +969,11 @@ def split_genomes(meta: Path, fasta_path: Path, out_dir: Path) -> dict[str, Path
                 files[g] = out_dir / fname
             fh = handles.get(g)
             if fh is None:
-                fh = handles[g] = open(files[g], "a")
+                fh = handles[g] = open(files[g], "ab")
                 if len(handles) > 64:
                     k0 = next(iter(handles))
                     handles.pop(k0).close()
-            fh.write(f">{r.accession}\n{r.seq.decode()}\n")
+            fh.write(b">" + r.accession.encode() + b"\n" + r.seq + b"\n")  # bytes as staged, decoded never
     finally:
         for fh in handles.values():
             fh.close()
@@ -993,8 +1026,8 @@ def archaea_refs(fna: Path, list_tsv: Path, genera: set[str], out_dir: Path) -> 
         if g is None:
             continue
         p = files.setdefault(g, out_dir / (re.sub(r"[^A-Za-z0-9_.-]", "_", g) + ".fna"))
-        with open(p, "a") as fh:
-            fh.write(f">{r.accession}\n{r.seq.decode()}\n")
+        with open(p, "ab") as fh:
+            fh.write(b">" + r.accession.encode() + b"\n" + r.seq + b"\n")
     return files
 
 
@@ -1033,6 +1066,398 @@ def sag3_ani(meta: Path, fasta_path: Path, out: Path, refs: dict[str, tuple[Path
            "threshold": {"ani_min": ANI_SAG, "af_min_larger_of_two": AF_SAG}, "threads": threads,
            "cpu_s": round(cpu, 1), "meet": len(hits),
            "meet_by_stage": dict(sorted(Counter(h["stage"] for h in hits.values()).items()))}
+    (out / "summary.json").write_text(json.dumps(res, indent=1, sort_keys=True) + "\n")
+    shutil.rmtree(work, ignore_errors=True)
+    return res
+
+
+# === WET1 ==========================================================================================================
+
+WET1 = "WET1"
+WET1_FASTA = "wet1_gwm.fna.gz"
+WET1_SOURCE = {
+    "source_name": "tower_wet1",
+    "source_release": "GWM global wetland catalogue, zenodo 20263536 (2026-05): 'Dereplicated genomes.zip' (on the pod "
+                      "as Dereplicated_genomes.zip, relay_to_pod.sh --space-as-underscore) and MAG_meta.xlsx",
+    "license": "cc-by-4.0 as the Zenodo record states it (read 2026-11-26, card C-72 part 1)",
+    "redistributable": True,  # DEC-80 (3): a recorded licence (CC BY 4.0) permits it
+}
+WET1_RETRIEVED = "2026-11-26T19:04:00Z"  # tower's SOURCE_URLS.tsv, Dereplicated genomes.zip
+WET1_DIR = "dereplicated_genomes/"
+WET1_BIOPROJECT = "PRJNA1430164"
+WET1_META = ("genomes.json", "objects.json", "objects_staging.json", "records.tsv", "repeated_records.tsv",
+             "shared_records.tsv", "later_records.tsv", "genetic_codes.tsv", "r232_status.tsv")
+MAG_NEED = {"id": "ID", "name": "Name", "sample": "Sample ID", "classification": "GTDB_classification",
+            "completeness": "Completeness (%)", "contamination": "Contamination (%)", "quality": "Quality_tier (MIMAG)"}
+
+
+def mag_meta(xlsx: Path) -> dict[str, dict]:
+    """MAG_meta.xlsx (its one sheet: a title row, then the header row that starts with `ID`): MAG id -> name, sample,
+    GTDB classification, completeness, contamination, quality tier. Refuses a missing column or a repeated id."""
+    sheets = read_xlsx(Path(xlsx))
+    rows = next(iter(sheets.values()), [])
+    hi = next((i for i, r in enumerate(rows) if r and r[0].strip() == "ID"), None)
+    if hi is None:
+        raise Refused(f"{xlsx}: no header row starting with ID")
+    head = [c.strip() for c in rows[hi]]
+    miss = [c for c in MAG_NEED.values() if c not in head]
+    if miss:
+        raise Refused(f"{xlsx}: no column {miss[0]!r}")
+    ix = {k: head.index(c) for k, c in MAG_NEED.items()}
+    out: dict[str, dict] = {}
+    for r in rows[hi + 1:]:
+        mid = _cell(r, ix["id"])
+        if not mid:
+            continue
+        if mid in out:
+            raise Refused(f"{xlsx}: MAG {mid} has two rows")
+        out[mid] = {k: _cell(r, i) for k, i in ix.items() if k != "id"}
+    return out
+
+
+def mimag_quality(tier: str) -> str:
+    """MAG_meta's MIMAG tier as the stager's `assembly_quality` (`mag_hq`, `mag_mq`); anything else is refused (the
+    publication keeps only MAGs of quality score > 50, high or medium)."""
+    q = {"High-quality": "mag_hq", "Medium-quality": "mag_mq"}.get(tier.strip())
+    if q is None:
+        raise Refused(f"MIMAG tier {tier!r} is neither High-quality nor Medium-quality")
+    return q
+
+
+def wet1_members(zip_path: Path) -> tuple[list[tuple[str, str]], dict]:
+    """(member name, MAG id) of each `dereplicated_genomes/<id>.fa` in archive order, and the census of every entry."""
+    try:
+        with zipfile.ZipFile(zip_path) as z:
+            infos = z.infolist()
+    except (zipfile.BadZipFile, OSError) as exc:
+        raise Refused(f"{zip_path}: not a readable zip: {exc}") from exc
+    mem, other, dirs = [], [], 0
+    for i in infos:
+        n = i.filename
+        if i.is_dir():
+            dirs += 1
+        elif n.startswith(WET1_DIR) and n.endswith(".fa") and "/" not in n[len(WET1_DIR):]:
+            mem.append((n, n[len(WET1_DIR):-3]))
+        else:
+            other.append(n)
+    dup = [g for g, k in Counter(g for _, g in mem).items() if k > 1]
+    if dup:
+        raise Refused(f"{zip_path}: two members for {sorted(dup)[0]}")
+    return mem, {"entries": len(infos), "directories": dirs, "mags": len(mem), "other": sorted(other)}
+
+
+def gtdb_project_crosswalk(gtdb_meta_dir: Path, bioproject: str, names: set[str]) -> tuple[dict, int]:
+    """GTDB R232's genomes of one BioProject (`ncbi_bioproject`), matched to the given bin names through
+    `ncbi_isolate` or `ncbi_strain_identifiers`: name -> sorted versionless accessions, and the number of R232 rows of
+    that BioProject."""
+    import pyarrow as pa
+    import pyarrow.csv as pacsv
+
+    cols = ["accession", "ncbi_bioproject", "ncbi_isolate", "ncbi_strain_identifiers"]
+    by: dict[str, set[str]] = defaultdict(set)
+    n = 0
+    for key in ("ar53", "bac120"):
+        p = Path(gtdb_meta_dir) / r232_index.FILES[key]
+        if not p.is_file():
+            raise Refused(f"missing GTDB R232 metadata {p}")
+        rd = pacsv.open_csv(str(p), read_options=pacsv.ReadOptions(block_size=1 << 24),
+                            parse_options=pacsv.ParseOptions(delimiter="\t"),
+                            convert_options=pacsv.ConvertOptions(include_columns=cols,
+                                                                 column_types={c: pa.string() for c in cols}))
+        for b in rd:
+            for acc, bp, iso, strain in zip(*(b.column(i).to_pylist() for i in range(4))):
+                if (bp or "").strip() != bioproject:
+                    continue
+                n += 1
+                for v in [iso or "", *(strain or "").split(",")]:
+                    v = v.strip()
+                    if v in names:
+                        by[v].add(r232_index.nover(acc or ""))
+    return {k: sorted(v) for k, v in by.items()}, n
+
+
+WET1_STATUS_HEAD = ["genome", "name", "sample", "gtdb_r232_accession", "r232_status", "in_gtdb_r232",
+                    "is_gtdb_representative", "gtdb_representative", "gtdb_species", "in_globdb_r232",
+                    "globdb_r232_id", "gtdb_classification", "completeness", "contamination", "quality_tier",
+                    "contigs", "bp"]
+
+
+def stage_wet1(zip_path: Path, xlsx: Path, index_dir: Path, gtdb_meta_dir: Path, meta_out: Path, fasta_out: Path, *,
+               root: Path | None, root_stages, owner_inputs: dict[str, Path], later_inputs: dict[str, Path],
+               inputs_home: Path, retrieved_at: str = WET1_RETRIEVED, work: Path | None = None, threads: int = 2,
+               memory_limit: str = "4GB", workers: int = 1) -> dict:
+    """Stage WET1: every dereplicated MAG of the archive, as card C-77 staged single cells; returns the report."""
+    zip_path, index_dir = Path(zip_path), Path(index_dir)
+    meta_dir, fa_dir = Path(meta_out) / WET1, Path(fasta_out) / WET1
+    final_fa = fa_dir / WET1_FASTA
+    for p in (meta_dir, final_fa):
+        if p.exists():
+            raise Refused(f"{p} exists")
+    if not (index_dir / "gtdb_r232.parquet").is_file() or not (index_dir / "globdb_r232.parquet").is_file():
+        raise Refused(f"{index_dir} is not card C-74's index (no gtdb_r232.parquet or globdb_r232.parquet)")
+    _check_later(later_inputs)
+    meta = mag_meta(Path(xlsx))
+    mem, census = wet1_members(zip_path)
+    if not mem:
+        raise Refused(f"{zip_path}: no MAG member ({WET1_DIR}*.fa)")
+    lacking = sorted(g for _, g in mem if g not in meta)
+    if lacking:
+        raise Refused(f"{len(lacking)} members are not in {xlsx}; first {lacking[0]}")
+    for _, g in mem:
+        meta[g]["assembly_quality"] = mimag_quality(meta[g]["quality"])
+    tmp = Path(meta_out) / f"{WET1}.tmp"
+    partial = fa_dir / f".{WET1_FASTA}.partial"
+    work_dir = Path(work) if work is not None else Path(meta_out) / f"{WET1}.work"
+    shutil.rmtree(tmp, ignore_errors=True)
+    tmp.mkdir(parents=True)
+    fa_dir.mkdir(parents=True, exist_ok=True)
+    work_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        rep = _stage_wet1(zip_path, meta, mem, census, index_dir, Path(gtdb_meta_dir), tmp, partial, work_dir, root,
+                          list(root_stages), owner_inputs, later_inputs, Path(inputs_home), final_fa, retrieved_at,
+                          threads, memory_limit, workers)
+    except BaseException:
+        shutil.rmtree(tmp, ignore_errors=True)
+        partial.unlink(missing_ok=True)
+        if fa_dir.exists() and not any(fa_dir.iterdir()):
+            fa_dir.rmdir()
+        raise
+    if work is None:
+        shutil.rmtree(work_dir, ignore_errors=True)
+    partial.rename(final_fa)
+    tmp.rename(meta_dir)
+    files = {n: meta_dir / n for n in WET1_META}
+    files[WET1_FASTA] = final_fa
+    rep["sha256"] = {n: ids.sha256_file(p).hex() for n, p in files.items()}
+    rep["bytes"] = {n: p.stat().st_size for n, p in files.items()}
+    return rep
+
+
+def _stage_wet1(zip_path, meta, mem, census, index_dir, gtdb_meta_dir, tmp, partial, work_dir, root, root_stages,
+                owner_inputs, later_inputs, inputs_home, final_fa, retrieved_at, threads, memory_limit,
+                workers) -> dict:
+    hint = {g: meta[g]["classification"] for _, g in mem}
+    gc_results: dict[str, dict] = {}
+    pool = ProcessPoolExecutor(max_workers=workers) if workers > 1 else None
+    pending: list[tuple[str, object]] = []
+
+    def submit(g: str, seqs: list[bytes]) -> None:
+        if pool is None:
+            gc_results[g] = c58.screen_genetic_code(seqs, hint[g], screen_max_bp=500_000)
+            return
+        pending.append((g, pool.submit(c58._screen_worker, (g, seqs, hint[g], 500_000))))
+        while len(pending) >= 4 * workers:
+            s, fut = pending.pop(0)
+            gc_results[s] = fut.result()[1]
+
+    contigs: dict[str, tuple[bytes, list[int]]] = {}
+    names: set[str] = set()
+    n_renamed = 0
+    w = c77.BgzfWriter(partial)
+    try:
+        with zipfile.ZipFile(zip_path) as z:
+            for member, g in mem:
+                with z.open(member) as fh:
+                    recs = _read_records(fh, member)
+                for hdr, seq, width in recs:
+                    first = hdr.split(None, 1)[0] if hdr.strip() else ""
+                    if not first.startswith(g + "_"):
+                        hdr = f"{g}|{hdr}"
+                        n_renamed += 1
+                    first = hdr.split(None, 1)[0]
+                    if first in names:
+                        raise Refused(f"contig name {first} occurs twice in the stage")
+                    names.add(first)
+                    w.write(b"\n".join(fasta.format_record(hdr, seq, width)) + b"\n")
+                if not recs:
+                    raise Refused(f"{member} holds no sequence")
+                contigs[g] = (b"".join(ids.contig_uid(s) for _, s, _ in recs), [len(s) for _, s, _ in recs])
+                submit(g, [s for _, s, _ in recs])
+        while pending:
+            s, fut = pending.pop(0)
+            gc_results[s] = fut.result()[1]
+    except (zipfile.BadZipFile, OSError, EOFError, zlib.error) as exc:
+        raise Refused(f"{zip_path}: not a readable zip: {exc}") from exc
+    finally:
+        w.close()
+        if pool is not None:
+            pool.shutdown(wait=True, cancel_futures=True)
+    kept = sorted(contigs)
+
+    # the accession test: the table gives no accession, so GTDB R232's rows of the BioProject, by bin name
+    by_name, n_project = gtdb_project_crosswalk(gtdb_meta_dir, WET1_BIOPROJECT, {meta[g]["name"] for g in kept})
+    via = {g: by_name[meta[g]["name"]][0] for g in kept if by_name.get(meta[g]["name"])}
+    look = {x["accession"]: x for x in r232_index.lookup(index_dir, sorted(set(via.values())))}
+    status = {g: r232_status(look.get(via[g]) if g in via else None, True) for g in kept}
+
+    resolved, genome_uids, conflicts = c58._resolve_within_stage_code_conflicts(kept, contigs, gc_results)
+    records_path = tmp / "records.tsv"
+    ordinal = 0
+    with open(records_path, "w", encoding="utf-8", buffering=1 << 20) as rf, open(
+            tmp / "genetic_codes.tsv", "w", encoding="utf-8", buffering=1 << 20) as gf:
+        rf.write("ordinal\tgenome\trecord_ordinal\tcontig_uid\tlength\tassembly_quality\tgenetic_code\tname\n")
+        gf.write("\t".join(c58.GC_HEAD) + "\n")
+        for g in kept:
+            raw, lens = contigs[g]
+            gc = gc_results[g]
+            gf.write("\t".join([
+                g, WET1, hint[g], str(sum(lens)), str(len(lens)), meta[g]["assembly_quality"], str(resolved[g]),
+                gc["reason"],
+                str(gc["tested_alt"]).lower(),
+                c58._fmt_opt(gc["cd_11"]), c58._fmt_opt(gc["mean_orf_11"]), c58._fmt_opt(gc["n_genes_11"]),
+                c58._fmt_opt(gc["cd_25"]), c58._fmt_opt(gc["mean_orf_25"]), c58._fmt_opt(gc["n_genes_25"]),
+                c58._fmt_opt(gc["cd_4"]), c58._fmt_opt(gc["mean_orf_4"]), c58._fmt_opt(gc["n_genes_4"]),
+                c58._fmt_opt(gc["tga_per_kb"])]) + "\n")
+            for k, n in enumerate(lens):
+                rf.write(f"{ordinal}\t{g}\t{k}\t{raw[k * 16:(k + 1) * 16].hex()}\t{n}\t"
+                         f"{meta[g]['assembly_quality']}\t{resolved[g]}\t{meta[g]['name']}\n")
+                ordinal += 1
+    owners, later = _owners(records_path, root, root_stages, owner_inputs, later_inputs, work_dir, threads,
+                            memory_limit)
+
+    listing = make_inputs.Listing()
+    genomes, repeated, shared, held_later = [], [], [], []
+    first_of: dict[bytes, str] = {}
+    contig_len: dict[bytes, int] = {}
+    ordinal = 0
+    for g in kept:
+        raw, lens = contigs[g]
+        uids = [raw[i: i + 16] for i in range(0, len(raw), 16)]
+        for k, (cu, n) in enumerate(zip(uids, lens)):
+            contig_len.setdefault(cu, n)
+            if cu in owners:
+                shared.append((ordinal, g, k, cu.hex(), n, owners[cu]))
+            elif cu in later:
+                held_later.append((ordinal, g, k, cu.hex(), n, later[cu]))
+            ordinal += 1
+        e = listing.add(uids, resolved[g], "prokaryote", meta[g]["assembly_quality"])
+        if e is None:
+            repeated.append((ordinal - len(uids), g, genome_uids[g].hex(), first_of[genome_uids[g]]))
+            continue
+        genomes.append(e)
+        first_of[genome_uids[g]] = g
+    _write_tsv(tmp / "repeated_records.tsv", ["ordinal", "genome", "genome_uid", "first_genome"], repeated)
+    _write_tsv(tmp / "shared_records.tsv",
+               ["ordinal", "genome", "record_ordinal", "contig_uid", "length", "owner_stage"], shared)
+    _write_tsv(tmp / "later_records.tsv", ["ordinal", "genome", "record_ordinal", "contig_uid", "length", "holder"],
+               held_later)
+
+    def yn(v: bool) -> str:
+        return "yes" if v else "no"
+
+    rows = []
+    for g in kept:
+        x = look.get(via[g]) if g in via else None
+        d = meta[g]
+        rows.append((g, d["name"], d["sample"], via.get(g, ""), status[g], yn(bool(x and x["in_gtdb_r232"])),
+                     str(x["is_representative"]) if x and x["in_gtdb_r232"] else "",
+                     (x["representative"] or "") if x else "", (x["species"] or "") if x else "",
+                     yn(bool(x and x["in_globdb_r232"])), (x["globdb_r232_id"] or "") if x else "",
+                     d["classification"], d["completeness"], d["contamination"], d["quality"],
+                     len(contigs[g][1]), sum(contigs[g][1])))
+    _write_tsv(tmp / "r232_status.tsv", WET1_STATUS_HEAD, rows)
+
+    obj = {**WET1_SOURCE, "retrieved_at": retrieved_at}
+    (tmp / "objects.json").write_text(json.dumps([{"path": str(inputs_home / WET1 / WET1_FASTA), **obj}], indent=1))
+    (tmp / "objects_staging.json").write_text(json.dumps([{"path": str(final_fa), **obj}], indent=1))
+    (tmp / "genomes.json").write_text(json.dumps(genomes))
+
+    own_c, own_b = _tally(contig_len, owners)
+    lat_c, lat_b = _tally(contig_len, later, owners)
+    bp = {g: sum(contigs[g][1]) for g in kept}
+    return {
+        "census": census, "mags": len(kept), "contigs": sum(len(contigs[g][1]) for g in kept),
+        "bases": sum(bp.values()), "contigs_renamed": n_renamed, "table_rows": len(meta),
+        "table_not_in_archive": len(set(meta) - set(kept)), "gtdb_rows_of_bioproject": n_project,
+        "matched_in_gtdb_r232": len(via),
+        "r232_status": dict(sorted(Counter(status.values()).items())),
+        "r232_status_bases": {k: sum(bp[g] for g in kept if status[g] == k) for k in sorted(set(status.values()))},
+        "genetic_codes": dict(sorted(Counter(str(resolved[g]) for g in kept).items())),
+        "code_conflicts": len(conflicts),
+        "genomes": len(genomes), "genomes_repeated": len(repeated), "contigs_distinct": len(contig_len),
+        "bases_distinct": sum(contig_len.values()),
+        "held_by": own_c, "held_bases_by": own_b, "later_held_by": lat_c, "later_held_bases_by": lat_b,
+        "contigs_new": sum(1 for cu in contig_len if cu not in owners),
+        "bases_new": sum(n for cu, n in contig_len.items() if cu not in owners),
+        "contigs_new_after_later": sum(1 for cu in contig_len if cu not in owners and cu not in later),
+        "bases_new_after_later": sum(n for cu, n in contig_len.items() if cu not in owners and cu not in later),
+        **{"listing_" + k: v for k, v in listing.report().items()},
+    }
+
+
+# --- skani against MAG stages on the pod and C-75's r226 archaea (recorded, not cut) -------------------------------
+
+def genus_genomes(taxonomy_tsv: Path, genera: set[str]) -> set[str]:
+    """The ids of a table with `ID` and `taxonomy` columns (card C-63's non_gtdb_stages.tsv) whose GTDB genus is
+    one of GENERA."""
+    out: set[str] = set()
+    with open(taxonomy_tsv, newline="") as fh:
+        for r in csv.DictReader(fh, delimiter="\t"):
+            if genus_of(r["taxonomy"]) in genera:
+                out.add(r["ID"])
+    return out
+
+
+def merge_best(groups: list[dict[str, dict]]) -> dict[str, dict]:
+    """The best hit of each genome over several `best_hits` results (largest ANI, then aligned fraction, then names)."""
+    out: dict[str, dict] = {}
+    for h in groups:
+        for g, x in h.items():
+            cur = out.get(g)
+            if cur is None or (-x["ani"], -x["af"], x["stage"], x["genome"]) < (
+                    -cur["ani"], -cur["af"], cur["stage"], cur["genome"]):
+                out[g] = x
+    return out
+
+
+def wet1_ani(meta: Path, fasta_path: Path, out: Path, *, whole: dict[str, tuple[Path, list[Path]]],
+             by_genus: dict[str, tuple[Path, list[Path]]], taxonomy_tsv: Path | None,
+             archaea: tuple[Path, Path] | None, threads: int = 8) -> dict:
+    """WET1's MAGs against reference groups, one skani process per group (so that no process holds every sketch):
+    WHOLE staged sets (name -> (meta dir, FASTA files)), BY_GENUS staged sets cut to the genomes whose GlobDB r226
+    genus (TAXONOMY_TSV) is a genus of some WET1 MAG, and C-75's r226 archaea of those genera. Recorded, not cut."""
+    out = Path(out)
+    work = out / "work"
+    shutil.rmtree(work, ignore_errors=True)
+    q_files = split_genomes(Path(meta), Path(fasta_path), work / "WET1")
+    (work / "q.txt").write_text("".join(f"{p}\n" for p in sorted(map(str, q_files.values()))))
+    query_of = {str(p): g for g, p in q_files.items()}
+    genera = {genus_of(r["gtdb_classification"]) for r in _rows_tsv(Path(meta) / "r232_status.tsv")} - {""}
+    groups: list[tuple[str, object]] = [(n, ("whole", v)) for n, v in whole.items()]
+    groups += [(n, ("genus", v)) for n, v in by_genus.items()]
+    if archaea is not None:
+        groups.append(("r226_archaea", ("archaea", archaea)))
+    keep = genus_genomes(taxonomy_tsv, genera) if by_genus and taxonomy_tsv is not None else set()
+    res: dict = {"queries": len(q_files), "genera": len(genera), "threads": threads,
+                 "threshold": {"ani_min": ANI_SAG, "af_min_larger_of_two": AF_SAG}, "groups": {}}
+    hits_all = []
+    for name, (kind, v) in groups:
+        d = work / name
+        unlisted: list[str] = []
+        if kind == "archaea":
+            files = archaea_refs(v[0], v[1], genera, d)
+        else:
+            files = split_genomes(v[0], v[1], d, keep=keep if kind == "genus" else None, unlisted=unlisted)
+        ref_of = {str(p): (name, g) for g, p in files.items()}
+        entry = {"kind": kind, "references": len(files), "records_in_no_genome": len(unlisted),
+                 "records_in_no_genome_first": unlisted[:5]}
+        if files:
+            (work / f"r_{name}.txt").write_text("".join(f"{p}\n" for p in sorted(ref_of)))
+            table = out / f"wet1_vs_{name}.tsv"
+            t0 = c39_ani.child_cpu()
+            subprocess.run(["skani", "dist", "-t", str(threads), "--min-af", str(AF_SAG), "--ql", str(work / "q.txt"),
+                            "--rl", str(work / f"r_{name}.txt"), "-o", str(table)], check=True)
+            entry["cpu_s"] = round(c39_ani.child_cpu() - t0, 1)
+            h = best_hits(table, query_of, ref_of)
+            entry["meet"] = len(h)
+            hits_all.append(h)
+        shutil.rmtree(d, ignore_errors=True)
+        res["groups"][name] = entry
+    best = merge_best(hits_all)
+    _write_tsv(out / "wet1_ani_hits.tsv", ["genome", "stage", "ref_genome", "ani", "af"],
+               [(g, h["stage"], h["genome"], h["ani"], h["af"]) for g, h in sorted(best.items())])
+    res["meet"] = len(best)
+    res["meet_by_stage"] = dict(sorted(Counter(h["stage"] for h in best.values()).items()))
     (out / "summary.json").write_text(json.dumps(res, indent=1, sort_keys=True) + "\n")
     shutil.rmtree(work, ignore_errors=True)
     return res
@@ -1104,6 +1529,19 @@ def main(argv: list[str] | None = None) -> int:
     sa.add_argument("--ref", action="append", default=[], metavar="NAME=META_DIR:FASTA")
     sa.add_argument("--threads", type=int, default=8)
     sa.add_argument("--archaea", default="", metavar="FASTA:LIST_TSV", help="card C-75's r226 archaea and list")
+    w = sub.add_parser("wet1-stage")
+    for n in ("zip", "xlsx", "index_dir", "gtdb_meta_dir", "meta_out", "fasta_out"):
+        w.add_argument(n, type=Path)
+    _stage_args(w, WET1_RETRIEVED)
+    w.add_argument("--workers", type=int, default=1)
+    wa = sub.add_parser("wet1-ani")
+    for n in ("meta", "fasta", "out"):
+        wa.add_argument(n, type=Path)
+    wa.add_argument("--whole", action="append", default=[], metavar="NAME=META_DIR:FASTA[,FASTA]")
+    wa.add_argument("--by-genus", action="append", default=[], metavar="NAME=META_DIR:FASTA[,FASTA]")
+    wa.add_argument("--taxonomy", type=Path, default=None, help="ID and taxonomy per genome (non_gtdb_stages.tsv)")
+    wa.add_argument("--archaea", default="", metavar="FASTA:LIST_TSV")
+    wa.add_argument("--threads", type=int, default=8)
     a = ap.parse_args(argv)
     try:
         if a.cmd == "sag3-census":
@@ -1130,6 +1568,25 @@ def main(argv: list[str] | None = None) -> int:
                 arc = (Path(fa), Path(lst))
             print(json.dumps(sag3_ani(a.meta, a.fasta, a.out, refs, threads=a.threads, archaea=arc), sort_keys=True))
             return 0
+        if a.cmd == "wet1-ani":
+            def sets(items, what):
+                o = {}
+                for k, v in _pairs(items, what).items():
+                    m, _, fas = v.partition(":")
+                    if not m or not fas:
+                        raise Refused(f"{what} {k}={v}: expected NAME=META_DIR:FASTA[,FASTA]")
+                    o[k] = (Path(m), [Path(x) for x in fas.split(",") if x])
+                return o
+            arc = None
+            if a.archaea:
+                fa, _, lst = a.archaea.partition(":")
+                if not fa or not lst:
+                    raise Refused(f"--archaea {a.archaea}: expected FASTA:LIST_TSV")
+                arc = (Path(fa), Path(lst))
+            print(json.dumps(wet1_ani(a.meta, a.fasta, a.out, whole=sets(a.whole, "--whole"),
+                                      by_genus=sets(a.by_genus, "--by-genus"), taxonomy_tsv=a.taxonomy, archaea=arc,
+                                      threads=a.threads), sort_keys=True))
+            return 0
         owners = {st: a.chain_home / st for st, _ in a26.R26_11_4_CHAIN} if a.chain_home is not None else {}
         later = {k: Path(v) for k, v in _pairs(a.later, "--later").items()}
         roots = [x for x in a.root_stages.split(",") if x]
@@ -1138,6 +1595,12 @@ def main(argv: list[str] | None = None) -> int:
             rep = stage_gwv1(a.fna, a.info, a.meta_out, a.fasta_out, root=a.root, root_stages=roots,
                              owner_inputs=owners, later_inputs=later, inputs_home=a.inputs_home,
                              retrieved_at=a.retrieved_at, work=a.work, threads=a.threads, memory_limit=a.memory_limit)
+        elif a.cmd == "wet1-stage":
+            name = WET1
+            rep = stage_wet1(a.zip, a.xlsx, a.index_dir, a.gtdb_meta_dir, a.meta_out, a.fasta_out, root=a.root,
+                             root_stages=roots, owner_inputs=owners, later_inputs=later, inputs_home=a.inputs_home,
+                             retrieved_at=a.retrieved_at, work=a.work, threads=a.threads,
+                             memory_limit=a.memory_limit, workers=a.workers)
         else:
             name = SAG3
             rep = stage_sag3(a.tar, a.xlsx, a.index_dir, a.gtdb_meta_dir, a.meta_out, a.fasta_out, root=a.root,
