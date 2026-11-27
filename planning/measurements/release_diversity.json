@@ -1627,7 +1627,7 @@
       }
     }
   ],
-  "footnote": "Measured: stored bases of every built stage (contig_index default variants, read-only on wilkcomp02, 2026-11-27); proteins and NR50 families of the released releases (cluster tables and c35_check.py). Staged: new bases from each stage's staging note; r26.11.4's from card A-26's exact ownership; {bound}.\nPlanned: estimates from the cards and the catalog plan, drawn at the middle of their range with the range as a whisker. Protein projection of r26.11.4: r26.11.3's proteins plus 0.90 to 1.10 M new proteins per new Gbp (the hybrid clustering design); no NR50 family projection is drawn.\nBenchmarks are the values and dates their sources state, not re-verified. D = exp(H) of the class shares of stored Gbp. Release dates: the day each release's manifest was written.",
+  "footnote": "Measured: stored bases of every built stage (contig_index default variants, read-only on wilkcomp02, 2026-11-27); proteins and NR50 families of the released releases (cluster tables, c35_check.py).\nStaged: new bases from each stage's staging note, r26.11.4's from card A-26's exact ownership; {bound}.\nPlanned: estimates from the cards and the catalog plan, drawn at the middle of their range, with the range as a whisker.\nProtein projection of r26.11.4: r26.11.3's proteins plus 0.90 to 1.10 M new proteins per new Gbp (the hybrid clustering design); no NR50 family projection is drawn.\nBenchmarks are the values and dates their sources state, not re-verified. D = exp(H) of the class shares of stored Gbp. Release dates: the day each release's manifest was written.",
   "audit": {
     "host": "wilkcomp02",
     "date": "2026-11-27",

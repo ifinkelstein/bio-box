@@ -23,6 +23,14 @@ DATA = REPO / "planning" / "measurements" / "release_diversity.json"
 NOTE = REPO / "planning" / "measurements" / "2026-11-27_release_diversity.md"
 
 
+def real_sources() -> Path:
+    """The tree's sources.yaml; the test image (built from main, container/Dockerfile) does not ship it, so skip there."""
+    p = REPO.joinpath("sources.yaml")
+    if not p.is_file():
+        pytest.skip("sources.yaml is not in the image: this check runs from a checkout (ci and the pod's mirror)")
+    return p
+
+
 def _mod():
     spec = importlib.util.spec_from_file_location("plot_release_diversity", SCRIPT)
     assert spec is not None and spec.loader is not None
@@ -46,6 +54,7 @@ def test_every_number_has_a_label_and_a_source():
 
 
 def test_quotes_formulas_classes_and_releases_hold():
+    real_sources()  # one quote (GBRMGD's archive bytes) is in sources.yaml
     assert _mod().data_problems(_data()) == []
 
 
@@ -178,7 +187,7 @@ def test_the_tower_remainder_is_read_from_sources_yaml(tmp_path):
     t = m.tower_remainder(rule, src)
     assert (t["sequence_bytes"], t["other_bytes"]) == (100, 7)
     assert t["landed_unassigned_entries"] == 1 and t["not_landed_unassigned_entries"] == 1
-    real = m.tower_remainder(_data(), REPO / "sources.yaml")
+    real = m.tower_remainder(_data(), real_sources())
     assert real["unknown_assigned"] == []
     assert real["sequence_bytes"] > 0
 
@@ -212,7 +221,7 @@ def test_render_writes_a_png_and_an_svg_without_a_date(tmp_path):
     pytest.importorskip("yaml")
     m = _mod()
     data = _data()
-    tower = m.tower_remainder(data, REPO / "sources.yaml")
+    tower = m.tower_remainder(data, real_sources()) if REPO.joinpath("sources.yaml").is_file() else None
     png, svg = m.render(data, tmp_path / "a" / "fig", tower)
     assert png.stat().st_size > 50_000
     text = svg.read_text(encoding="utf-8")

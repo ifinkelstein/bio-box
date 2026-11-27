@@ -466,9 +466,9 @@ def build_figure(data: dict, tower: dict | None = None):
 
     xt = [label(r) for r in rels]
 
-    fig = plt.figure(figsize=(16.5, 11.2))
-    gs = fig.add_gridspec(2, 2, height_ratios=[1.0, 1.0], width_ratios=[1.0, 1.0], hspace=0.55, wspace=0.22,
-                          left=0.06, right=0.985, top=0.86, bottom=0.13)
+    fig = plt.figure(figsize=(16.5, 12.0))
+    gs = fig.add_gridspec(2, 2, height_ratios=[1.0, 1.0], width_ratios=[1.0, 1.0], hspace=0.42, wspace=0.22,
+                          left=0.06, right=0.985, top=0.835, bottom=0.15)
     ax_a = fig.add_subplot(gs[0, 0])
     ax_b = fig.add_subplot(gs[0, 1])
     ax_c = fig.add_subplot(gs[1, 0])
@@ -497,8 +497,7 @@ def build_figure(data: dict, tower: dict | None = None):
         d = effective_classes([col["by_class"][c] for c in cids])
         ax_a.text(x[i], 102.0, f"{d:.1f}", ha="center", va="bottom", fontsize=8.0, color="#333333",
                   fontweight="bold" if i <= last_rel else "normal")
-    ax_a.text(-0.45, 110.5, f"D = exp(H) over the {len(cids)} source classes: one class gives 1.0, "
-              f"{len(cids)} equal classes give {len(cids)}.0",
+    ax_a.text(-0.45, 111.0, f"D = exp(H) over {len(cids)} classes: 1.0 for one, {len(cids)}.0 for {len(cids)} equal",
               ha="left", va="bottom", fontsize=7.4, color="#555555", style="italic")
     ax_a.set_ylim(0, 117)
     ax_a.set_yticks([0, 25, 50, 75, 100])
@@ -582,7 +581,7 @@ def build_figure(data: dict, tower: dict | None = None):
         ax_c.text(x[i], prot[i] + ymax_c * 0.03, f"{prot[i]:.1f}M", ha="center", va="bottom", fontsize=7.6,
                   color="#006699", fontweight="bold" if i == last_rel else "normal",
                   bbox=dict(boxstyle="round,pad=0.08", facecolor="white", edgecolor="none", alpha=0.8))
-        ax_c.text(x[i] + 0.12, nr50[i] - ymax_c * 0.045, f"{nr50[i]:.1f}M", ha="left", va="top", fontsize=7.6,
+        ax_c.text(x[i] + 0.13, nr50[i] + ymax_c * 0.012, f"{nr50[i]:.1f}M", ha="left", va="bottom", fontsize=7.6,
                   color=verm, fontweight="bold" if i == last_rel else "normal")
     for i, p in proj:
         lo, hi, mid = float(p["low"]) / 1e6, float(p["high"]) / 1e6, float(p["value"]) / 1e6
@@ -600,16 +599,16 @@ def build_figure(data: dict, tower: dict | None = None):
         ys = [nr50[a] + (cols[rids[j]]["total"] - cols[rids[a]]["total"]) * rate for j in range(a, end + 1)]
         ax_c.plot(xs, ys, color="#666666", lw=1.3, ls=":", zorder=3)
         ax_c.plot(xs[-1], ys[-1], marker="d", ms=4.5, color="#666666", zorder=4)
-        ax_c.text(xs[-1] + 0.12, ys[-1] - ymax_c * 0.01, cf["figure_label"].format(val=ys[-1]), ha="left",
-                  va="top", fontsize=7.0, color="#555555", style="italic")
+        ax_c.text(xs[-1] + 0.12, ys[-1] + ymax_c * 0.012, cf["figure_label"].format(val=ys[-1]), ha="left",
+                  va="bottom", fontsize=7.0, color="#555555", style="italic")
     for i, r in enumerate(rels):
         if r["status"] != "released" and not r.get("proteins_projection"):
-            ax_c.text(x[i], ymax_c * 0.04, "not\nprojected", ha="center", va="bottom", fontsize=6.8,
+            ax_c.text(x[i], ymax_c * 0.2, "not\nprojected", ha="center", va="bottom", fontsize=6.8,
                       color="#888888", style="italic")
     ax_c.text(x[0] + 0.1, prot[ri].max() * 0.62 + 8, "Distinct proteins", color="#006699", fontsize=8.6,
               fontweight="bold", ha="left")
-    ax_c.text(x[last_rel] - 0.15, nr50[last_rel] + ymax_c * 0.075, "NR50 families", color=verm, fontsize=8.6,
-              fontweight="bold", ha="right")
+    ax_c.text(x[1] + 0.5, ymax_c * 0.065, "NR50 families", color=verm, fontsize=8.6, fontweight="bold",
+              ha="center", va="bottom")
     co = data.get("callout")
     if co:
         ci = rids.index(co["release_id"])
@@ -657,11 +656,11 @@ def build_figure(data: dict, tower: dict | None = None):
     # Legends: classes (colour) and states (fill or outline).
     h_cls = [mpatches.Patch(facecolor=c["color"], edgecolor="white", label=c["label"]) for c in classes]
     h_st = [mpatches.Patch(label=STATE_TEXT[s], **_state_style(s, "#7A7A7A")) for s in STATES]
-    leg1 = fig.legend(handles=h_cls, loc="upper left", bbox_to_anchor=(0.055, 0.945), ncol=3, frameon=False,
+    leg1 = fig.legend(handles=h_cls, loc="upper left", bbox_to_anchor=(0.055, 0.95), ncol=3, frameon=False,
                       fontsize=7.9, handlelength=1.3, columnspacing=1.3, title="Source class (colour)",
                       title_fontsize=8.2, alignment="left")
     fig.add_artist(leg1)
-    fig.legend(handles=h_st, loc="upper left", bbox_to_anchor=(0.70, 0.945), ncol=1, frameon=False, fontsize=7.9,
+    fig.legend(handles=h_st, loc="upper left", bbox_to_anchor=(0.64, 0.95), ncol=2, frameon=False, fontsize=7.9,
                handlelength=1.6, title="State (fill or outline)", title_fontsize=8.2, alignment="left")
     fig.suptitle(data["figure_title"], x=0.055, y=0.985, ha="left", fontsize=12.5, fontweight="bold", color="#111111")
     bound = data["r26_11_5_bound_text"]["upper" if data.get("r26_11_5_upper_bound", True) else "exact"]
