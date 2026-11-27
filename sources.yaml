@@ -902,6 +902,22 @@ sources:
         sha256: 45a3c34ca91e43e3651cd1d2f960bd913b3a5fc3e926efec32f298a29ee0d383
     staged:
       - stage: GV1
+        object: /stor/scratch/Wilke/if2453/bio-box-staging/GV1/gvmags_v2_all_18kgenomes_r23.fna
+        bytes: 4639876739
+        sha256: a87aad1f9987179d55c6d6134f60a3ce7f0bf63b7b8975c065982dd40b920bfb
+        metadata_dir: >-
+          /tmp/if2453/r23/GV1/ (card R-23, 2026-11-27: C-48c's FASTA with the trailing gap bytes `--` of Hoko_1,
+          Hoko_3 and Hoko_4 removed, 6 bytes, their uids and lengths recomputed, every other record byte for byte;
+          without the gaps Hoko is GCA_002966255-1_ASM296625v1, so by DEC-27 it is that genome's repeat: 18,498
+          genomes, 281,801 distinct contigs, 4.315 Gbp; 147,791 contigs held by the root and r26.11.4, 134,010
+          contigs / 1.640 Gbp new; genomes.json sha256 8b2f106b6727a0853d3f0c0b496959d2fd34ecd813626f537830a674011c223d;
+          objects.json sha256 fbfeb221dc25cc5e6cdcc1a4f4e77bf64838dd8d2b6c341ce03373e350f0ca54; the FASTA scans
+          clean (r19_fasta_scan.py); s2_check_inputs.py GV1 problems: []; mirrored to tower sources/GV1/r23_restage/;
+          planning/measurements/2026-11-27_non_base_bytes.md)
+        derived_from: >-
+          /tmp/if2453/s2/inputs/GV1/gvmags_v2_all_18kgenomes.fna (card C-48c), by
+          scripts/stress/build_stage_pod/r23_gv1_trailing_gaps.py restage
+      - stage: GV1 (superseded by gvmags_v2_all_18kgenomes_r23.fna, card R-23; not a stage input)
         object: /tmp/if2453/s2/inputs/GV1/gvmags_v2_all_18kgenomes.fna
         bytes: 4639876745
         sha256: 568f3a312fd78d03544792bfb3a89bde708591865065d72c62fc6c0dbdc0028b
