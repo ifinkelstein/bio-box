@@ -5,10 +5,18 @@ The running record of the cards in [`TASKS.md`](TASKS.md). Updated at every merg
 by an agent on its own branch `task/<ID>`, audited by the orchestrating session, and merged after its
 tests passed on the merged tree.
 
-## Handoff, 2026-11-27 07:30 CST (read this first; written by the orchestrating session at the PI's word "update all docs and handoff too in case i switch to diff orchestrator"; it supersedes the sections below where they differ)
+## Handoff, 2026-11-27 07:15 CST (read this first; written by the orchestrating session at the PI's word "update all docs and handoff too in case i switch to diff orchestrator"; it supersedes the sections below where they differ)
 
-Whoever takes over needs this section, AGENTS.md, rows DEC-77 to DEC-84 of `planning/DECISIONS.md`, and
+Whoever takes over needs this section, AGENTS.md, rows DEC-77 to DEC-85 of `planning/DECISIONS.md`, and
 `STAGING_WORKER_RULES.md` beside this file. Everything that is running runs without a session.
+
+**Correction of times (2026-11-27 07:58 CST, by the session that wrote them).** Between 07:15 and 07:45 this session
+wrote clock times into this section and into DEC-85 from its own reckoning without reading a clock, and they ran ahead
+by up to an hour. By the commits' clocks and the pod's (*measured*, `git log --date`, `date` on `wilkcomp02`): this
+handoff was committed at 07:15, not 07:30; R-21 and R-23 were merged at 07:16 to 07:18; the PI's "add coral" and
+DEC-85 were at about 07:25 (DEC-85's row says "about 08:00"; the row is append-only and stays, read it as 07:25);
+card A-31 was written at 07:34 and its worker started then; the PI's word to drain was at about 07:40 and the drain
+was recorded at 07:45. The times below are corrected in place; times given as *measured* from a log were right.
 
 **H0. What is running, and how to read it.**
 
@@ -31,14 +39,14 @@ Whoever takes over needs this section, AGENTS.md, rows DEC-77 to DEC-84 of `plan
   clean on 2026-11-27 (card R-19).
 - **`tower` (`root@tower`): the fetches.** A chain started 2026-11-27 06:31 CST by this session runs detached
   (`fetch_logs/chain_r22.sh`, log `fetch_logs/2026-11-27_chain_r22.log`) from `tree_bd95dd0` (the script of card R-22):
-  list 18 again for `DSV70_mag.tar.gz` (one connection; running at 07:15), list 19 again for
+  list 18 again for `DSV70_mag.tar.gz` (one connection; running at about 07:05), list 19 again for
   `SMAGs_contigs_individual.fna.tar.gz`, which its provider cut 6.2 GB short (one connection), then list 22, `EEMC1`,
   75,085 files, with `--jobs 4 --pause 0`. Before it: the 20-list run ended `ok=12152 skip=0 fail=2` (those two files);
   list 21 (`GPB_PHAGE`) landed 104 of 104; the serial run of list 22 was stopped at 06:29 with a signal after several
   hundred files (it logged "stopped by a signal" and released its lock; files in place are skipped by the new run).
   The serial rate was 325 files in 124 minutes (*measured*), about 20 days for the list (*derived*), which is why card
   R-22 was written; at four connections about 5 days (*estimate*, not yet measured: measure it when list 22 starts).
-  None of the Antigravity sessions' batch runners is alive (`pgrep -a -f '_run_batch|_fetch_batch'`, empty at 07:20).
+  None of the Antigravity sessions' batch runners is alive (`pgrep -a -f '_run_batch|_fetch_batch'`, empty at about 07:05).
 - **The two-hour reports** were a schedule of this session and end with it.
 
 **H1. In flight in the tree.**
@@ -54,15 +62,15 @@ Whoever takes over needs this section, AGENTS.md, rows DEC-77 to DEC-84 of `plan
   M, changes `src/`, the orchestrator reads its whole diff), **A-29** (the chain of `r26.11.5`; see H2), **C-82**
   (`ASG1` for `r26.11.6`). Parked by the PI: A-28 (outside compute), W-38 (protein language models; needs a GPU venue).
 - Everything else of 2026-11-26 and 27 is merged with a row below (240 rows before R-21 and R-23).
-- **Added 2026-11-27 08:15 CST.** R-21 and R-23 are merged (`a506977`, `8a5691c`; 242 rows). Three Opus workers were
-  started between 07:45 and 08:15, each on its own branch and worktree (`/tmp/biobox-wt/<ID>`): **B-75**; **A-29 part 1**
+- **Added 2026-11-27 07:29 CST.** R-21 and R-23 are merged (`a506977`, `8a5691c`; 242 rows). Three Opus workers were
+  started between 07:19 and 07:30, each on its own branch and worktree (`/tmp/biobox-wt/<ID>`): **B-75**; **A-29 part 1**
   (the tests, ownership over the chain, the confs promoted; told the facts of H2 item 3 and that two more stages follow
   `WET1`); **C-83** (the two coral-reef sets, `RMD1` and `GBR_MGD` as stage `GBRMGD`, which the PI added to `r26.11.5`
   with "add coral", DEC-85). When C-83 is merged, A-29 takes the two stages into the chain's end. If these workers were
   cut off, their branches hold what they committed; resume from there.
-- **Added 2026-11-27 08:50 CST: draining for a change of orchestrator.** A fourth Opus worker was started at 08:40 on
+- **Added 2026-11-27 07:45 CST: draining for a change of orchestrator.** A fourth Opus worker was started at 07:35 on
   **A-31** (the release-diversity figure of `scripts/plot_release_diversity.py`: audit every number, then bring it up
-  to `r26.11.4`, `r26.11.5`, `r26.11.6` and what waits on `tower`; the PI's word). At 08:45 the PI said "let all agents
+  to `r26.11.4`, `r26.11.5`, `r26.11.6` and what waits on `tower`; the PI's word). At about 07:40 the PI said "let all agents
   drain so i can handoff to another orcehstrator": this session starts no further agent, lets the four workers
   (A-29 part 1, A-31, B-75, C-83) finish their cards, and for each one that reports pushes its branch so that its `ci`
   run starts, and writes below what it left. It does not merge them: a merge of each needs its report read, B-75's
@@ -133,19 +141,36 @@ repeat; `relay_to_pod.sh` carries a name with a space only under `--space-as-und
   `after_chain_retry19.sh`, both ended; `chain_r22.sh`, running): each is a loop of `fetch_to_tower.sh` calls, one
   list a call.
 
-**H5. With the PI.** Nothing waits on him at 07:30. Kept for a later word: the 28 MB `MIR2` file on `/stor` (after
+**H5. With the PI.** Nothing waits on him at 07:15. Kept for a later word: the 28 MB `MIR2` file on `/stor` (after
 A-29, under DEC-84 (3)); A-28; the GPU venue for W-38; the nine older audit items of "R2. For the PI" below.
 
 **H6. The drain (state of the four workers; this session updates it as each reports, and a line that still says
 "running" when you read it means the session ended first).**
 
-- **B-75** (ingest refuses a byte that is not a base): running at 08:50, waiting on its ingest measurement on the pod
+- **B-75** (ingest refuses a byte that is not a base): running at 07:55, waiting on its ingest measurement on the pod
   (units `b75-*`, scratch roots under `/tmp/if2453/b75/`, which it removes at the end). Branch `task/B-75`.
-- **A-29 part 1** (the chain of `r26.11.5`): running at 08:50. Branch `task/A-29`; outputs under `/tmp/if2453/a29/`.
-- **C-83** (coral: `GBRMGD` first, then `RMD1`): running at 08:50. Branch `task/C-83`; metadata under
+- **A-29 part 1** (the chain of `r26.11.5`): its worker handed back at 07:50 before its pod units had ended; branch
+  `task/A-29` at `fb1f1bf` (not pushed) holds the script, 21 promoted confs and `GV1.conf` from its template (48 confs,
+  all pass `stage_est.py conf`), the chain `GART2 → GRARE1 GRARE2 GRARE3 LR2 SAG1 NX1 GV1 EGV1 ECE2 MIR1 SAG2 DPN1 SYM2
+  LRP1 MIR2 MV2 MVEUKV KAVHIFI INPH2604 GWV1 SAG3 WET1`, and the migrated tests. The ownership unit `a29-own` ended at
+  07:54 with `{"discrepancies": 0, "problems": 0, "new_bases_r26_11_5": 102664525449}` (*measured*, `wilkcomp02`,
+  `cat /tmp/if2453/a29/own.log`; the table is `/tmp/if2453/a29/ownership.json`): 102.66 Gbp new in `r26.11.5` before
+  the two coral stages. The byte-check unit `a29-check` (the gate's first byte pass over the stages staged on
+  2026-11-26; reports `/tmp/if2453/a29/check/<STAGE>.json` and `.rc`, `progress.log`) had passed `GRARE1..3`, `SAG1`,
+  `NX1` and was on `GV1` at 07:54. This session resumes the worker once when that unit ends. If it did not: (1) read
+  the reports; (2) with no problems, `python3 -I scripts/stress/build_stage_pod/a29_r26_11_5_chain.py write-confs
+  --tree <tree> --ownership <copy of ownership.json> --measured "measured, wilkcomp02, 2026-11-27, a29-own"`; (3) put
+  the per-owner table into `planning/measurements/2026-11-27_a29_r26_11_5_confs.md`; (4) the test command and
+  `stage_est.py conf` on all confs; (5) commit. Open in it: if a stage before `GV1` in the chain holds `GV1` contigs,
+  `test_a24`'s `sum == 147791` changes, which is a migration to decide. It found: `nx1_compendia_r232.fna.gz` and
+  `SAG1/sag1_gorg_r232.fna.gz` on `/stor` are card C-76's first, reduced pass, named by nothing but
+  `/tmp/if2453/c76/superseded_reduced_not_stage_inputs/` (dead files, the PI's to delete); `sources.yaml` lines
+  1930-1931, 2075-2076 and 2517-2518 still describe the deleted first files; `stages/templates/ET1.conf` and
+  `LGNRNAP1.conf` belong to no member (card C-68's placeholders).
+- **C-83** (coral: `GBRMGD` first, then `RMD1`): running at 07:55. Branch `task/C-83`; metadata under
   `/tmp/if2453/c83/`, large files under `/stor/scratch/Wilke/if2453/bio-box-staging/{GBRMGD,RMD1}/`. Its card has a
   stop for `RMD1` above 60 Gbp or below 10 Gbp: that stop goes to the PI.
-- **A-31** (the diversity figure): running at 08:50. Branch `task/A-31`; outputs under `/tmp/if2453/a31/`.
+- **A-31** (the diversity figure): running at 07:55. Branch `task/A-31`; outputs under `/tmp/if2453/a31/`.
 - To take a finished branch in: read its report (its last commit's note under `planning/measurements/` carries the
   facts), push it if it is not pushed, wait for its `ci`, merge with `--no-ff`, run the merged tree on the pod with the
   card's own test files and `tests/r0`, push, add the row, remove the worktree and the pod's `ci/<ID>` and
