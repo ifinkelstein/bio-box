@@ -618,11 +618,39 @@ def test_dpn1_removes_genomes_near_a_held_reference_and_within_the_stage_and_kee
     assert rep["removed"] == {"ani_to_held_reference": 1, "ani_within_stage": 1}
     assert rep["removed_to_held_by"] == {"G1": 1} and rep["kept"] == 6 and rep["best_hit_unheld_kept"] == 1
     # the MGE FASTA is under 64 MiB, so it stays beside the metadata, as does the (small) genome FASTA here
-    assert (meta / "dpn1_dpann_mges.fna").is_file() and (meta / "dpn1_dpann_genomes.fna.gz").is_file()
-    raw = (meta / "dpn1_dpann_genomes.fna.gz").read_bytes()
+    # the second pass writes its FASTA under a new name: the first pass's file on /stor is never overwritten
+    assert (meta / "dpn1_dpann_mges.fna").is_file() and (meta / "dpn1_dpann_genomes_rev2.fna.gz").is_file()
+    raw = (meta / "dpn1_dpann_genomes_rev2.fna.gz").read_bytes()
     assert raw[12:14] == b"BC" and gzip.decompress(raw).count(b">") == 7
     doc = check_inputs("DPN1", meta)
     assert doc["kinds"] == ["prokaryote", "virus"]
+
+
+def _row(name, category, bp=1000, comp="", cont=""):
+    return {"name": name, "category": category, "file": f"/w/{category}/{name}.fna", "bp": str(bp),
+            "accession": "", "completeness": comp, "contamination": cont, "taxonomy": ""}
+
+
+def test_dpn1_never_removes_a_closed_genome_and_a_closed_genome_wins_over_a_mag():
+    """The PI's word of 2026-11-26 ("agree"): a closed genome is never removed, not for a held reference (the
+    match is recorded) nor within the stage; where a closed genome and a MAG match, the closed genome is kept."""
+    mod = _mod()
+    man = [_row("C1", "nanobdellota_closed"), _row("C2", "nanobdellota_closed"), _row("C3", "nanobdellota_closed"),
+           _row("M1", "dpann3662", 5000, "99", "0"), _row("M2", "dpann3662", 900, "50", "1")]
+    f = {r["name"]: r["file"] for r in man}
+    holders = {"G1_A": {"holder": "G1", "held": "yes"}, "G1_B": {"holder": "G1", "held": "yes"}}
+    dist = [("%s" % f["C1"], "/r/G1_A.fna", 99.5, 90.0),   # a closed genome near a held MAG: kept, match recorded
+            ("%s" % f["M2"], "/r/G1_B.fna", 98.0, 80.0)]   # a MAG near a held reference: removed, as before
+    tri = [(f["C2"], f["C3"], 99.9, 99.0),                 # two closed genomes of one species: both kept
+           (f["M1"], f["C2"], 99.0, 95.0)]                 # a better-scored MAG and a closed genome: the closed one wins
+    d = mod.dpn1_decide(man, dist, tri, holders)
+    kept = {d["by_name"][k]["name"] for k in d["kept"]}
+    assert kept == {"C1", "C2", "C3"}
+    rm = {d["by_name"][k]["name"]: r for k, r in d["removed"].items()}
+    assert rm["M2"]["reason"] == "ani_to_held_reference"
+    assert (rm["M1"]["reason"], rm["M1"]["match"]) == ("ani_within_stage", "C2")
+    c1 = d["held_match_kept"]["nanobdellota_closed:C1"]
+    assert (c1["match"], c1["holder"], c1["ani"], c1["af"]) == ("G1_A", "G1", 99.5, 90.0)
 
 
 def test_dpn1_refuses_skani_rows_it_cannot_place(dpn1_world):
@@ -649,7 +677,7 @@ STAGED = {
     "LRP1": ("annotated", ("pfam", "38.2", "gathering"), ("SYM2",), {"lrp1_urban_water_plasmidome.fna"}),
     "MIR2": ("annotated", ("pfam", "38.2", "gathering"), ("LRP1",),
              {"mir2_bulzu_2025_plv_virophage.fna", "mir2_bellas_2026_plv_framework.fna"}),
-    "DPN1": ("called", None, ("SAG2",), {"dpn1_dpann_genomes.fna.gz", "dpn1_dpann_mges.fna"}),
+    "DPN1": ("called", None, ("SAG2",), {"dpn1_dpann_genomes_rev2.fna.gz", "dpn1_dpann_mges.fna"}),
     "SYM2": ("annotated", ("pfam", "38.2", "gathering"), ("DPN1",),
              {"sym2_protist_symbiont_bins.fna", "sym2_protist_viruses.fna"}),
 }

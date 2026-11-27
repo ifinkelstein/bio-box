@@ -274,65 +274,145 @@ them), DEC-65 (1) as for metagenome-assembled records.
 | `dpn1-skani` (`c78-dpn1-skani`, 8 threads) | `skani dist` of the 4,164 against the 14,839 sketches (15.3 s wall, 5,965 rows) and `skani triangle -E` among the 4,164 (6.9 s, 11,826 rows), skani's default screen and `--min-af` 15 |
 | `dpn1` (`c78-dpn1-stage`, 4 CPUs, 20:28 to 20:36 CST) | the decisions, the code screen (3 workers), the stage |
 
-**Decisions** (`dpn1_decisions.tsv`, every genome with its best reference hit, *measured*):
+**Two passes.** The first pass (unit `c78-dpn1-stage`, 20:28 to 20:36 CST, the card's rule as written) kept 1,777
+genomes and removed 65 of the 208 closed genomes: 10 for a `G1` MAG of their species (98.9 to 99.98 % ANI) and 55 for
+another closed genome of the same species (the time series `B5`, `B7`, `B10` sampled the same populations). On the
+orchestrating session's proposal **the PI decided** (2026-11-26, "agree"): a closed genome of the set is never removed;
+a match to a held genome is recorded (stage, genome, ANI, aligned fraction) and the genome kept; within the stage, where
+a closed genome and a MAG match, the closed genome is kept; the other removals stand. The rule was changed with a test
+first (seen failing: 4 failed, `assert {'C2'} == {'C1', 'C2', 'C3'}`), the first pass's metadata moved aside on `/tmp`
+(`/tmp/if2453/c78/meta/DPN1.run1/`), and the stage run again (unit `c78-dpn1-stage2`, 4 CPUs) from the same extract,
+references and skani tables. **The first pass's `dpn1_dpann_genomes.fna.gz` on `/stor` (536,597,424 B, sha256
+`a9c8769e432c2ac033ae1bfc8ed09cce022ba9fba0e9aa2e2ad476a4af66746b`) is superseded by `dpn1_dpann_genomes_rev2.fna.gz`**;
+it is left in place (nothing under `/stor` is deleted), named by nothing, and was not mirrored.
+
+**Decisions of the second pass** (`dpn1_decisions.tsv`, every genome with its best reference hit, *measured*):
 
 | Category | Candidates | Removed: ANI to a held reference | Removed: within the stage | Kept | Kept bp |
 |---|---:|---:|---:|---:|---:|
-| `nanobdellota_closed` | 208 | 10 | 55 | **143** | 178,938,973 |
+| `nanobdellota_closed` | 208 | 0 (10 kept with the held match recorded, `kept_closed_with_held_match`, all `G1`) | 0 | **208** | 256,842,619 |
 | `nanobdellota_open` | 51 | 0 | 17 | 34 | 39,938,284 |
 | `ncbi_hq` | 243 | 19 | 120 | 104 | 101,741,201 |
 | `dpann3662` | 3,662 | 678 | 1,488 | 1,496 | 1,399,368,050 |
-| **all** | **4,164** | **707** (567,963,783 bp) | **1,680** (1,449,034,583 bp) | **1,777** | **1,719,986,508** |
+| **all** | **4,164** | **697** (558,724,265 bp) | **1,625** (1,380,370,455 bp) | **1,842** | **1,797,890,154** |
 
-The 707 matched references held by `G1` 633, `P5` 33, `P3` 25, `P2` 7, `P4` 4, `GRARE1` 3, `SAG1` 2. Of the 1,777 kept,
-1,386 have a best hit at 96 % / 50 % on a reference that no stage holds (a GTDB R226 representative that is not a
-complete genome): recorded, not removed (the staging rules: an ANI match removes only against a held stage). Within the
-stage the closed genomes rank first, so 55 closed genomes were removed only for another closed genome of the same
-species (96.75 to 100 % ANI; the time series `B5`, `B7`, `B10` sampled the same populations); 10 closed genomes were
-removed for a `G1` MAG of their species (98.9 to 99.98 % ANI): the rule keeps the held MAG, not the closed genome. This
-is the card's rule as written; whether a closed genome should replace a held MAG of its species is a question
-(§10).
+The 697 matched references held by `G1` 623, `P5` 33, `P3` 25, `P2` 7, `P4` 4, `GRARE1` 3, `SAG1` 2. Of the 1,842 kept,
+1,389 have a best hit at 96 % / 50 % on a reference that no stage holds (a GTDB R226 representative that is not a
+complete genome): recorded, not removed (the staging rules: an ANI match removes only against a held stage).
 
-**The stage.** 1,777 genomes (`kind="prokaryote"`, records whole; the 143 closed ones circular under DEC-65 (1),
-quality `complete`; the 2 unrotated closed genomes and 2 MGEs had an exact terminal repeat, 4 trims, 542 bp) and the 26
-MGEs: 1,803 genomes, 135,166 records, 135,161 distinct contigs, 1,720,477,344 bp. Codes: all 1,777 code 11 (card
-C-58's screen, the GTDB taxonomy as the hint).
+**The stage.** 1,842 genomes (`kind="prokaryote"`, records whole; the 208 closed ones circular under DEC-65 (1),
+quality `complete`; the 2 unrotated closed genomes and 2 MGEs had an exact terminal repeat, 4 trims, 542 bp); two
+closed genomes have the same contig set as two others and are listed once (DEC-27: `B7_u28699725` as `B5_u9343175`,
+`B7_u31742733` as `B5_u12799278`); and the 26 MGEs: 1,866 genomes, 135,229 rows, 135,224 distinct contigs,
+1,796,037,907 bp. Codes: all 1,842 code 11 (card C-58's screen, the GTDB taxonomy as the hint).
 
-| | Value (*measured*, report `/tmp/if2453/c78/work/dpn1_report.json`) |
+| | Value (*measured*, report `/tmp/if2453/c78/work/dpn1_report2.json`) |
 |---|---:|
 | Held by the root's stored stages | `SPX1` 24, `G1` 9, `P3` 1 |
 | Held by the `r26.11.4` stages | `MV1` 22, `V2` 8, `SYM1` 2, `PL3` 1 (67 contigs in all, 4,417,916 bp) |
 | Held only by an `r26.11.5` stage before it | `GRARE2` 2 (97,747 bp) |
-| New | 135,094 contigs, **1,716,059,428 bp** (1.716 Gbp; 1,715,961,681 after `GRARE2`) |
-| r232 status of the 1,777 (C-74's `lookup`, by the GCA accession in the name) | in GTDB R232 and GlobDB r232 1,142; in GTDB R232 only 179; in neither 223; not visible (no accession: IMG and Tara genomes, the study's own) 233. None removed for it |
-| `s2_check_inputs.py` | exit 0, `problems: []`, 1,803 genomes, 135,166 rows, kinds `prokaryote` and `virus`, code 11 |
+| New | 135,157 contigs, **1,791,619,991 bp** (1.792 Gbp; 1,791,522,244 after `GRARE2`) |
+| r232 status of the 1,842 (C-74's `lookup`, by the GCA accession in the name) | in GTDB R232 and GlobDB r232 1,142; in GTDB R232 only 179; in neither 223; not visible (no accession: IMG and Tara genomes, the study's own) 298. None removed for it |
+| `s2_check_inputs.py` | exit 0, `problems: []`, 1,866 genomes, 135,229 rows, kinds `prokaryote` and `virus`, code 11 |
 
-**Depth.** 1.716 new Gbp is over "about 1.5 Gbp" (plan Q4, STATUS W5 (4)), so `DEPTH=called` (as `NX1`), default
-gene-call mode, `CRISPR=yes`. Against the plan: 1.716 new Gbp inside 0.3 to 3 (*estimate*). Build cost (*derived*,
-plan §3 R1, 24.6 to 24.8 CPU-minutes per new Gbp, × 1.716): about **42 to 43 CPU-minutes**, under the plan's "under
-80 called".
+**Depth** (re-decided on the second pass). 1.792 new Gbp is over "about 1.5 Gbp" (plan Q4, STATUS W5 (4)), so
+`DEPTH=called` (as `NX1`), default gene-call mode, `CRISPR=yes`. Against the plan: inside 0.3 to 3 (*estimate*). Build
+cost (*derived*, plan §3 R1, 24.6 to 24.8 CPU-minutes per new Gbp, × 1.792): about **44 CPU-minutes**, under the
+plan's "under 80 called".
 
 | File | Where | Bytes | sha256 |
 |---|---|---:|---|
-| `dpn1_dpann_genomes.fna.gz` (BGZF) | `/stor/scratch/Wilke/if2453/bio-box-staging/DPN1/` | 536,597,424 | `a9c8769e432c2ac033ae1bfc8ed09cce022ba9fba0e9aa2e2ad476a4af66746b` |
+| `dpn1_dpann_genomes_rev2.fna.gz` (BGZF) | `/stor/scratch/Wilke/if2453/bio-box-staging/DPN1/` | 560,202,590 | `11cd60bd5c7e79443ff8840644f9b19f94e213057c6b6e1a8e01ae5d3d028bfc` |
 | `dpn1_dpann_mges.fna` | `/tmp/if2453/c78/meta/DPN1/` (under 64 MiB) | 516,694 | `8a3b8cf8c19190f0ba08a16107b607522c9bfd94c00e28bafb3cec63c848ba11` |
-| `genomes.json` | `/tmp/if2453/c78/meta/DPN1/` | 5,064,059 | `bfd38fc193161b606481aa780c9481f640da7d3bd4f6d0f8eb239fc5bef47033` |
-| `objects.json` | same | 1,322 | `d886b1484a026292ac5a33678db28ee765385d0afbebb907a41404541ee714a4` |
-| `objects_staging.json` | same | 1,342 | `6808bff8ecbf8d6ab161fc2fcc3afcb7e4f2098b099c5b160efdd5cba67ecc06` |
-| `records.tsv` | same | 24,110,692 | `cfc88aefb7fce3dd35bac8c00c304f5307f9c9a37810a883fbac42a83036b343` |
-| `dpn1_decisions.tsv` | same | 487,063 | `9cb04b912092b076f7b0c34db36fd9c609dd76a75cec198d009965bb1e4e9ab8` |
-| `r232_status.tsv` | same | 184,301 | `42ca48bf3c219bca58e9c846b818aeed535fde67bb51b027e012159d3a2708ca` |
-| `genetic_codes.tsv` | same | 97,590 | `dbbee40d86860223f0b4c1508247d49b9e33bd7c9dfbff4ae5c9b278a4dba4a5` |
+| `genomes.json` | `/tmp/if2453/c78/meta/DPN1/` | 5,075,336 | `2fe0b34b8f00e815fa92f7102f9a18cacfcddb0a5cc4309dd3c45375b3776a93` |
+| `objects.json` | same | 1,327 | `8618b4a6fa1e3525d5c0d0e86f60225ce2089c56a2d95362e964d16fba73786f` |
+| `objects_staging.json` | same | 1,347 | `dfcef58af94b44966b96915dd02d46169f8e317ce0aafcbb16e77fbf9a5d097e` |
+| `records.tsv` | same | 24,120,413 | `0e84d6a80b76833b2f0fad56688877add329ef2a4ee1773e08a5c96360b30fc3` |
+| `dpn1_decisions.tsv` | same | 484,998 | `beb5b3e6e8bd7c22077777483fc816d9a19efead7487a86a3815bd0cc9a7dbdb` |
+| `r232_status.tsv` | same | 186,984 | `df262a197a8def1ecd1fd59c4a1407a711a31ee7824613b004ca2db9b2b6a338` |
+| `genetic_codes.tsv` | same | 100,545 | `448cd7d475d143dc620c56a0a16efdf4239b9b5a6835b936c19d7c5f70b88d60` |
 | `trims.tsv` | same | 654 | `eb533e2a4ee918400f31048b72987d41b6f5a495129f8d0652f020e8ab1fbde4` |
-| `shared_records.tsv` | same | 4,567 | `32df30ec8d5115e8321998beb2a9d90ac4573ee6091b142c352080970deecd74` |
-| `later_records.tsv` | same | 173 | `2e25c578e5fb6c6a063d020ad91c89734c6508eb1542659ac804e4165e2ec559` |
+| `shared_records.tsv` | same | 4,567 | `5b7fd75863b50e0c50fca7fb7dd215b546ec47e18a135bc804337112610bfed6` |
+| `later_records.tsv` | same | 173 | `5e5396eb91c9df8334da74802d83dc04012a6a9f8417018f9e209015f3df0a94` |
+| `repeated_records.tsv` | same | 166 | `4fd4ba915af2c9711610b396ee3746bdd12688545ceab145bff395227dd70ee2` |
 | `skipped_records.tsv` (header only) | same | 35 | `db7c37d692118c360eb731405dafb7ffd7ad6fb3fa32b9470a2ba6c23cd86d39` |
-| `repeated_records.tsv` (header only) | same | 39 | `d109495ee76e4643c181eae183c452c9a84560f97a79bbe22d6630780368c565` |
 
 All *measured*. The work files of the steps (`/tmp/if2453/c78/work/dpn1/`: `genomes.tsv`, `ref_holders.tsv`,
 `ref_records.tsv`, `skani_dist.tsv`, `skani_triangle.tsv`, the reports) stay on `/tmp`; the per-genome FASTA and the
 reference sketches were scratch. Template: `DEPTH=called`, `CRISPR=yes`, `AFTER=SAG2`, `EXPECT=held_by` `P3` 1, `G1` 9,
 `SPX1` 24, `V2` 8, `PL3` 1, `SYM1` 2, `MV1` 22.
 
-**Left on `tower`** (`CATALOG_GOAL.md` §4.1): nothing of `DPN1`'s FASTA. Inside the zip (now also on `/stor`), the
-non-genome members: structures, OrthoFinder output, KofamScan tables, proteomes and genes, trees, HMMs, figures.
+`stage_est.py conf`: exit 0 (*measured*, unit `c78-est-dpn1`).
+
+**Mirror** (*measured*, the relay's log, 23:03 to 23:04 CST): `relay_to_tower.sh`, two runs to
+`tower:/mnt/user/research-bulk/bio-box/sources/DPN1/`: `dpn1_dpann_genomes_rev2.fna.gz` (560,202,590 B in 30 s, 18.67
+MB/s) and the thirteen files of `/tmp/if2453/c78/meta/DPN1/` (the MGE FASTA and the metadata); `DONE: 1 verified` and
+`DONE: 13 verified, 0 failed`; `SHA256SUMS` there has 14 lines. The superseded first-pass FASTA was not mirrored.
+
+**Left on `tower`** (`CATALOG_GOAL.md` §4.1): nothing of `DPN1`'s genome FASTA. Inside the zip (now also on `/stor`),
+the non-genome members: structures, OrthoFinder output, KofamScan tables, proteomes and genes, trees, HMMs, figures.
+Removed by the dedup (in `dpn1_decisions.tsv`): 697 genomes near a held reference and 1,625 within the stage, all MAGs.
+
+## 7. Summary
+
+| Stage | Genomes | Distinct contigs | bp | New bp (after the root and `r26.11.4`) | Depth | r232 status | Left out, and why |
+|---|---:|---:|---:|---:|---|---|---|
+| `DPN1` | 1,866 (1,842 DPANN, all 208 closed; 26 MGEs) | 135,224 | 1,796,037,907 | 1,791,619,991 | `called` | 1,142 in both, 179 GTDB R232 only, 223 neither, 298 not visible | 697 MAGs at 96 % to a held r226 archaeon, 1,625 within the stage (MAGs only); the zip's analyses |
+| `SYM2` | 62,584 (551 bins, 74 giant-virus bins, 61,959 viral contigs) | 89,741 | 867,530,342 | 867,530,342 | `annotated` | 551 not visible | host assemblies (C-60); 2,296 binned viral contigs (in their bins), 205 repeats |
+| `LRP1` | 78,737 | 78,737 | 240,689,693 | 240,648,952 | `annotated` | (plasmids: none) | 1 exact repeat |
+| `MIR2` | 56,092 | 56,092 | 585,909,240 | 488,868,834 | `annotated` | (viruses: none) | protist assemblies (C-60), a table, 929 non-DNA members, 4,179 repeats |
+| `MGE4` | not staged | | | | | | isolate genomes of one experiment: leaves `r26.11.5` |
+| **all four** | **199,279** | **359,794** | **3,490,167,182** | **3,388,668,119** | | | |
+
+Totals *derived* (sums). Chain (plan §5): `DPN1` after `SAG2`, `SYM2` after `DPN1`, `LRP1` after `SYM2`, `MIR2` after
+`LRP1`; `MGE4` is not staged, so `MV2` takes `AFTER=MIR2`. The overlap against stages of the `r26.11.5` chain that were
+not on the pod when each stage ran (`ECE2`, `MIR1`, `ASG1`, and this card's own stages run out of chain order:
+`LRP1` and `MIR2` before `DPN1` and `SYM2`) is card A-29's.
+
+## 8. Pod compute used
+
+Detached `systemd-run --user` units at `nice -n 19`, `MemorySwapMax=0`, inside
+`/stor/home/if2453/bio-box/images/bio-box_faec1f4.sif` through `/tmp/if2453/c78/c78_run.sh` (which exits on a `STOP`
+file in the root), each started after `systemctl --user list-units` showed at most one other staging unit and no
+gene calling of `MV1` or `V3`. Wall times from file times and the units' own `--wait` reports (*measured*); CPU at most
+wall × quota (*derived*).
+
+| Unit | What | Quota | Wall |
+|---|---|---|---|
+| `c78-census1` | census of six archives and files | 100 % | about 3 min |
+| `c78-extract-sym2` | twelve SYM2 tables | 100 % | under 1 min |
+| `c78-lrp1` | LRP1 | 200 % | about 2 min |
+| `c78-mir2` | MIR2 | 200 % | about 3 min |
+| `c78-sym2`, `c78-sym2b` | SYM2, twice (§5) | 400 % | about 9 min each |
+| `c78-dpn1-prep` | eight zip tables, `dpn1-extract` | 100 % | about 5 min |
+| `c78-dpn1-refs` | the r226 archaea split, sketched, owned | 800 % | about 7 min |
+| `c78-dpn1-skani` | `skani dist`, `skani triangle` | 800 % | 22 s of skani |
+| `c78-dpn1-stage`, `c78-dpn1-stage2` | DPN1, twice (§6) | 400 % | about 8 min each |
+| `c78-est-*` | `stage_est.py conf` on the four templates | 100 % | under 1 s each |
+
+At most about 210 CPU-minutes in all (*derived*: the walls above × their quotas); no process near 300 CPU-minutes.
+The card's estimate (8 threads for skani, 1 to 2 h) was met. Scratch removed at the end: the per-genome FASTA and the
+reference sketches under `/tmp/if2453/c78/work/dpn1/`.
+
+## 9. Changes to the script during the card, and breaches
+
+- A FASTA under 64 MiB now stays beside the metadata on `/tmp` (after `MIR2`, see the breach in §4).
+- `--reuse-fasta`: a rerun keeps a FASTA already on `/stor` when the new one has the same bytes, and refuses one that
+  differs; nothing under `/stor` is overwritten (used for `SYM2`'s second pass).
+- `SYM2`'s giant-virus bins are viruses (§5); `DPN1`'s closed genomes are never removed (§6, the PI's word).
+- **Breach of AGENTS §7.3, left in place:** `/stor/scratch/Wilke/if2453/bio-box-staging/MIR2/mir2_bulzu_2025_plv_virophage.fna`
+  (28,333,081 B, under 64 MiB) was written to `/stor` (§4). It is the staged object `MIR2`'s `objects_staging.json`
+  names; card A-29 copies it into `/tmp/if2453/s2/inputs/MIR2/` with the rest. Removing it needs the PI's word.
+- Superseded on `/stor`, left in place: the first DPN1 pass's `dpn1_dpann_genomes.fna.gz` (§6).
+
+## 10. Tests
+
+`tests/r1/test_c78_compact_tower_sets.py`, constructed truth (blake3 contig uids, terminal repeats planted by hand,
+fixture archives, skani tables written by hand; skani is not run, GitHub Actions has none): the census of members by
+kind; `extract`; DEC-65 (1) classes; LRP1, MIR2, SYM2 and DPN1 end to end (kinds, circular records and trims, exact
+repeats, bins' contigs left to their bins, giant-virus bins, the held and within-stage dedup, closed genomes never
+removed, r232 status, BGZF output, `s2_check_inputs.py` exit 0); the 64 MiB rule and `--reuse-fasta`; refusals that
+leave nothing behind; the four templates through `stage_est.read_conf` with their `SUM`s in this note. Each with the
+normal `PATH` and with `PATH=/usr/bin:/bin`. The first run failed on the missing script (`FileNotFoundError`); the
+closed-genome rule failed first (`assert {'C2'} == {'C1', 'C2', 'C3'}`) and the giant-virus rule (`'prokaryote' ==
+'virus'`).

@@ -731,7 +731,9 @@ def stage_sym2(bins_tgz: Path, viruses_tgz: Path, tables: Path, meta_out: Path, 
 #                 contamination, then length, then name), a genome within 96 % / 50 % of one kept before it is
 #                 removed. The 26 MGE contigs are `kind="virus"`: their metadata table has no class column.
 
-DPN1_FASTA = {"dpann": "dpn1_dpann_genomes.fna.gz", "mge": "dpn1_dpann_mges.fna"}
+# `_rev2`: the second pass (the PI, 2026-11-26: closed genomes are never removed) writes a new name, so that the first
+# pass's dpn1_dpann_genomes.fna.gz on /stor is neither overwritten nor deleted (it is superseded)
+DPN1_FASTA = {"dpann": "dpn1_dpann_genomes_rev2.fna.gz", "mge": "dpn1_dpann_mges.fna"}
 DPN1_SOURCE = {
     "source_name": "tower_dpn1",
     "source_release": "Nanobdellota genomes of Zenodo 20174424 (Nanobdellota_Zen.zip: genomes/complete_208, "
@@ -995,8 +997,13 @@ def dpn1_decide(manifest: list[dict], dist: list[tuple], tri: list[tuple], holde
         if h.get("held") == "yes" and (k not in best_held or cand > best_held[k][:3]):
             best_held[k] = (*cand, h.get("holder", ""))
     removed: dict[str, dict] = {}
+    held_match_kept: dict[str, dict] = {}
     for k, (ani, af, ref, holder) in sorted(best_held.items()):
-        removed[k] = {"reason": "ani_to_held_reference", "match": ref, "ani": ani, "af": af, "holder": holder}
+        m = {"reason": "ani_to_held_reference", "match": ref, "ani": ani, "af": af, "holder": holder}
+        if _closed(by_name[k]):  # the PI, 2026-11-26: a closed genome is never removed; the match is recorded
+            held_match_kept[k] = m
+        else:
+            removed[k] = m
     adj: dict[str, dict[str, tuple]] = {}
     for qf, rf, ani, af in tri:
         a, b = key_of_file.get(qf), key_of_file.get(rf)
@@ -1014,11 +1021,16 @@ def dpn1_decide(manifest: list[dict], dist: list[tuple], tri: list[tuple], holde
             continue
         kept.append(k)
         for nb, (ani, af) in sorted(adj.get(k, {}).items()):
-            if nb not in gone and nb not in removed and nb not in kept:
+            if nb not in gone and nb not in removed and nb not in kept and not _closed(by_name[nb]):
                 gone.add(nb)
                 removed[nb] = {"reason": "ani_within_stage", "match": by_name[k]["name"], "ani": ani, "af": af,
                                "holder": "DPN1"}
-    return {"kept": kept, "removed": removed, "ref_best": best, "by_name": by_name}
+    return {"kept": kept, "removed": removed, "ref_best": best, "by_name": by_name,
+            "held_match_kept": held_match_kept}
+
+
+def _closed(row: dict) -> bool:
+    return row["category"] == "nanobdellota_closed"
 
 
 DECISION_HEAD = ["genome", "category", "accession", "bp", "decision", "match", "ani", "af", "match_holder",
@@ -1106,8 +1118,11 @@ def stage_dpn1(work: Path, mge_fna: Path, index_dir: Path | None, meta_out: Path
         dec_rows = []
         for k in sorted(by_name, key=lambda x: (by_name[x]["category"], by_name[x]["name"])):
             row, rm, b = by_name[k], removed.get(k), best.get(k)
+            decision = rm["reason"] if rm else "kept"
+            if not rm and k in dec["held_match_kept"]:  # a closed genome near a held one: kept, the match recorded
+                rm, decision = dec["held_match_kept"][k], "kept_closed_with_held_match"
             dec_rows.append((row["name"], row["category"], row["accession"], row["bp"],
-                             rm["reason"] if rm else "kept", rm["match"] if rm else "",
+                             decision, rm["match"] if rm else "",
                              rm["ani"] if rm else "", rm["af"] if rm else "", rm["holder"] if rm else "",
                              b[2] if b else "", b[0] if b else "", b[1] if b else "", b[3] if b else "",
                              ("yes" if b[4] else "no") if b else ""))
@@ -1148,6 +1163,9 @@ def stage_dpn1(work: Path, mge_fna: Path, index_dir: Path | None, meta_out: Path
                                                                        if r["reason"] == "ani_to_held_reference"
                                                                        ).items())),
                              "kept": len(kept),
+                             "closed_kept_with_held_match": len(dec["held_match_kept"]),
+                             "closed_held_match_by": dict(sorted(Counter(
+                                 m["holder"] for m in dec["held_match_kept"].values()).items())),
                              "kept_by_category": dict(sorted(Counter(by_name[k]["category"] for k in kept).items())),
                              "kept_bp": sum(int(by_name[k]["bp"]) for k in kept),
                              "best_hit_unheld_kept": sum(1 for k in kept if k in best and not best[k][4]),
