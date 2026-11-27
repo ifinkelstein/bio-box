@@ -10,6 +10,73 @@
 # Last checked against the files on disk: 2026-11-11.
 version: 1
 sources:
+  # Card C-85 (DEC-88 (1), (2), DEC-80, 2026-11-27): next-wave gentle fetch queues on tower for r26.11.6+:
+  #   23_r26_11_6_asg1_fna.tsv         (Appler et al. 2026 Asgardarchaeota MAGs mapped from 00_ThisStudy.tsv to GenBank)
+  #   24_r26_11_6_dsv70_prjna1244896.tsv (Global Deep-Sea Hydrothermal Vents MAGs in NCBI BioProject PRJNA1244896)
+  #   25_r26_11_6_mgnify_nonhuman_reps.tsv (EMBL-EBI MGnify non-human prokaryotic species reps outside GTDB/GlobDB)
+  #   26_r26_11_6_globdb_r232.tsv      (GlobDB r232 genome FASTA archive, streamed for the 46,920 new-resource species)
+  #   27_r26_11_6_gtdb_r232_delta.tsv  (GTDB R232 & post-R232 RefSeq/GenBank species representatives)
+  # Placed at the head of `sources:` so `fetch_to_tower.sh --check` matches multi-thousand-URL lists in O(1) forms
+  # without touching the middle or tail of `sources.yaml`.
+  - name: tower_globdb_r232_genomes
+    what: >-
+      GlobDB release 232 genome nucleotide FASTA archive (`globdb_r232_genome_fasta.tar.gz`, 346,233 species
+      representatives across 26 resources, including 199,923 GTDB R232 representatives and 46,920 non-GTDB species
+      representatives from 12 resources absent from GlobDB r226); queued gently on tower (`--jobs 1`) and sliced via
+      `c85_prepare_tower_queues.py extract-globdb-subset`; card C-85 (DEC-88)
+    url: https://fileshare.lisc.univie.ac.at/globdb/globdb_r232/globdb_r232_genome_fasta.tar.gz
+    files_listed:
+      - {file: "globdb_r232_genome_fasta.tar.gz", bytes: 292068313974, md5: c95ef3b3278b9f035e2089bd729b0b48}
+    checksum: >-
+      the provider's md5 (`c95ef3b3278b9f035e2089bd729b0b48`, read from `globdb_r232_md5sum.txt` relayed in card C-74)
+      checked by `fetch_to_tower.sh` before the archive is kept, plus our sha256 after fetch
+    license: CC BY-SA 4.0   # as globdb.org states it (card C-72 survey, 2026-11-26); underlying resources carry mixed terms
+    redistributable: false   # DEC-80 (3): underlying composite MAG resources include unconfirmed per-study terms
+    fetched: >-
+      nothing yet: 1 archive named in `scripts/orchestrator/tower_jobs/26_r26_11_6_globdb_r232.tsv`, listed here before
+      the fetch (card C-85, DEC-88 (1), (2))
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/GLOBDB_R232/
+    approved: "by the PI, 2026-11-27 15:18 CST: \"return to card c-84 outputs, start preparing everything you can via  aworker\" and \"mostly stick these downloads on tower, but don't hammer it too much\" (DEC-88 (1), (2))"
+  - name: tower_mgnify_nonhuman_reps
+    what: >-
+      EMBL-EBI MGnify Genomes non-human prokaryotic species representatives across the 10 non-human catalogues in
+      `batch5_proks/MGNIFY2/` (`marine/v3.0`, `soil/v1.0`, `cow-rumen/v1.0.1`, `sheep-rumen/v1.0`, `pig-gut/v1.0`,
+      `chicken-gut/v1.0.1`, `maize-rhizosphere/v1.0`, `non-model-fish-gut/v2.0`, `honeybee-gut/v1.0.1`,
+      `zebrafish-fecal/v1.0`), excluding human catalogues, eukaryote catalogues, and species representatives already
+      covered by GTDB R226/R232 or GlobDB r226/r232; card C-85 (DEC-88)
+    url: https://ftp.ebi.ac.uk/pub/databases/metagenomics/mgnify_genomes/{biome}/{version}/all_genomes/{mgyg_prefix}/{species_rep}/genomes1/{file}
+    url_species_cat: https://ftp.ebi.ac.uk/pub/databases/metagenomics/mgnify_genomes/{biome}/{version}/species_catalogue/{mgyg_prefix}/{species_rep}/genome/{file}
+    url_md5: https://ftp.ebi.ac.uk/pub/databases/metagenomics/mgnify_genomes/{biome}/{version}/md5sum.txt
+    checksum: >-
+      provider md5 where published in the catalogue's `md5sum.txt`, else `-` with `gzip -t` archive verification and
+      our sha256 recorded on fetch
+    license: "not stated in the EBI MGnify catalogue READMEs (EMBL-EBI terms of use; batch-5 job list wrote CC BY 4.0)"
+    redistributable: false   # DEC-80 (3): no explicit per-catalogue licence statement in the saved READMEs
+    fetched: >-
+      nothing yet: queued in `scripts/orchestrator/tower_jobs/25_r26_11_6_mgnify_nonhuman_reps.tsv`, listed here before
+      the fetch (card C-85, DEC-88 (1), (2))
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/MGNIFY_REPS/
+    approved: "by the PI, 2026-11-27 15:18 CST: \"return to card c-84 outputs, start preparing everything you can via  aworker\" and \"mostly stick these downloads on tower, but don't hammer it too much\" (DEC-88 (1), (2); DEC-80 (5))"
+  - name: tower_r26_11_6_ncbi_fna
+    what: >-
+      INSDC GenBank and RefSeq genomic nucleotide FASTA (`.fna.gz`) assemblies queued for `r26.11.6+` on `tower`:
+      (a) `ASG1` Appler, De Anda & Baker 2026 *Asgardarchaeota* MAGs mapped from `00_ThisStudy.tsv` (`PRJNA1112871`,
+      `PRJNA692327`, `PRJNA743900`), (b) `DSV70` Global Deep-Sea Hydrothermal Vents MAGs in `PRJNA1244896` replacing
+      EBI BioStudies' mid-stream-corrupt `DSV70_mag.tar.gz` (card R-24), and (c) `GTDB R232` and post-R232 RefSeq/GenBank
+      prokaryotic species representatives absent from `GTDB R226` (`P1..P6, C5, SYM1`) and `GlobDB r232`; card C-85 (DEC-88)
+    url: https://ftp.ncbi.nlm.nih.gov/genomes/all/{GCA_or_GCF}/{d1}/{d2}/{d3}/{assembly_dir}/{assembly_dir}_genomic.fna.gz
+    url_md5: https://ftp.ncbi.nlm.nih.gov/genomes/all/{GCA_or_GCF}/{d1}/{d2}/{d3}/{assembly_dir}/md5checksums.txt
+    checksum: >-
+      `gzip -t` integrity check on every `.fna.gz` plus our sha256 recorded in `SHA256SUMS` and `SOURCE_URLS.tsv`
+      (`md5checksums.txt` available per NCBI assembly directory)
+    license: INSDC (public)
+    redistributable: true
+    fetched: >-
+      nothing yet: queued in `23_r26_11_6_asg1_fna.tsv`, `24_r26_11_6_dsv70_prjna1244896.tsv`, and
+      `27_r26_11_6_gtdb_r232_delta.tsv`, listed here before the fetch (card C-85, DEC-88 (1), (2))
+    stored: >-
+      will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/{ASG1_FNA,DSV70_NCBI,GTDB_R232_DELTA}/
+    approved: "by the PI, 2026-11-27 15:18 CST: \"return to card c-84 outputs, start preparing everything you can via  aworker\" and \"mostly stick these downloads on tower, but don't hammer it too much\" (DEC-88 (1), (2))"
   # Card R-15 (DEC-81 (5), 2026-11-26): batch 7 of tower, the two CNGBdb sets of _batch7_cngb_urls.tsv (written on
   # tower 2026-11-25 21:37 CST; nothing of it was fetched). This supersedes the comment above the batch-6 entries that
   # says batch 7 is not listed. ftp.cngb.org refused a connection on port 443 on 2026-11-26 (card R-15's note,

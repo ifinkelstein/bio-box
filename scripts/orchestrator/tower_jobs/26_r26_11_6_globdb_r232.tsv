@@ -1,0 +1,7 @@
+# Card C-85 (DEC-88 (1), (2), DEC-79 (2)-(4), 2026-11-27): GlobDB release 232 genome nucleotide FASTA
+# archive (292,068,313,974 bytes measured via HTTP HEAD on tower 2026-11-27; provider md5 from
+# globdb_r232_md5sum.txt). Contains 346,233 species representatives across 26 resources (199,923 GTDB R232
+# reps + 46,920 non-GTDB species reps from 12 new resources = 110,310,705,273 bp derived). Stream-sliced via
+# `c85_prepare_tower_queues.py extract-globdb-subset` without unpacking full archive to pod /tmp.
+# Gentle fetch: --jobs 1 --pause 1 under ionice -c 3 nice -n 19.
+GLOBDB_R232	globdb_r232_genome_fasta.tar.gz	https://fileshare.lisc.univie.ac.at/globdb/globdb_r232/globdb_r232_genome_fasta.tar.gz	c95ef3b3278b9f035e2089bd729b0b48	CC BY-SA 4.0
