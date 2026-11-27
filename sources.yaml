@@ -2118,7 +2118,8 @@ sources:
       card C-70, 2026-11-26: the 29 Inocles (circular, DEC-65 (1), none trimmed) and the 937 elements of the archive's
       elements-pro/pro-623-elements.fna (501 Tycheposon, 436 cryptic; linear, byte-identical) as stage ECE2: 945 genomes,
       945 contigs, 17,676,120 bp, none held by an earlier stage, in /tmp/if2453/c70/meta/ECE2/ on wilkcomp02, then to
-      tower:/mnt/user/research-bulk/bio-box/sources/ECE2/; the archive's host genome assemblies and its other files stay
+      tower:/mnt/user/research-bulk/bio-box/sources/ECE2/ (the second run's objects.json, Inocles redistributable false,
+      in its subdirectory c70_rev2/); the archive's host genome assemblies and its other files stay
       out; planning/measurements/2026-11-26_c70_tier1_inputs.md
     approved: "by the PI, 2026-11-25 15:47 CST: \"stage the nucleotides ... on tower\" (the audit of 2026-11-25)"
   - name: tower_mir1
