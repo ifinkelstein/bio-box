@@ -1579,12 +1579,12 @@ def _concat_fastas(paths: list[Path], out_fa: Path) -> Path | None:
 
 
 INOCLE_LICENSE = (
-    "CC BY 4.0 (Zenodo record 16656823, as card C-70's prep note read it on 2026-11-24, "
-    "planning/measurements/2026-11-24_c70_tier1_prep.md section 1; the provider's response was not kept)"
+    "none confirmed: card C-70's prep note (planning/measurements/2026-11-24_c70_tier1_prep.md section 1) states "
+    "CC BY 4.0 for Zenodo record 16656823, but the record's own licence field was not kept"
 )
 TYCHE_LICENSE = (
-    "CC BY-SA 4.0 (data) and MIT (code), the archive's own LICENSE, LICENSE-CC-BY-SA and LICENSE-MIT files "
-    "at commit a0f299fd6932e5ea81c52cbaf6f2c81aa19be724"
+    "\"This work is licensed under CC-BY-SA 4.0, except for all code files which are licensed under MIT License.\" "
+    "(the archive's own LICENSE file at commit a0f299fd6932e5ea81c52cbaf6f2c81aa19be724; the element FASTA is not code)"
 )
 TYCHE_ELEMENTS = "elements-pro/pro-623-elements.fna"
 TYCHE_TABLE = "elements-pro/pro-623-elements.tsv"
@@ -1630,7 +1630,7 @@ def prepare_ece2_from_dl(inocles_dir: Path, tyche_tar: Path, scratch: Path) -> t
         "source_name": "tower_ece2:inocles",
         "source_release": "Zenodo record 16656823, Inocle_001.fasta to Inocle_029.fasta (Kiguchi et al. 2025)",
         "license": INOCLE_LICENSE,
-        "redistributable": True,
+        "redistributable": False,  # DEC-80 (3): no kept record of the provider's licence (orchestrating session, 2026-11-26)
         "fasta": ino_cat,
         "output_name": "ece2_inocles.fna",
         "element_class": "inocle",
@@ -1712,7 +1712,7 @@ def goev_class(genome: str) -> str:
 
 
 def prepare_mir1_from_dl(small_dir: Path, large_dir: Path, scratch: Path,
-                         exclude: Iterable[str] = ()) -> tuple[list[dict], list[tuple]]:
+                         exclude: Iterable[str] = (), drop: dict[str, str] | None = None) -> tuple[list[dict], list[tuple]]:
     """The MIR1 sources as the ten files of `tower_mir1` hold them (card C-70, 2026-11-26), and what is left out.
 
     - `medvedeva2025_01_Genomes.zip`: the 1,257 `01_Genomes/MIRUS_G_*.fa`, one genome per file (multi-contig).
@@ -1727,7 +1727,8 @@ def prepare_mir1_from_dl(small_dir: Path, large_dir: Path, scratch: Path,
       record, named `<file stem>|<header, spaces as _>`.
     - left out: `medvedeva2025_Supplemental_Tables.zip` and `bellas2023_Readme.txt` (not sequence),
       `bellas2023_MCPs_group_by_genome.fasta.tar.gz` (MCP gene sequences, not genomes).
-    `exclude` names keys of MIR1_SOURCE_KEYS to leave out as well (recorded)."""
+    `exclude` names keys of MIR1_SOURCE_KEYS to leave out as well (recorded); `drop` maps GOEV genome names to the
+    reason they are left out (the ANI test against `GV1`, `ani-goev`), and a name that is not a GOEV genome refuses."""
     small_dir, large_dir, scratch = Path(small_dir), Path(large_dir), Path(scratch)
     exclude = set(exclude)
     bad = exclude - set(MIR1_SOURCE_KEYS)
@@ -1794,6 +1795,8 @@ def prepare_mir1_from_dl(small_dir: Path, large_dir: Path, scratch: Path,
         })
 
     goev_zip = need(large_dir / "gaia2023_GOEV_Genomic_DB.zip")
+    drop = dict(drop or {})
+    seen_drop: set[str] = set()
     env_bins, ref_bins = [], []
     d = scratch / "goev"
     d.mkdir()
@@ -1806,6 +1809,10 @@ def prepare_mir1_from_dl(small_dir: Path, large_dir: Path, scratch: Path,
                 left.append((goev_zip.name, i.filename, i.file_size,
                              f"isolate_reference_{cls}: not the set's subject (DEC-79 (1) catch)"))
                 continue
+            if gid in drop:
+                left.append((goev_zip.name, i.filename, i.file_size, drop[gid]))
+                seen_drop.add(gid)
+                continue
             if key in exclude:
                 left.append((goev_zip.name, i.filename, i.file_size, "excluded_by_option"))
                 continue
@@ -1815,6 +1822,8 @@ def prepare_mir1_from_dl(small_dir: Path, large_dir: Path, scratch: Path,
             with zf.open(i) as src, open(target, "wb") as dst:
                 shutil.copyfileobj(src, dst)
             (env_bins if key == "goev_environmental" else ref_bins).append((gid, target))
+    if set(drop) - seen_drop:
+        raise Refused(f"MIR1: genomes to drop that the GOEV archive does not hold: {sorted(set(drop) - seen_drop)[:5]}")
     for key, bins in (("goev_environmental", env_bins), ("goev_reference", ref_bins)):
         if bins:
             sources.append({
@@ -1865,6 +1874,137 @@ def prepare_mir1_from_dl(small_dir: Path, large_dir: Path, scratch: Path,
             if (base / name).is_file():
                 left.append((name, "", (base / name).stat().st_size, reason))
     return sources, sorted(left)
+
+
+# --- MIR1: GOEV genomes against GV1 at the vOTU threshold (plan 2026-11-26 section 4.4) ---------------------------
+
+ANI_MIN, AF_SHORTER_MIN = 95.0, 85.0  # c39_ani.py's threshold: ANI >= 95 over >= 85% of the shorter genome
+GOEV_ANI_HEAD = ["genome", "gvmag_named", "length", "match", "best_ref", "best_ani", "best_af_query", "best_af_ref",
+                 "best_af_shorter", "action"]
+
+
+def goev_ani_queries(metadata_tsv: Path) -> list[str]:
+    """The GOEV genomes of a measured MIR1 (`mir1_metadata.tsv`) that are not wholly byte-equal to `GV1` contigs."""
+    out = []
+    with open(metadata_tsv, encoding="utf-8", newline="") as fh:
+        for r in csv.DictReader(fh, delimiter="\t"):
+            if not r["source"].startswith("tower_mir1:gaia2023_GOEV_Genomic_DB:"):
+                continue
+            if r["owner_stages"] == "GV1" and r["held_contigs"] == r["contigs"]:
+                continue
+            out.append(r["genome_id"])
+    return sorted(out)
+
+
+def goev_ani_decisions(skani_tsv: Path, qlen: dict[str, int], rlen: dict[str, int]) -> list[dict]:
+    """One row per query genome: its best `GV1` genome by (meets the threshold, ANI, aligned fraction of the shorter),
+    `match` the reference when ANI >= 95 and the shorter genome's aligned fraction >= 85, and `action` `drop` only for a
+    GVMAG-named query with a match (the plan: GVMAG-named records not byte-equal to `GV1` are dropped on a match;
+    any other match is recorded and kept). Files are `<genome>.fa`."""
+    best: dict[str, tuple] = {}
+    with open(skani_tsv, encoding="utf-8", newline="") as fh:
+        for r in csv.DictReader(fh, delimiter="\t"):
+            q = _strip_fasta_suffix(Path(r["Query_file"]).name)
+            ref = _strip_fasta_suffix(Path(r["Ref_file"]).name)
+            ani = _safe_float(r["ANI"])
+            afq, afr = _safe_float(r["Align_fraction_query"]), _safe_float(r["Align_fraction_ref"])
+            af_short = afq if qlen.get(q, 0) <= rlen.get(ref, 0) else afr
+            meets = ani >= ANI_MIN and af_short >= AF_SHORTER_MIN
+            key = (meets, ani, af_short, ref)
+            if q not in best or key > best[q][0]:
+                best[q] = (key, ref, ani, afq, afr, af_short)
+    rows = []
+    for q in sorted(qlen):
+        gv = "GVMAG" in q
+        if q in best:
+            (meets, *_), ref, ani, afq, afr, af_short = best[q]
+            rows.append({"genome": q, "gvmag_named": "yes" if gv else "no", "length": qlen[q],
+                         "match": ref if meets else "", "best_ref": ref, "best_ani": ani, "best_af_query": afq,
+                         "best_af_ref": afr, "best_af_shorter": af_short,
+                         "action": "drop" if (meets and gv) else "keep"})
+        else:
+            rows.append({"genome": q, "gvmag_named": "yes" if gv else "no", "length": qlen[q], "match": "",
+                         "best_ref": "", "best_ani": "", "best_af_query": "", "best_af_ref": "", "best_af_shorter": "",
+                         "action": "keep"})
+    return rows
+
+
+def _write_genome_fastas(records: Iterable[tuple[str, bytes]], out_dir: Path) -> dict[str, int]:
+    """(genome, FASTA record bytes) in genome-contiguous order, written as `<genome>.fa`; returns genome lengths."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    lens: dict[str, int] = {}
+    cur, fh = None, None
+    for g, rec in records:
+        if g != cur:
+            if fh is not None:
+                fh.close()
+            if g in lens:
+                raise Refused(f"genome {g} is not contiguous in its FASTA")
+            cur, fh, lens[g] = g, open(out_dir / f"{g}.fa", "wb"), 0
+        fh.write(rec)
+        lens[g] += len(rec.split(b"\n", 1)[1].replace(b"\n", b""))
+    if fh is not None:
+        fh.close()
+    return lens
+
+
+def run_goev_ani(metadata_tsv: Path, goev_zip: Path, gv1_dir: Path, work: Path, out_dir: Path,
+                 threads: int = 8) -> dict:
+    """Write the query GOEV genomes and every `GV1` genome as one file each, run `skani dist` (c39_ani.py's settings
+    `-c 30 -m 200 --min-af 0`, at genome level because both sets are multi-contig bins), and write
+    `goev_vs_gv1_ani.tsv` and `goev_ani_drop.tsv` (genome, reason) to `out_dir`."""
+    queries = set(goev_ani_queries(metadata_tsv))
+    qdir, rdir = work / "q", work / "gv1"
+
+    def q_records():
+        with zipfile.ZipFile(goev_zip) as zf:
+            for i in _zip_fasta_members(goev_zip):
+                g = goev_genome_name(i.filename)
+                if g in queries:
+                    yield g, zf.read(i).rstrip(b"\n") + b"\n"
+
+    qlen: dict[str, int] = {}
+    qdir.mkdir(parents=True, exist_ok=True)
+    for g, data in q_records():
+        (qdir / f"{g}.fa").write_bytes(data)
+        qlen[g] = sum(len(ln) for ln in data.split(b"\n") if ln and not ln.startswith(b">"))
+    if set(qlen) != queries:
+        raise Refused(f"GOEV archive lacks query genomes {sorted(queries - set(qlen))[:5]}")
+    genome_of: dict[str, str] = {}
+    with open(gv1_dir / "records.tsv", encoding="utf-8", newline="") as fh:
+        for r in csv.DictReader(fh, delimiter="\t"):
+            genome_of[r["accession"]] = r["genome"]
+    objs = json.loads((gv1_dir / "objects.json").read_text())
+
+    def r_records():
+        for o in objs:
+            with _open_fasta_in(Path(o["path"])) as fh:
+                for r in v2.iter_fasta_stream(fh):
+                    tok = r.header.split(None, 1)[0]
+                    yield genome_of[tok], b">" + r.header.encode() + b"\n" + r.seq + b"\n"
+    rlen = _write_genome_fastas(r_records(), rdir)
+    ql, rl = work / "queries.txt", work / "refs.txt"
+    ql.write_text("".join(f"{qdir / g}.fa\n" for g in sorted(qlen)))
+    rl.write_text("".join(f"{rdir / g}.fa\n" for g in sorted(rlen)))
+    out_dir.mkdir(parents=True, exist_ok=True)
+    tsv = out_dir / "goev_vs_gv1_skani.tsv"
+    t0 = time.monotonic()
+    proc = subprocess.run(["skani", "dist", "-t", str(threads), "-c", "30", "-m", "200", "--min-af", "0",
+                           "--ql", str(ql), "--rl", str(rl), "-o", str(tsv)], capture_output=True, text=True,
+                          check=False)
+    if proc.returncode != 0:
+        raise Refused(f"skani dist failed (rc={proc.returncode}): {proc.stderr[-500:]}")
+    rows = goev_ani_decisions(tsv, qlen, rlen)
+    make_inputs._write_tsv(out_dir / "goev_vs_gv1_ani.tsv", GOEV_ANI_HEAD, [tuple(r[k] for k in GOEV_ANI_HEAD) for r in rows])
+    drops = [(r["genome"], f"ani_vs_GV1: {r['match']} ANI {r['best_ani']} AF of the shorter {r['best_af_shorter']}")
+             for r in rows if r["action"] == "drop"]
+    make_inputs._write_tsv(out_dir / "goev_ani_drop.tsv", ["genome", "reason"], drops)
+    return {"queries": len(qlen), "gv1_genomes": len(rlen), "gv1_bases": sum(rlen.values()),
+            "query_bases": sum(qlen.values()),
+            "matches": sum(1 for r in rows if r["match"]),
+            "matches_gvmag_named": sum(1 for r in rows if r["match"] and r["gvmag_named"] == "yes"),
+            "dropped": len(drops), "dropped_bases": sum(qlen[g] for g, _ in drops),
+            "skani_wall_s": round(time.monotonic() - t0, 1)}
 
 
 def _prepare_ece2_sources(dl_dir: Path, scratch: Path) -> list[dict]:
@@ -2029,6 +2169,15 @@ def main(argv: list[str]) -> int:
     p_sm.add_argument("--large-dir", type=Path, default=None,
                       help="the directory of tower_mir1's files of 64 MiB and more; with it, --dl holds the others")
     p_sm.add_argument("--exclude", action="append", default=[], choices=MIR1_SOURCE_KEYS)
+    p_sm.add_argument("--drop-goev", type=Path, default=None,
+                      help="a TSV (genome, reason) of GOEV genomes to leave out: ani-goev's goev_ani_drop.tsv")
+    p_ag = sub.add_parser("ani-goev")
+    p_ag.add_argument("--metadata", type=Path, required=True, help="mir1_metadata.tsv of a measured MIR1")
+    p_ag.add_argument("--goev-zip", type=Path, required=True)
+    p_ag.add_argument("--gv1", type=Path, required=True, help="GV1's inputs (records.tsv, objects.json)")
+    p_ag.add_argument("--work", type=Path, required=True)
+    p_ag.add_argument("--out", type=Path, required=True)
+    p_ag.add_argument("--threads", type=int, default=8)
 
     p_fa = sub.add_parser("fetch-asg1")
     p_fa.add_argument("--dl", type=Path, required=True)
@@ -2051,6 +2200,11 @@ def main(argv: list[str]) -> int:
         return 0
     if args.cmd == "fetch-asg1":
         print(json.dumps(fetch_asg1(args.dl, accessions_file=args.accessions), indent=1, sort_keys=True))
+        return 0
+    if args.cmd == "ani-goev":
+        rep = run_goev_ani(args.metadata, args.goev_zip, args.gv1, args.work, args.out, args.threads)
+        (args.out / "goev_ani_report.json").write_text(json.dumps(rep, indent=1, sort_keys=True))
+        print(json.dumps(rep, indent=1, sort_keys=True))
         return 0
 
     root_stages = [s.strip() for s in args.root_stages.split(",") if s.strip()]
@@ -2079,7 +2233,11 @@ def main(argv: list[str]) -> int:
                 later_inputs=later_inputs, fasta_dir=args.fasta_dir,
             )
         elif args.cmd == "stage-mir1" and args.large_dir is not None:
-            sources, left = prepare_mir1_from_dl(args.dl, args.large_dir, scratch, args.exclude)
+            drop: dict[str, str] = {}
+            if args.drop_goev is not None:
+                with open(args.drop_goev, encoding="utf-8", newline="") as fh:
+                    drop = {r["genome"]: r["reason"] for r in csv.DictReader(fh, delimiter="\t")}
+            sources, left = prepare_mir1_from_dl(args.dl, args.large_dir, scratch, args.exclude, drop)
             rep = stage_mir1(
                 sources, args.out, root=args.root, root_stages=root_stages,
                 owner_inputs=owner_inputs, retrieved=args.retrieved, final_dir=args.final_dir,

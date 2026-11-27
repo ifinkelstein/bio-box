@@ -442,7 +442,12 @@ def test_ece2_from_the_bytes_names_inocles_trims_by_dec65_and_takes_only_the_ele
     assert rep["owned_by_stage"] == {"EGV1": 1}
     assert rep["later_held_by"] == {"SAG1": 1}
     assert rep["new_contigs_after_later"] == 2
-    assert rep["redistributable"] is True
+    # The Inocles' licence: the Zenodo record's own licence field was not read or kept, so false (DEC-80 (3), the
+    # orchestrating session, 2026-11-26); the elements' licence is the archive's own LICENSE file, CC-BY-SA 4.0.
+    assert rep["redistributable"] is False
+    objs = {Path(o["path"]).name: o for o in json.loads((out / "objects.json").read_text())}
+    assert objs["ece2_inocles.fna"]["redistributable"] is False
+    assert objs["ece2_tycheposons.fna"]["redistributable"] is True
 
     ino_fa = (out / "ece2_inocles.fna").read_bytes()
     assert b">Inocle_001|sequence1\n" in ino_fa and b">Inocle_002|sequence1\n" in ino_fa
@@ -674,6 +679,68 @@ def test_mir1_refuses_a_record_name_twice_in_the_stage(tmp_path):
     assert not (tmp_path / "M").exists()
 
 
+def test_goev_ani_queries_are_the_goev_genomes_not_wholly_gv1s(tmp_path):
+    m = _mod()
+    meta = tmp_path / "mir1_metadata.tsv"
+    head = "\t".join(m.MIR1_SIDECAR_HEAD)
+    rows = [
+        ("MIR1", "tower_mir1:gaia2023_GOEV_Genomic_DB:environmental", "goev_environmental", "Schulz_GVMAG_A", "u1", 3, 9, "false", 0, 3, "GV1"),
+        ("MIR1", "tower_mir1:gaia2023_GOEV_Genomic_DB:environmental", "goev_environmental", "Schulz_GVMAG_B", "u2", 3, 9, "false", 0, 1, "GV1"),
+        ("MIR1", "tower_mir1:gaia2023_GOEV_Genomic_DB:environmental", "goev_environmental", "TARA_X_NCLDV_1", "u3", 2, 9, "false", 0, 2, "V2"),
+        ("MIR1", "tower_mir1:gaia2023_GOEV_Genomic_DB:reference", "goev_reference", "Mimiviridae_KC1_x", "u4", 1, 9, "false", 0, 0, ""),
+        ("MIR1", "tower_mir1:medvedeva2025_01_Genomes", "mirusviricota", "MIRUS_G_0001", "u5", 2, 9, "false", 0, 0, ""),
+    ]
+    meta.write_text(head + "\n" + "".join("\t".join(map(str, r)) + "\n" for r in rows))
+    assert m.goev_ani_queries(meta) == ["Mimiviridae_KC1_x", "Schulz_GVMAG_B", "TARA_X_NCLDV_1"]
+
+
+def test_goev_ani_decisions_take_95_over_85_of_the_shorter_and_drop_only_gvmag_named_matches(tmp_path):
+    m = _mod()
+    tsv = tmp_path / "skani.tsv"
+    tsv.write_text(
+        "Ref_file\tQuery_file\tANI\tAlign_fraction_ref\tAlign_fraction_query\tRef_name\tQuery_name\n"
+        # a GVMAG at 98% over 90% of itself (the shorter): a match, dropped
+        "/w/gv1/G_a.fa\t/w/q/Schulz_GVMAG_B.fa\t98.0\t40.0\t90.0\tx\ty\n"
+        # a reference that meets the threshold: recorded, kept (only GVMAG-named records are cut)
+        "/w/gv1/G_b.fa\t/w/q/Mimiviridae_KC1_x.fa\t99.0\t95.0\t96.0\tx\ty\n"
+        # 96% ANI but the shorter genome (the query) is covered 60%: no match
+        "/w/gv1/G_c.fa\t/w/q/Schulz_GVMAG_C.fa\t96.0\t99.0\t60.0\tx\ty\n"
+        # the reference is the shorter one and is covered 88%: a match; but ANI 94.9: no
+        "/w/gv1/G_d.fa\t/w/q/Schulz_GVMAG_D.fa\t94.9\t88.0\t30.0\tx\ty\n",
+        encoding="utf-8",
+    )
+    qlen = {"Schulz_GVMAG_B": 100, "Mimiviridae_KC1_x": 100, "Schulz_GVMAG_C": 100, "Schulz_GVMAG_D": 900,
+            "TARA_X_NCLDV_1": 100}
+    rlen = {"G_a": 300, "G_b": 100, "G_c": 400, "G_d": 200}
+    rows = {r["genome"]: r for r in m.goev_ani_decisions(tsv, qlen, rlen)}
+    assert sorted(rows) == sorted(qlen)
+    assert rows["Schulz_GVMAG_B"]["match"] == "G_a" and rows["Schulz_GVMAG_B"]["action"] == "drop"
+    assert rows["Mimiviridae_KC1_x"]["match"] == "G_b" and rows["Mimiviridae_KC1_x"]["action"] == "keep"
+    assert rows["Schulz_GVMAG_C"]["match"] == "" and rows["Schulz_GVMAG_C"]["action"] == "keep"
+    assert rows["Schulz_GVMAG_D"]["match"] == ""
+    assert rows["TARA_X_NCLDV_1"]["match"] == "" and rows["TARA_X_NCLDV_1"]["best_ani"] == ""
+
+
+def test_mir1_drop_goev_leaves_out_the_listed_genomes_with_their_reason(tmp_path):
+    from biobox import ids
+
+    m = _mod()
+    small, large, s = _mir1_fixture(tmp_path)
+    drop = tmp_path / "drop.tsv"
+    drop.write_text("genome\treason\nSchulz_GVMAG_M_1_2\tani_vs_GV1: G_a ANI 98.0 AF 90.0\n")
+    out = tmp_path / "meta" / "MIR1"
+    assert m.main([*_mir1_args(small, large, out, tmp_path / "work"), "--drop-goev", str(drop)]) == 0
+    uids = {u for g in json.loads((out / "genomes.json").read_text()) for u in g["contig_uids"]}
+    assert ids.contig_uid(s["gv"]).hex() not in uids
+    with open(out / "left_out.tsv", newline="") as fh:
+        rows = [r for r in csv.DictReader(fh, delimiter="\t") if "Schulz_GVMAG_M_1_2" in r["member"]]
+    assert [r["reason"] for r in rows] == ["ani_vs_GV1: G_a ANI 98.0 AF 90.0"]
+    bad = tmp_path / "bad.tsv"
+    bad.write_text("genome\treason\nNot_In_GOEV\tx\n")
+    with pytest.raises(m.Refused):
+        m.main([*_mir1_args(small, large, tmp_path / "b" / "MIR1", tmp_path / "w2"), "--drop-goev", str(bad)])
+
+
 _ROOT13 = ("S1", "P1", "P2", "P3", "P4", "P5", "P6", "H1", "PL1", "C5", "V1", "G1", "SPX1")
 _R26_11_4 = ("V2", "PL2", "PL3", "CG1", "MGE1", "SAT1", "ECE1", "O1", "O2", "LPL1", "SYM1", "LRV1", "LGRT1", "MGE2",
              "MV1", "V3", "LR1", "GART1", "GART2")
@@ -681,6 +748,7 @@ _R26_11_4 = ("V2", "PL2", "PL3", "CG1", "MGE1", "SAT1", "ECE1", "O1", "O2", "LPL
 
 @pytest.mark.parametrize(("stage", "note", "holders"), [
     ("ECE2", "planning/measurements/2026-11-26_c70_tier1_inputs.md", (*_ROOT13, *_R26_11_4, "GV1", "EGV1")),
+    ("MIR1", "planning/measurements/2026-11-26_c70_tier1_inputs.md", (*_ROOT13, *_R26_11_4, "GV1", "EGV1", "ECE2")),
 ])
 def test_c70_template_has_real_sums_found_in_the_note_and_expect_lines_over_its_holders(stage, note, holders):
     se = _stage_est()
@@ -698,7 +766,9 @@ def test_c70_template_has_real_sums_found_in_the_note_and_expect_lines_over_its_
 
 @pytest.mark.parametrize(
     ("stage", "expected_after"),
-    [("ECE2", ("EGV1",)), ("MIR1", ("ECE2",)), ("ASG1", ("MIR1",))],
+    # ASG1's prep template is removed (card C-70, 2026-11-26: Data.zip holds no genome sequence, and the orchestrating
+    # session decided that ASG1 has no template), so its case of this prep test goes with it.
+    [("ECE2", ("EGV1",)), ("MIR1", ("ECE2",))],
 )
 def test_c70_stage_confs_validate_against_stage_est(stage: str, expected_after: tuple[str, ...]):
     se = _stage_est()
