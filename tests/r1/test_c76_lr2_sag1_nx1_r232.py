@@ -28,6 +28,7 @@ REPO = Path(__file__).resolve().parents[2]
 BSP = REPO / "scripts" / "stress" / "build_stage_pod"
 TEMPLATES = BSP / "stages" / "templates"
 NOTE = "planning/measurements/2026-11-26_lr2_sag1_nx1_r232.md"
+R19_NOTE = "planning/measurements/2026-11-27_staged_fasta_scan.md"
 
 
 def _load(name: str, file: str):
@@ -283,14 +284,225 @@ def test_templates_pass_stage_est_and_carry_the_cards_values():
     assert confs["NX1"].after == ("SAG1",)
     assert confs["LR2"].genecall_mode == "gv-meta-c25"
     assert confs["SAG1"].genecall_mode == "default" and confs["NX1"].genecall_mode == "default"
-    fasta = {"LR2": "lr2_compendia.fna.gz", "SAG1": "sag1_gorg.fna.gz", "NX1": "nx1_compendia.fna.gz"}
+    # card R-19: LR2 is re-staged under a new FASTA name; its SUMs are recorded in R-19's note, the others in C-76's
+    fasta = {"LR2": "lr2_compendia_r19.fna.gz", "SAG1": "sag1_gorg.fna.gz", "NX1": "nx1_compendia.fna.gz"}
     note = (REPO / NOTE).read_text(encoding="utf-8")
+    notes = {"LR2": (REPO / R19_NOTE).read_text(encoding="utf-8"), "SAG1": note, "NX1": note}
+    assert R19_NOTE in confs["LR2"].notes
     allowed = {"S1", "P1", "P2", "P3", "P4", "P5", "P6", "H1", "PL1", "C5", "V1", "G1", "SPX1"}
     allowed |= {s for s, _ in a26.R26_11_4_CHAIN}
     for s, c in confs.items():
         assert {n for _, n in c.sums} == {"genomes.json", "objects.json", fasta[s]}, s
         for h, _ in c.sums:
-            assert h in note, f"{s}: SUM {h} not in the note"
+            assert h in notes[s], f"{s}: SUM {h} not in the note"
         assert set(c.expect) <= allowed
         for owner, (n, _) in c.expect.items():
             assert n > 0
+
+
+# --- card R-19: LR2 re-staged from its four archives ----------------------------------------------------------------
+#
+# The fixture archives have the layout of the four LR2 inputs on the pod. Truth by hand: which contig is in which
+# member, which member is gzip-compressed (the Bickhart bins' `bin.1.fa.gz`, read as plain text by card C-66), which
+# assembly contig is binned, short or circular, and the genetic codes C-66 recorded for the two sources it read right.
+
+pytestmark_r19 = pytest.mark.covers("R-19")
+
+
+def dna(tag: str, n: int) -> bytes:
+    out, h = bytearray(), hashlib.sha256(tag.encode()).digest()
+    while len(out) < n:
+        out += bytes(b"ACGT"[x & 3] for x in h)
+        h = hashlib.sha256(h).digest()
+    return bytes(out[:n])
+
+
+def wrap(seq: bytes, w: int = 60) -> bytes:
+    return b"".join(seq[i:i + w] + b"\n" for i in range(0, len(seq), w))
+
+
+def fasta_bytes(recs) -> bytes:
+    return b"".join(b">" + h.encode() + b"\n" + wrap(s) for h, s in recs)
+
+
+def _tar(path: Path, members: dict[str, bytes]) -> None:
+    import io
+    import tarfile
+
+    with tarfile.open(path, "w:gz") as t:
+        for name, data in members.items():
+            info = tarfile.TarInfo(name)
+            info.size = len(data)
+            t.addfile(info, io.BytesIO(data))
+
+
+SEQ = {"e1a": dna("e1a", 3000), "e1b": dna("e1b", 2000), "s1": dna("s1", 2500), "s2": dna("s2", 2600),
+       "c1": dna("c1", 6000), "c2": dna("c2", 3000), "c3": dna("c3", 5500) + dna("c3", 50), "c4": dna("c4", 7000),
+       "c5": dna("c5", 4000)}  # contig_3 ends with a copy of its first 50 bases (a terminal direct repeat)
+CIRCULAR = {3, 4}  # assembly_info.txt: contig_3 (binned, its repeat trimmed only in the unbinned pass) and contig_4
+
+
+def uid(seq: bytes) -> str:
+    return blake3(seq.upper()).digest(length=16).hex()
+
+
+def lr2_world(tmp: Path, *, bad_bin: bool = False) -> dict:
+    dl = tmp / "dl"
+    dl.mkdir(parents=True)
+    _tar(dl / "EMERGE_MAGs_2019_long-short-hybrid.tar.gz",
+         {"MAGs/e1.fa": fasta_bytes([("k141_1 len=3000", SEQ["e1a"]), ("k141_2", SEQ["e1b"])]),
+          "MAGs/README.txt": b"not a genome\n"})
+    _tar(dl / "MQ_HQ_MAGs_20200502.tar.gz",
+         {"MAGs/s1.fa.gz": gzip.compress(fasta_bytes([("s1_c1", SEQ["s1"])]), mtime=0),
+          "MAGs/s2.fa": fasta_bytes([("s2_c1", SEQ["s2"])])})
+    c3 = SEQ["c3"][:100] + b"\xe5" + SEQ["c3"][101:] if bad_bin else SEQ["c3"]
+    _tar(dl / "hifi_das.bin3c.bins.tar.gz",
+         {"bins/bin.1.fa.gz": gzip.compress(fasta_bytes([("contig_1", SEQ["c1"]), ("contig_2", SEQ["c2"])]), mtime=0),
+          "bins/bin.2.fa": fasta_bytes([("contig_3", c3)])})
+    info = "#seq_name\tlength\tcov.\tcirc.\trepeat\n" + "".join(
+        f"contig_{i}\t{len(SEQ[f'c{i}'])}\t10\t{'Y' if i in CIRCULAR else 'N'}\tN\n" for i in range(1, 6))
+    _tar(dl / "metaflye_hifi_asm.tar.gz",
+         {"asm/assembly_info.txt": info.encode(),
+          "asm/assembly.fasta": fasta_bytes([(f"contig_{i}", SEQ[f"c{i}"]) for i in range(1, 6)])})
+    meta = tmp / "metadata_MAGs_2019_EMERGE.tsv"
+    meta.write_text("filename\tclassification\tCompleteness\tContamination\ne1.fa\td__Bacteria;s__x\t95\t1\n")
+    old = tmp / "old"
+    old.mkdir()
+    gc_rows = [["emerge2019:e1", "emerge_stordalen_2019_hifi", "5000", "2", "mag_hq", "11", "below_100kb", "False",
+                "0.0", "0.0", "", ""],
+               ["singleton2021:s1", "singleton_2021_wwtp_ont", "2500", "1", "mag_hq", "25", "code25_gain", "True",
+                "0.7", "300.0", "0.9", "0.7"],
+               ["singleton2021:s2", "singleton_2021_wwtp_ont", "2600", "1", "mag_hq", "11", "below_100kb", "False",
+                "0.0", "0.0", "", ""]]
+    head = ["genome_id", "source_name", "genome_bp", "n_contigs", "assembly_quality", "genetic_code", "reason",
+            "tested_alt", "cd_11", "mean_orf_11", "cd_25", "cd_4"]
+    (old / "genetic_codes.tsv").write_bytes(("\r\n".join("\t".join(r) for r in [head, *gc_rows]) + "\r\n").encode())
+    # C-66's records of the two sources it read right, as C-66 wrote them (csv, CRLF)
+    rec = [["emerge2019:e1", "emerge_stordalen_2019_hifi", "0", uid(SEQ["e1a"]), "3000", "0", "prokaryote", "mag_hq",
+            "11", "d__Bacteria;s__x"],
+           ["emerge2019:e1", "emerge_stordalen_2019_hifi", "1", uid(SEQ["e1b"]), "2000", "0", "prokaryote", "mag_hq",
+            "11", "d__Bacteria;s__x"],
+           ["singleton2021:s1", "singleton_2021_wwtp_ont", "0", uid(SEQ["s1"]), "2500", "0", "prokaryote", "mag_hq",
+            "25", ""],
+           ["singleton2021:s2", "singleton_2021_wwtp_ont", "0", uid(SEQ["s2"]), "2600", "0", "prokaryote", "mag_hq",
+            "11", ""],
+           ["bickhart_bin:bin.1", "bickhart_2022_rumen_hifi", "0", "00" * 16, "9", "0", "prokaryote", "mag_hq", "11",
+            ""]]
+    (old / "records.tsv").write_bytes(("\r\n".join("\t".join(r) for r in [RECORDS_HEAD, *rec]) + "\r\n").encode())
+    (old / "objects_staging.json").write_text(json.dumps([{
+        "path": "/stor/x/LR2/lr2_compendia.fna.gz", "source_name": "c66_lr2_compendia", "source_release": "2026-11-24",
+        "license": "CC BY 4.0", "redistributable": True, "retrieved_at": "2026-11-24T00:00:00Z"}], indent=2))
+    return {"dl": dl, "meta": meta, "old": old, "tmp": tmp}
+
+
+def _restage(m, w, name="out"):
+    return m.restage_lr2(w["dl"], w["meta"], w["old"], w["tmp"] / name, w["tmp"] / name / "fa" / "lr2_r19.fna.gz",
+                         "/tmp/if2453/s2/inputs/LR2", workers=1, compressor="gzip")
+
+
+def _read_fasta(path: Path) -> list[tuple[str, bytes]]:
+    recs, h, s = [], None, []
+    with gzip.open(path, "rb") as f:
+        for ln in f:
+            ln = ln.rstrip(b"\n")
+            if ln.startswith(b">"):
+                if h is not None:
+                    recs.append((h, b"".join(s)))
+                h, s = ln[1:].decode(), []
+            else:
+                s.append(ln)
+    if h is not None:
+        recs.append((h, b"".join(s)))
+    return recs
+
+
+@pytestmark_r19
+def test_r19_a_gzip_member_is_read_by_its_magic_whatever_its_name(tmp_path: Path):
+    import io
+    import tarfile
+
+    m = _mod()
+    p = tmp_path / "a.tar.gz"
+    _tar(p, {"x.fa": gzip.compress(b">a\nACGT\n", mtime=0), "y.fa.gz": b">b\nGG\n"})
+    with tarfile.open(p, "r:*") as tf:
+        got = {mb.name: list(m.strict_records(m.member_stream(tf, mb), mb.name)) for mb in tf if mb.isfile()}
+    assert got == {"x.fa": [("a", b"ACGT")], "y.fa.gz": [("b", b"GG")]}
+    with pytest.raises(m.Refused, match="not UTF-8"):
+        list(m.strict_records(io.BytesIO(b">\xff\nAC\n"), "t"))
+    with pytest.raises(m.Refused, match="IUPAC"):
+        list(m.strict_records(io.BytesIO(b">a\nAC\x1f\x8b\n"), "t"))
+    with pytest.raises(m.Refused, match="before the first header"):
+        list(m.strict_records(io.BytesIO(b"\x1f\x8b\x08\n>a\nAC\n"), "t"))
+
+
+@pytestmark_r19
+def test_r19_restage_decompresses_the_bins_and_writes_only_sequence(tmp_path: Path):
+    m = _mod()
+    w = lr2_world(tmp_path)
+    rep = _restage(m, w)
+    out = tmp_path / "out"
+    recs = _read_fasta(Path(rep["fasta_path"]))
+    want = [SEQ[k] for k in ("e1a", "e1b", "s1", "s2", "c1", "c2", "c3", "c4")]
+    assert [s for _, s in recs] == want  # the bins' sequences, not their compressed bytes
+    assert [h for h, _ in recs] == [uid(s) for s in want]
+    scan = _load("r19_fasta_scan", "r19_fasta_scan.py").scan_file(Path(rep["fasta_path"]))
+    assert scan["status"] == "clean" and scan["records"] == 8
+    assert rep["members"] == {"bins:gzip": 1, "bins:plain": 1, "emerge:plain": 1, "singleton:gzip": 1,
+                              "singleton:plain": 1}
+    g = json.loads((out / "genomes.json").read_text())
+    assert [x["contig_uids"] for x in g] == [[uid(SEQ["e1a"]), uid(SEQ["e1b"])], [uid(SEQ["s1"])], [uid(SEQ["s2"])],
+                                             [uid(SEQ["c1"]), uid(SEQ["c2"])], [uid(SEQ["c3"])], [uid(SEQ["c4"])]]
+    # contig_1 and contig_3 are binned and left out of the unbinned set (contig_3 by its name: its repeat is trimmed
+    # in the unbinned pass, so its uid is not its bin's); contig_2 and contig_5 are under 5 kb; contig_4 is circular
+    # (assembly_info) and has no terminal repeat
+    assert (rep["unbinned_already_binned_skipped"], rep["unbinned_binned_by_name_skipped"],
+            rep["unbinned_short_dropped"], rep["unbinned_contigs_kept"]) == (1, 1, 2, 1)
+    assert rep["dtr_trimmed"] == 0  # contig_3's trim is not recorded: it is not staged as unbinned
+    assert (out / "trims.tsv").read_text().splitlines() == ["genome_id\tcontig_name\traw_len\ttrimmed_k\tfinal_len"]
+    assert g[-1]["circular"] == [uid(SEQ["c4"])] and g[-1]["assembly_quality"] == "contig"
+    # the codes C-66 gave the sources it read right are kept (s1: 25); the bins are screened (under 100 kb: 11)
+    assert [x["genetic_code"] for x in g] == [11, 25, 11, 11, 11, 11]
+    assert rep["genomes_by_source"] == {"bickhart_2022_rumen_hifi": 2, "bickhart_2022_rumen_hifi_unbinned": 1,
+                                        "emerge_stordalen_2019_hifi": 1, "singleton_2021_wwtp_ont": 2}
+    assert rep["total_bp"] == sum(len(s) for s in want)
+    # C-66's rows of the two sources come out identical; its bins rows are not compared
+    assert rep["preset_rows_compared"] == 4 and rep["preset_rows_first_difference"] is None
+    o = json.loads((out / "objects.json").read_text())
+    assert o[0]["path"] == "/tmp/if2453/s2/inputs/LR2/lr2_r19.fna.gz" and o[0]["source_release"] == "2026-11-27"
+    assert json.loads((out / "objects_staging.json").read_text())[0]["path"] == rep["fasta_path"]
+
+
+@pytestmark_r19
+def test_r19_restage_is_byte_identical_when_run_again(tmp_path: Path):
+    m = _mod()
+    w = lr2_world(tmp_path)
+    a, b = _restage(m, w, "a"), _restage(m, w, "b")
+    assert a["fasta_sha256"] == b["fasta_sha256"]
+    for n in ("genomes.json", "records.tsv", "genetic_codes.tsv", "trims.tsv", "repeated_records.tsv",
+              "shared_records.tsv"):
+        assert sha(tmp_path / "a" / n) == sha(tmp_path / "b" / n), n
+
+
+@pytestmark_r19
+def test_r19_restage_refuses_a_byte_that_is_not_sequence_and_an_existing_target(tmp_path: Path):
+    m = _mod()
+    w = lr2_world(tmp_path, bad_bin=True)
+    with pytest.raises(m.Refused, match="bin.2.fa.*IUPAC"):
+        _restage(m, w)
+    w2 = lr2_world(tmp_path / "w2")
+    _restage(m, w2)
+    with pytest.raises(m.Refused, match="exists"):
+        _restage(m, w2)
+
+
+@pytestmark_r19
+def test_r19_restage_reports_a_row_of_c66_that_comes_out_different(tmp_path: Path):
+    m = _mod()
+    w = lr2_world(tmp_path)
+    p = w["old"] / "records.tsv"
+    p.write_bytes(p.read_bytes().replace(b"\t3000\t", b"\t2999\t"))
+    rep = _restage(m, w)
+    assert rep["preset_rows_first_difference"]["row"] == 1
+    rc = m.main(["restage-lr2", str(w["dl"]), str(w["meta"]), str(w["old"]), str(tmp_path / "cli"),
+                 str(tmp_path / "cli" / "x.fna.gz"), "/tmp/if2453/s2/inputs/LR2", "--compressor", "gzip"])
+    assert rc == 1
