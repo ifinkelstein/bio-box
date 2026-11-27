@@ -3085,7 +3085,21 @@ sources:
       CST (card R-11)
     stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/GBR_MGD/ (SOURCE_URLS.tsv and SHA256SUMS there)
     note: >-
-      The job list's licence field is the literal {}: the record states none, and none is assumed
+      The job list's licence field is the literal {}: the record states none, and none is assumed. DEC-80 ended the
+      hold on it and DEC-85 put it in r26.11.5 as stage GBRMGD; redistributable: false (DEC-80 (3)). The archive holds
+      the 5,283 prokaryote bins and nothing else: no quality or taxonomy table, no eukaryote or virus bins (card C-83)
+    fetched_pod: >-
+      1 of 1 files copied from tower:/mnt/user/research-bulk/bio-box/sources_incoming/GBR_MGD/ to wilkcomp02 by
+      scripts/orchestrator/relay_to_pod.sh (card C-73), 2026-11-27, ending 07:34 CST (103 s), sha256 equal to tower's
+      SHA256SUMS (the provider was not asked again): prokaryote_bins_5283.tar.bz2 (2,967,595,725 bytes) to
+      /stor/scratch/Wilke/if2453/bio-box-staging/GBRMGD/dl/ (card C-83)
+    staged: >-
+      card C-83, 2026-11-27: all 5,283 bins of prokaryote_bins/ (467,187 records, 466,872 distinct contigs,
+      10,238,417,378 bp distinct; all code 11; no accession, so every bin is not visible to the r232 test; no contig
+      held by the root, the r26.11.4 stages or the r26.11.5 stages staged before it) as stage GBRMGD in
+      /tmp/if2453/c83/meta/GBRMGD/ and /stor/scratch/Wilke/if2453/bio-box-staging/GBRMGD/gbrmgd_bins.fna.gz on
+      wilkcomp02, then to tower:/mnt/user/research-bulk/bio-box/sources/GBRMGD/;
+      planning/measurements/2026-11-27_coral_inputs.md
     approved: "by the PI, 2026-11-25 16:51 CST: \"queubatch 3\" (the audit of 2026-11-25)"
   - name: tower_arc1
     what: >-
