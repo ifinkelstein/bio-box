@@ -2206,7 +2206,11 @@ sources:
       CST
     stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/MGE4/ (SOURCE_URLS.tsv and SHA256SUMS there)
     note: >-
-      R-11 (2026-11-26): Samples_name.pdf is a PDF
+      R-11 (2026-11-26): Samples_name.pdf is a PDF. Card C-78 (2026-11-26, the headers read on tower): the three FASTA
+      files are the isolate genome assemblies of one conjugation experiment (EPI005213 donor with pKJK5, 3 contigs,
+      4,619,545 bp; EPI005211 recipient RHB23, 2 contigs, 4,970,005 bp; EPI005212 transconjugant, 117 contigs,
+      4,466,681 bp), not a catalogue of mobile elements: not staged, MGE4 leaves r26.11.5 (DEC-79 (1));
+      planning/measurements/2026-11-26_c78_compact_inputs.md §2
     approved: "by the PI, 2026-11-25 15:47 CST: \"stage the nucleotides ... on tower\" (the audit of 2026-11-25)"
   - name: tower_o3_fungal
     what: >-
@@ -2240,6 +2244,18 @@ sources:
       default User-Agent); bytes and sha256 above measured on tower, copied from SOURCE_URLS.tsv on 2026-11-25 20:12
       CST
     stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/LRP1/ (SOURCE_URLS.tsv and SHA256SUMS there)
+    fetched_pod: >-
+      1 of 1 files copied from tower to wilkcomp02 /stor/scratch/Wilke/if2453/bio-box-staging/LRP1/dl/ by
+      scripts/orchestrator/relay_to_pod.sh (card C-73), 2026-11-26 19:08 CST (2026-11-27 01:08 UTC), 249,389,715 bytes,
+      sha256 26fc65b932b9b9276ce7966877732f4163a8ba5facba52d8de3deda3db18bf65 equal to tower's SHA256SUMS (the provider
+      was not asked again)
+    staged: >-
+      card C-78, 2026-11-26: the file is 78,738 plasmidome contigs of 1,000 bp and more (not a list of 10,942 curated
+      plasmids); 78,737 distinct, kind plasmid, one genome per record, 4,025 exact terminal repeats trimmed and staged
+      circular (DEC-65 (1)), 240,689,693 bp, 13 contigs held by r26.11.4 stages (PL3 9, PL2 2, MGE1 2), as stage LRP1 in
+      /tmp/if2453/c78/meta/LRP1/ and /stor/scratch/Wilke/if2453/bio-box-staging/LRP1/ on wilkcomp02, then to
+      tower:/mnt/user/research-bulk/bio-box/sources/LRP1/; planning/measurements/2026-11-26_c78_compact_inputs.md.
+      redistributable: false (DEC-80 (3): the licence above is the job list's statement, no provider record was read)
     approved: "by the PI, 2026-11-25 15:47 CST: \"stage the nucleotides ... on tower\" (the audit of 2026-11-25)"
   - name: tower_dsv1
     what: >-

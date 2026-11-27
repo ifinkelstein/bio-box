@@ -1,0 +1,101 @@
+# The compact `tower` sets `DPN1`, `SYM2`, `LRP1`, `MIR2`, `MGE4`: what they hold, and their staging (card C-78, DEC-79, DEC-80)
+
+- **Date and host:** 2026-11-26, `wilkcomp02` and `tower`. Every number carries a label (AGENTS §6): *measured* (on
+  the host named, 2026-11-26, by the command or file named), *derived* (formula and inputs), *estimate*, or
+  *published*.
+- **Script:** `scripts/stress/build_stage_pod/c78_compact_tower_sets.py` (`census`, `extract`, `lrp1`, `mir2`, `sym2`,
+  `dpn1-*`); tests `tests/r1/test_c78_compact_tower_sets.py`; templates
+  `scripts/stress/build_stage_pod/stages/templates/{LRP1,MIR2,SYM2,DPN1}.conf`.
+- **Read only:** `tower:/mnt/user/research-bulk/bio-box/sources_incoming/{DPN1,SYM2,LRP1,MIR2,MGE4}/` (`ls -la`,
+  `SOURCE_URLS.tsv`, `SHA256SUMS`, `unzip -l`, `tar -tvzf`, `grep` of FASTA headers), the data root
+  `/tmp/if2453/r10/root`, `/tmp/if2453/s2/inputs/` (the `r26.11.4` stages and `GV1`), the staged `r26.11.5` stages
+  (`/tmp/if2453/c75/meta/GRARE{1,2,3}`, `/tmp/if2453/c66/{LR2,NX1}`, `/tmp/if2453/c58/SAG1`, `/tmp/if2453/c69/EGV1`,
+  `/tmp/if2453/c77/meta/SAG2`), card C-74's index `/tmp/if2453/c74/index/`, card C-75's archaeal references. Nothing
+  was written to the root, to `/tmp/if2453/s2/inputs/` or under `sources_incoming/` on `tower`; nothing under `/stor`
+  was overwritten.
+- **Written:** relayed downloads (64 MiB and more) to `/stor/scratch/Wilke/if2453/bio-box-staging/<STAGE>/dl/`, smaller
+  ones to `/tmp/if2453/c78/dl/<STAGE>/`; staged FASTA to `/stor/scratch/Wilke/if2453/bio-box-staging/<STAGE>/`;
+  metadata to `/tmp/if2453/c78/meta/<STAGE>/`; reports to `/tmp/if2453/c78/work/`.
+
+## 1. What each set holds (the card's first deliverable)
+
+Read on `tower` (`ls -la`, `SOURCE_URLS.tsv`, `unzip -l`, `tar -tvzf`, `grep -c '>'`; *measured*, 2026-11-26 19:00 to
+19:10 CST) and, for the files relayed, by `c78_compact_tower_sets.py census` on the pod (every member named; a FASTA
+member is `dna` when every record is IUPAC nucleotide letters, else `protein`, `alignment` or `not_fasta`; report
+`/tmp/if2453/c78/work/census*.json`).
+
+| Set | Files on `tower` (bytes, *measured*) | What they hold (*measured*) | The plan's warning | Verdict |
+|---|---|---|---|---|
+| `MGE4` | `Donor_strain-pKJK5_AtraI.fasta` 4,696,601; `RHB23_traJ_reconverted.fasta` 5,052,879; `Transconjugant.fasta` 4,543,652; `Samples_name.pdf` 31,942 | three isolate genome assemblies, one per file (headers `EPI005213_contig_1..3`, `EPI005211_contig_1..2`, `EPI005212_contig_1..117`): the donor 4,550,895 + 54,066 + 14,584 bp (a chromosome, a plasmid the size of pKJK5, about 54 kb, and a small contig), the recipient RHB23 4,860,572 + 109,433 bp, the transconjugant 117 contigs, 4,466,681 bp, the largest 418,022 bp | "lab strains of one experiment rather than mobile elements" | **true; not staged** (§2) |
+| `LRP1` | `metagenome_plasmidome_plasmid2.fasta` 249,389,715 | **78,738 contigs**, 241,335,107 bp, 1,000 to 224,924 bp each: plasmidome (circular-DNA-enriched metagenome) assemblies of many samples (`DP-Sample<n>-...`, `18097D-03-<n>-...`), SPAdes `NODE_` names; 2,503 headers say `_type_circular`, 2,896 are `RNODE_` records | none | **staged** (§3); the record says "10,942 plasmids" (plan §4.6, survey 1e), the file holds 78,738 contigs, 69,004 of them under 5 kb |
+| `MIR2` | `genomes_polinton_virophages.zip` 8,293,636; `PLV_framework_supplementary_data.tar.gz` 265,729,817; `protist_genomes_assembled.tar.gz` 831,184,917; `EVE_annotations_table.zip` 26,563,179; `README.txt` 1,238 | the zip: one FASTA, 1,193 PLV and virophage genomes, 27,836,611 bp (6,044 to 63,893 bp; names are protist-assembly coordinates, `N-HFG070301-C1323_2898-26282`, as `README.txt` says); the framework tar: 966 members, 19 of them genome DNA FASTA, 59,078 records, 633,726,614 bp (`fasta_unsorted_PLV/IMGVR_PLV_all.fasta`, 52,658 IMG/VR UViGs, 548,922,055 bp; `fasta_unsorted_PLV/Austrian_lake_metavirome_PLVs.fasta`, 3,328 contigs, 25,263,516 bp; 17 `annotated_PLVs/*.fasta`, 3,092 records, 59.5 Mbp, many of them copies of the unsorted ones), the rest protein FASTA (9), alignments (294), HMMs, trees, GFF, structures, tables; the protist tar: eleven `<species>_1kb.fasta.gz` assemblies of cryptophytes and chrysophytes (12,495,681 to 194,758,266 bytes each); `EVE_annotations_table.zip` a table | "the large archive of `MIR2` looks like protist host genomes" | **true for `protist_genomes_assembled.tar.gz`** (eukaryote host assemblies, left for card C-60); the zip and the framework's DNA are viruses: **staged** (§4) |
+| `SYM2` | `assemblies_fna.tar.gz` 2,789,033,552; `bins_fna.tar.gz` 161,076,450; `viruses.fna.tar.gz` 113,889,853; `source_data.tar.gz` 254,624,379 | `assemblies_fna`: 453 whole assemblies of single-protist libraries (`LKH<n>_P<plate>_<Am, Ci, Co, Rh>.fna`: 114 `Am`, 262 `Ci`, 19 `Co`, 58 `Rh`; 9,640,806,649 bytes uncompressed, one file empty, the largest 161,530,688), the hosts' and their symbionts' DNA together; `bins_fna`: **625 bins**, 27,816 contigs, 515,578,694 bp; `viruses.fna`: one FASTA, **64,460 viral contigs**, 389,958,735 bp, 500 to 459,844 bp, grouped by library (`LKH041_P01_Ci_virus|NODE_...`); `source_data`: the paper's tables, notebooks, trees and figures (one DNA FASTA of 813 18S rRNA genes) | "the large archive of `SYM2` looks like protist host genomes" | **true for `assemblies_fna.tar.gz`** (left for card C-60); bins and viral contigs **staged** (§5) |
+| `DPN1` | `Nanobdellota_Zen.zip` 9,013,602,602; `3662_DPANN_archaeal_genomes.tar.gz` 976,420,873; `DPANN_viruses_and_unclassified_MGEs_assembled_from_metagenomes.fna` 517,244; two metadata tables (493,344 and 1,660) | the tar: **3,662 genome FASTA** (`3662.DPANN.genomes/<GCA_..., IMG id>_genomic.fna`), 3,265,594,791 bytes; the MGE FASTA: 26 contigs; the zip: 98,490 entries, of which **genome FASTA are 259 files** (`genomes/complete_208/`, 208 closed genomes, and `genomes/noncircular_51/`, 51; 318,637,440 bytes) and the 243 NCBI genomes the study compared them with (`ncbi_all/hq_genomes/NCBI_GCA_*.fna`, 243,293,749 bytes); everything else is analysis: an ESMFold structure archive `deposit_artifacts/esmfold_pdbs.tar.gz` (6,051,186,772 bytes) and its Foldseek database (0.31 GB), OrthoFinder output (47,123 protein `.fa`, 42,859 `.tsv`, 2.44 GB), KofamScan tables (2.35 GB), proteomes (`.faa`, about 1.0 GB), genes (`.ffn`, `.gff`), trees, alignments, HMMs, figures | "9.99 GB is far more than 256 DPANN genomes and their elements" | **true**: 0.56 GB of the zip is genome FASTA and 8.4 GB is structures, orthologue tables and annotations (§6) |
+
+## 2. `MGE4` leaves `r26.11.5`
+
+The three FASTA files are the whole-genome assemblies of one conjugation experiment (donor `EPI005213` with the
+plasmid pKJK5, recipient `RHB23` with `traJ`, transconjugant `EPI005212`; record `zenodo.22794128`; `Samples_name.pdf`
+is the sample sheet). They are isolate genomes of lab strains, not a catalogue of mobile elements; the survey's
+"PIMEs + capsid satellites + AVGD" (plan §10) is not what landed. By the card's rule `MGE4` is not staged and leaves
+`r26.11.5` (DEC-79 (1): it moves to `r26.11.6` without a row; here there is nothing of it to stage there either). The
+plasmid contigs (`EPI005213_contig_2`, 54,066 bp; `EPI005211_contig_2`, 109,433 bp) are not split out: the card names
+no such rule. Nothing of `MGE4` was relayed to the pod. In the chain, `MV2` takes `AFTER=MIR2` (plan §5).
+
+## 3. `LRP1`
+
+**Bytes.** `metagenome_plasmidome_plasmid2.fasta` to `/stor/scratch/Wilke/if2453/bio-box-staging/LRP1/dl/` by
+`scripts/orchestrator/relay_to_pod.sh` (card C-73), `--dry-run` first, the list `tower`'s `SHA256SUMS` (copied with
+`scp`): 249,389,715 bytes in 9 s (27.71 MB/s), sha256 `26fc65b932b9b9276ce7966877732f4163a8ba5facba52d8de3deda3db18bf65`
+equal to the record (*measured*, the relay's log, 19:08 CST).
+
+**Rule** (`lrp1`): every DNA record is one genome, `kind="plasmid"`, code 11, header as deposited; DEC-65 (1)
+(metagenome-assembled): an exact 20..1,000 bp terminal repeat is trimmed once and the record staged circular
+(`assembly_quality` `complete`); a record whose header says `circular` and has no repeat would be circular as it
+stands (none was); every other record is linear and whole (`contig`). A record whose sequence repeats an earlier one is
+listed once (DEC-27).
+
+| | Value (*measured*, `lrp1`, report `/tmp/if2453/c78/work/lrp1_report.json`) |
+|---|---:|
+| Records read | 78,738 |
+| Genomes (one record each) | 78,737 (1 exact repeat skipped: `skipped_records.tsv`) |
+| Bases | 240,689,693 bp |
+| Terminal repeats (`c48c_virus_inputs.ends`, classes) | `exact` 4,025 trimmed (639,721 bp removed), `partial` 1,505, `long` 448, `low_complexity` 1, `none` 72,758 (one more `exact` in the repeat skipped) |
+| Circular genomes | 4,025 (of 2,503 headers that say `_type_circular`; every circular one had an exact repeat) |
+| Records under 5,000 bp | 69,004 (kept: plan §2 keeps plasmids whole) |
+| Held by the root's 13 stored stages | 0 |
+| Held by the `r26.11.4` stages (exact `contig_uid`) | **13 contigs, 40,741 bp**: `PL3` 9 (33,788 bp), `PL2` 2 (2,536 bp), `MGE1` 2 (4,417 bp); `ECE1`, `LPL1`, `PL1` 0 |
+| Held only by an `r26.11.5` stage before it | 2 contigs, 3,104 bp: `GRARE2` 1, `NX1` 1 (`later_records.tsv`) |
+| New | 78,724 contigs, 240,648,952 bp (0.241 Gbp; 78,722 and 240,645,848 bp after the later holders) |
+| `s2_check_inputs.py` (with `objects_staging.json`) | exit 0, `problems: []`, 78,737 genomes and `genome_input` rows, kind `plasmid`, code 11 |
+
+`ECE2` (card C-70) was being restaged while this ran, so `LRP1`'s exact overlap with it is card A-29's (chain order),
+as are `DPN1` and `SYM2`, which come before `LRP1` in the chain and were staged after it here (smallest first). Against
+the plan: new bases 0.241 Gbp against "under 0.3" (*estimate*); the record count differs (78,738 contigs against
+"10,942 plasmids", survey 1e), which is recorded, not resolved: the file is the assembly, not a curated plasmid list.
+`redistributable: false` (DEC-80 (3): "CC BY 4.0 as the job list states it", no provider record read).
+
+| File | Where | Bytes | sha256 |
+|---|---|---:|---|
+| `lrp1_urban_water_plasmidome.fna` | `/stor/scratch/Wilke/if2453/bio-box-staging/LRP1/` | 248,738,773 | `e28a44bb6d26789208705986ae052f03444fe2585f6169da539365483598797a` |
+| `genomes.json` | `/tmp/if2453/c78/meta/LRP1/` | 11,168,080 | `146a72757c2a32d18766a25b8e40abfc7154439f036920e998f1bf4de9754437` |
+| `objects.json` | same | 488 | `aae43066322dd3b1b648786f11665f373639217ab2cace1a4fa8dab6f439cafe` |
+| `objects_staging.json` | same | 509 | `98e7e4cf836f29f2df764c50fa6860512f48ea07612a192f565701b54c4d54a7` |
+| `records.tsv` | same | 18,687,479 | `0067605abb6f36c6fe8c6ef41cd197afd27bccdacc03cfbdd9a65fd3c5e43501` |
+| `trims.tsv` | same | 940,022 | `731533bc7dfcd91f0a752f94fd76c94cebea1cad5083b513e0ef69a506ff3c3a` |
+| `shared_records.tsv` | same | 1,418 | `9c6f28b954fa5900a2907a37520d091a4e131782281bdc2c90ee7b2d57f9cbee` |
+| `later_records.tsv` | same | 235 | `97598d022c0e071b0fdc7b9387f053df253a9b505538bb6751a4a4ab1cb86311` |
+| `skipped_records.tsv` | same | 216 | `6e2e816b44ce436f1ab98ed4a14fb4d9aa8dde26efbe1e2414a2d57e6e1b1a4e` |
+| `repeated_records.tsv` (header only) | same | 39 | `d109495ee76e4643c181eae183c452c9a84560f97a79bbe22d6630780368c565` |
+
+All *measured* (`ids.sha256_file`, the script's report). `objects.json` names
+`/tmp/if2453/s2/inputs/LRP1/lrp1_urban_water_plasmidome.fna` (card A-29 copies there). Template: `DEPTH=annotated`,
+`LIBRARY=pfam 38.2 gathering`, `CRISPR=yes`, `AFTER=SYM2`, `EXPECT=held_by` for `MGE1` 2, `PL2` 2, `PL3` 9.
+Build cost (*derived*, plan §3: R2 for meta-mode calling, about 93.5 to 135.3, plus R3 2,090 to 2,740 CPU-minutes per
+new Gbp, × 0.2406): about **525 to 692 CPU-minutes**, inside the plan's "at most about 820".
+`stage_est.py conf` on the template (`--tree`, in the image): exit 0 (*measured*, unit `c78-est-lrp1`).
+
+**Mirror** (*measured*, the relay's log, 19:26 CST): `scripts/orchestrator/relay_to_tower.sh`, `--dry-run` first, two
+runs to `tower:/mnt/user/research-bulk/bio-box/sources/LRP1/`: the FASTA (248,738,773 B in 9 s, 27.64 MB/s) and the nine
+metadata files of the table; every sha256 on `tower` equal to the table's, `DONE: 1 verified` and `DONE: 9 verified, 0
+failed`; `SHA256SUMS` there has 10 lines.
