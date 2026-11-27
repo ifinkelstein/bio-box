@@ -10,7 +10,8 @@
   stages and `GV1`), and the staged metadata of the `r26.11.5` stages on the pod (§2.3). Nothing was written to the
   root or to `/tmp/if2453/s2/inputs/`; nothing under `/stor` was overwritten; the GlobDB r226 archive was not read.
 - **Written:** `gwv1_gwvc.fna.gz` and `sag3_omz.fna.gz` (each over 64 MB) to
-  `/stor/scratch/Wilke/if2453/bio-box-staging/{GWV1,SAG3}/`; metadata to `/tmp/if2453/c81/meta/{GWV1,SAG3}/`; reports,
+  `/stor/scratch/Wilke/if2453/bio-box-staging/{GWV1,SAG3}/`, with `GWV1`'s 78 MB `records.tsv` (§4); the other
+  metadata to `/tmp/if2453/c81/meta/{GWV1,SAG3}/`; reports,
   ANI tables and inspection files to `/tmp/if2453/c81/work/`.
 
 ## 0. Summary
@@ -18,18 +19,23 @@
 | | `GWV1` | `SAG3` | `WET1` |
 |---|---:|---:|---:|
 | Set | Groundwater Virome Catalogue, 280,420 vOTUs of 5 kb and more | OMZ single-cell compendium, 3,570 assembled SAGs | GWM wetlands, 4,164 dereplicated MAGs |
-| Genomes staged | 280,420 | @@S3_G@@ | **waits** (§5) |
-| Contigs (distinct) | 280,420 | @@S3_C@@ | |
-| bp staged | 3,740,796,061 | @@S3_BP@@ | |
-| Held by the root or `r26.11.4` (exact `contig_uid`) | 70 contigs, 18,912,716 bp (all `H1`) | @@S3_HELD@@ | |
-| Held by the `r26.11.5` stages on the pod before it | 0 | @@S3_LATER@@ | |
-| New bp (after both) | 3,721,883,345 | @@S3_NEW@@ | |
-| Left out | nothing (no repeat, no refusal) | @@S3_OUT@@ | the whole set, for now |
-| `s2_check_inputs.py` | exit 0, `problems: []`, `gene_call_mode` `{"virus": "gv-meta"}` | @@S3_CHECK@@ | |
-| Template | `DEPTH=called`, `CRISPR=yes`, `AFTER=INPH2604`, `EXPECT=held_by H1 70` | `DEPTH=called`, `CRISPR=yes`, `AFTER=GWV1` | none |
+| Genomes staged | 280,420 | 3,570 cells, 3,568 genomes (2 repeated contig sets, DEC-27) | **waits** (§5) |
+| Contigs (distinct) | 280,420 | 299,181 | |
+| bp staged | 3,740,796,061 | 2,405,536,267 distinct (2,408,106,251 in all records) | |
+| Held by the root or `r26.11.4` (exact `contig_uid`) | 70 contigs, 18,912,716 bp (all `H1`) | 1,280 contigs, 28,838,169 bp (`GART1`, `G1`, `GART2`, `PL3`, `MV1`, `V2`) | |
+| Held by the `r26.11.5` stages on the pod before it | 0 | 52,307 contigs, 852,786,641 bp (`SAG1` 50,613: 1,100 GORG-Tropics cells; `GRARE1` 690; `MV2` 2; `MVEUKV` 2) | |
+| New bp (after both) | 3,721,883,345 | 1,523,911,457 | |
+| r232 status | (viruses: not asked) | in GTDB R232 574 (of which in GlobDB r232 439), not in GTDB R232 2,855, not visible 141 | |
+| ANI, recorded (nothing cut) | 320 of 11,216 sampled vOTUs (2.9 %) meet the vOTU threshold with `MV1`, `V2`, `V3` or `MV2` | 1,739 of 3,568 meet ANI 96 / AF 50 with `SAG1`, `SAG2` or r226 archaea of the same genus (1,104 are the same cell) | |
+| Left out | nothing (no repeat, no refusal) | nothing but 2 repeated contig sets listed once (DEC-27) | the whole set, for now |
+| `s2_check_inputs.py` | exit 0, `problems: []`, `gene_call_mode` `{"virus": "gv-meta"}` | exit 0, `problems: []`, codes `[11, 25]` | |
+| Template | `DEPTH=called`, `CRISPR=yes`, `AFTER=INPH2604`, `EXPECT=held_by H1 70` | `DEPTH=called`, `CRISPR=yes`, `AFTER=GWV1`, six `EXPECT` lines (§3.3) | none |
 
 All *measured* (the scripts' reports `/tmp/if2453/c81/work/{gwv1,sag3}_report.json`). Against the C-72 note's
-estimates (*estimate*: `GWV1` 3.6 to 4.0 Gbp, `SAG3` 2.3 to 2.5 Gbp): `GWV1` 3.741 Gbp is inside; @@S3_EST@@.
+estimates (*estimate*: `GWV1` 3.6 to 4.0 Gbp, `SAG3` 2.3 to 2.5 Gbp): `GWV1` 3.741 Gbp is inside; `SAG3`'s 2.408 Gbp
+is inside, but its new bases, 1.524 Gbp, are 34 % under the lower bound (*derived*: 1 − 1.524 / 2.3), because 1,100
+of its cells are `SAG1`'s (§3.3). The estimate was of the set's size, which is met; the shortfall is reported here
+(AGENTS §6) and was not taken as a stop, since nothing in the card's plan depends on `SAG3`'s new bases.
 
 ## 1. The bytes on the pod
 
@@ -110,7 +116,39 @@ of `PRJNA858913` were released with the paper (2024), after IMG/VR v4.1 and befo
 
 ### 2.4 The vOTU threshold on a sample (card C-48c's method)
 
-@@GWV1_ANI@@
+`c81_gwv1_sag3_wet1.py gwv1-ani` (*measured*, `/tmp/if2453/c81/work/gwv1_ani/summary.json` and one skani table per
+chunk, `<STAGE>.<n>.tsv`): the sample is every 25th non-repeated `GWV1` genome in FASTA order, **11,216 vOTUs,
+149,851,979 bp**; the references are the whole of `V2` (`imgvr_v4.1_hc_hq_votu_reps.fna` and `inovirus_roux2019.fna`),
+`MV2` (`mv2.fna`), `V3` (`vire_v3_dna_votus.fna`) and `MV1` (`metavr_mv1.fna`), about 80 GB of FASTA. Card C-48c's
+skani settings through `c39_ani.skani` (`skani dist -c 30 -m 200 --min-af 0 --qi --ri`, from the image, 8 threads),
+with the roles turned round so that skani holds the small side's sketches: the sample is skani's reference set and
+each held stage's records are the queries, read in chunks of about 4 Gbp (21 skani processes in all). The vOTU
+threshold is ANI >= 95 % over >= 85 % of the shorter sequence (rule `shorter`; read as the larger of the two aligned
+fractions, since both count the same aligned bases, so no length of the held record is needed); `both` and
+`near_identical` as `c39_ani`.
+
+| Held stage | `shorter` | `both` | `near_identical` | skani runs | CPU-seconds (*measured*) |
+|---|---:|---:|---:|---:|---:|
+| `MV1` | 270 | 9 | 1 | 10 | 3,418.4 (largest run 1,638.3) |
+| `V3` | 118 | 4 | 1 | 7 | 557.9 |
+| `V2` | 102 | 6 | 1 | 3 | 839.1 |
+| `MV2` | 16 | 0 | 0 | 1 | 29.8 |
+| **any of them** | **320 (2.85 %)** | **12** | **1** | 21 | 4,845.2 |
+
+| `shorter`, any held stage, by CheckV quality | Queries | Meet |
+|---|---:|---:|
+| Complete | 210 | 8 |
+| High-quality | 247 | 7 |
+| Medium-quality | 636 | 18 |
+| Low-quality | 8,366 | 276 |
+| Not-determined | 1,757 | 11 |
+
+By length: under 10 kb 205 of 6,917; 10 to 30 kb 87 of 3,272; 30 to 100 kb 27 of 990; 100 kb and more 1 of 37. All
+*measured*; percentages *derived* (meet / queries). Reading: about 2.9 % ± 0.3 % of `GWV1`'s vOTUs (*derived*: two
+binomial standard errors at n = 11,216) are, at the vOTU threshold, a vOTU or a fragment of a virus that MetaVR, IMG/VR
+or VIRE already holds, almost all as the shorter of the pair (only 12 cover each other both ways), against 0 exact
+`contig_uid` matches; the C-72 note's estimate was under 10 % (*estimate*). They are staged: DEC-26 deduplicates by
+exact `contig_uid` only, and the card records the sample, it does not cut by it.
 
 ## 3. `SAG3`
 
@@ -192,15 +230,41 @@ read-only count over `later_records.tsv` and `records.tsv`). The compendium gath
 oxygen-deficient waters with its own. Nothing is removed for it: the cells are listed in `SAG3`'s `genomes.json`
 (DEC-27) and `SAG1`, earlier in the chain, owns their contigs (DEC-26), so the build stores them once; card A-29 writes
 the `EXPECT=held_by SAG1` line. `GRARE1` holds 7 `SAG3` cells whole (archaeal or unclassified-domain SAGs that GlobDB
-r226 carries). So of `SAG3`'s 2.408 Gbp, 1.524 Gbp is new (*derived* above), 37 % under the C-72 note's 2.3 to 2.5 Gbp
-(*estimate*), which was of the set's size and did not know of the shared cells. The set's own size, 2.408 Gbp, is
+r226 carries). So of `SAG3`'s 2.408 Gbp, 1.524 Gbp is new (*measured* above), 34 % under the lower bound of the C-72
+note's 2.3 to 2.5 Gbp (*derived*: 1 − 1.524 / 2.3; an *estimate* of the set's size that did not know of the shared
+cells). The set's own size, 2.408 Gbp, is
 inside that estimate.
 
 `redistributable: true`: both figshare articles state CC BY 4.0 (read 2026-11-26 by card C-72 part 1; DEC-80 (3)).
 
 ### 3.4 ANI against `SAG1`, `SAG2` and the r226 archaea of the same genera (recorded, not cut)
 
-@@SAG3_ANI@@
+`c81_gwv1_sag3_wet1.py sag3-ani` (*measured*, `/tmp/if2453/c81/work/sag3_ani/summary.json`, `sag3_ani_hits.tsv`,
+`sag3_vs_refs.tsv`): one FASTA per genome written for `SAG3` (3,568 genomes, a contig taken by its first genome in
+`records.tsv`), `SAG1` (5,537) and `SAG2` (9,698), and for the GlobDB r226 archaea of card C-75's reference set
+(`/stor/scratch/Wilke/if2453/bio-box-staging/GRARE/globdb_r226_archaea.fna.gz` with
+`/tmp/if2453/c75/meta/archaea/archaea_list.tsv`) whose GTDB genus is one that GTDB-Tk gives a `SAG3` archaeal cell:
+15 genera (`Nitrosopelagicus`, `Nitrosopumilus`, `Poseidonia`, `Thalassarchaeum`, `MGIIa-I`, `MGIIa-K1`, `MGIIa-L1`,
+`MGIIa-L2`, `MGIIb-O1`, `MGIIb-O2`, `MGIIb-O3`, `MGIIb-O5`, `CG-Epi1`, `ARS21`, `CABZYC01`), 1,009 genomes. One
+`skani dist -t 6 --min-af 50` (skani's default sketch), queries against all references; a genome meets when
+ANI >= 96 over an aligned fraction >= 50 % (the larger of the two, as card C-66's dedup); the best reference is kept.
+
+| `SAG3` genomes meeting a reference | Genomes | Label |
+|---|---:|---|
+| the same cell in `SAG1` (same name), sharing exact contigs (§3.3) | 1,099 | *measured* |
+| the same cell name in `SAG1`, no exact contig shared (a re-assembly) | 5 | *measured* |
+| another `SAG1` cell (same species, a different cell) | 384 | *measured* |
+| a `SAG2` cell | 196 | *measured* |
+| a GlobDB r226 archaeon of the same genus | 55 | *measured* |
+| **any** | **1,739 of 3,568** (48.7 %, *derived*) | |
+| of them at ANI >= 99.9 | 1,119 | *measured* |
+
+skani used 351.9 CPU-seconds (*measured*, children's rusage). **Nothing is cut by it** (the standing rule: an ANI
+match to a held stage is recorded; the card does not say `SAG3` is deduplicated against `SAG1` or `SAG2`, and a
+different cell of the same species is a different genome). Reading: beyond the 1,104 GORG-Tropics cells it repeats,
+635 `SAG3` cells (*derived*: 384 + 196 + 55) fall in a species `SAG1`, `SAG2` or GlobDB r226's archaea already has.
+The card's bacterial same-genus references from GlobDB r226 need the r226 archive stream, which belongs with `WET1`
+and was not run (CATALOG_GOAL §4.1).
 
 ## 4. Staged files
 
@@ -210,7 +274,7 @@ inside that estimate.
 | `genomes.json` | `/tmp/if2453/c81/meta/GWV1/` | 38,314,260 | `b920b2c5ed68082ffca013328166a014ee16f4228181fdde16b1be9074c6b84d` |
 | `objects.json` | same | 426 | `3dc1500e68c418e51a4495355603bdf8d1e31cb9dd0caa2898920fa04f2a3cd7` |
 | `objects_staging.json` | same | 447 | `5d39975ea97f5ec5b2d86fcaedc0b6825403adca418b4181ff3e12eae4a0e868` |
-| `records.tsv` | same | 78,157,462 | `d7c65e3c4f09c6d71be86dd77ed42b732855425d16246217231b42221b53730b` |
+| `records.tsv` | `/stor/scratch/Wilke/if2453/bio-box-staging/GWV1/` (over 64 MB) | 78,157,462 | `d7c65e3c4f09c6d71be86dd77ed42b732855425d16246217231b42221b53730b` |
 | `repeated_records.tsv` | same | 39 | `d109495ee76e4643c181eae183c452c9a84560f97a79bbe22d6630780368c565` |
 | `shared_records.tsv` | same | 6,526 | `a5edd262fb904e4594e7e439923faf357a514775e17446d60aa6d0ff83715a52` |
 | `later_records.tsv` | same | 40 | `35715d5e3e9f7b84789769b5e7130ae87a7e93e2adfa6cae8ac0222b940589fb` |
@@ -230,7 +294,9 @@ inside that estimate.
 All *measured* (`ids.sha256_file`, the scripts' reports). `objects.json` names `/tmp/if2453/s2/inputs/<STAGE>/<FASTA>`
 (card A-29 copies there); `objects_staging.json` the file on `/stor`. The templates' `SUM` lines are the rows for
 `genomes.json`, `objects.json` and the FASTA. Every metadata file is under 64 MB except `GWV1/records.tsv`
-(78,157,462 B), which was therefore @@GWV1_RECORDS_MOVE@@. `stage_est.py conf` on both templates (`python -I`,
+(78,157,462 B), which was therefore moved, after the ANI step that reads it, to
+`/stor/scratch/Wilke/if2453/bio-box-staging/GWV1/records.tsv` (`cp -n`, `sha256sum` equal to the row above, then the
+`/tmp` copy removed; *measured*, 20:29 CST); card A-29 takes it from there. `stage_est.py conf` on both templates (`python -I`,
 `--tree`, in the image): exit 0 (*measured*).
 
 **Mirror to `tower`** (`scripts/orchestrator/relay_to_tower.sh`, card C-49, from the laptop, one stream, *measured*,
@@ -269,8 +335,49 @@ C-74's index, `DEPTH=called`).
 
 ## 6. Pod compute used
 
-@@COMPUTE@@
+Detached `systemd-run --user` units at `nice -n 19`, `MemoryMax=32G` (8G for the two small ones), `MemorySwapMax=0`,
+inside `/stor/home/if2453/bio-box/images/bio-box_faec1f4.sif`, each started after a look at the active units (at most
+one other staging unit, `c70-mir1-stage2`, so never three in all; none while `MV1` or `V3` called genes: the build of wave-6 was in
+`PL2`'s rehearsal) and with no `STOP` file in the root:
+
+| Unit | What | Cap | Wall (*measured*, file times) | CPU |
+|---|---|---|---|---|
+| `c81-inspect` | read-only look at both sets (§2.1, §3.1) | `CPUQuota=100%` | 18:58:14 to 18:59:33 | at most 1.3 CPU-minutes (*derived*: wall × 1) |
+| `c81-xlsx` | Table S1's sheets as TSV | `CPUQuota=100%` | 4.9 s | 4.9 CPU-seconds (*measured*, `systemd-run --wait`) |
+| `c81-sag3-census` | `sag3-census` | `CPUQuota=100%` | 17.2 s | 16.8 CPU-seconds (*measured*) |
+| `c81-gwv1` | `gwv1-stage` | `CPUQuota=200%` | 19:14:45 to 19:30:25 (15.7 min) | about 16 CPU-minutes (*measured*: 14.7 at 14 min, `systemctl status`) |
+| `c81-gwv1-ani`, `c81-sag3` (first tries) | refused at once (a stale tree copy; Table S1's repeated GTDB-Tk names, §7) | | seconds | negligible |
+| `c81-sag3` | `sag3-stage` (3 code-screen workers, DuckDB 2 threads) | `CPUQuota=400%` | 19:34:57 to 19:46:39 (11.7 min) | at most 47 CPU-minutes (*derived*: 11.7 × 4); 8.9 at 3.4 min (*measured*) |
+| `c81-gwv1-ani` | `gwv1-ani`, 21 skani processes of 8 threads | `CPUQuota=800%` | 19:37:33 to 20:26:53 (49.3 min) | skani 80.8 CPU-minutes (*measured*, children's rusage), largest process 27.3 |
+| `c81-sag3-ani` | `sag3-ani`, one skani process of 6 threads | `CPUQuota=600%` | about 19:48 to 19:59:34 | skani 5.9 CPU-minutes (*measured*) |
+
+No process came near 300 CPU-minutes. The card's estimate (8 threads for skani, 2 to 4 h, *estimate*, with the r226
+stream that waits with `WET1`): about 1.7 h of wall for the two sets here (*derived*: 18:58 to 20:27, units
+overlapping).
 
 ## 7. Tests
 
-@@TESTS@@
+`tests/r1/test_c81_gwv1_sag3_wet1.py`, constructed truth throughout: contig uids by blake3 in the test; GWV1 fixture
+records built from a known core and repeat (an exact 30 bp DTR trimmed and circular; a DTR-flagged record with no
+repeat circular and untrimmed; the same kind of repeat on a record CheckV calls AAI-based left linear and whole; ITR
+linear; a repeated contig set listed once; contigs held by an owner and by a later stage); refusals that leave nothing
+behind (a record the table lacks, a table row with no record, a length that differs, an existing output, a later stage
+without `genomes.json`); the vOTU rules and the sample hits on a hand-written skani table; the chunked FASTA reader;
+skani itself on 20 kb fixtures (skipped without skani); a Table S1 written here as raw XML (three sheets in a workbook
+order unlike their file numbers, shared and inline strings, a GTDB-Tk name given twice as in the real table, a
+Sequencing sheet whose column moved, refused); the member-to-name match (longest name, ties match nothing); the tar
+census; the SAG3 stage end to end twice, byte-identical, with the r232 status through a hand-written GTDB metadata
+table and C-74 index (via WGS, via BioSample, absent, not visible), the code screen (a *Mycoplasma* hint gives code 4),
+the FASTA in archive order with renamed contigs, owner and later-holder tables and `s2_check_inputs.py` exit 0; the
+r226 archaea picked by genus; per-genome FASTA files; the best ANI hit at the thresholds; and both templates through
+`stage_est.read_conf` with their `SUM`s found in this note and their `EXPECT` holders among the root, `r26.11.4` and
+`MV2`. Every test runs with the normal `PATH` and with `PATH=/usr/bin:/bin`.
+
+Seen failing first on the pod (*measured*, `wilkcomp02`, 2026-11-26, `scripts/pod_pytest.sh C-81
+tests/r1/test_c81_gwv1_sag3_wet1.py`, with the script not yet in the tree): **37 failed, 1 skipped** (no
+`c81_gwv1_sag3_wet1.py`, no templates). The six-pair cut of the GTDB-Tk sheet was found by the first run on the real
+table (`refused: ... Outputs_GTDB-TK names AB-754_C22 twice`); the fixture was given that case first and the SAG3
+tests seen failing (16 failed: 12 because the stager refused the fixture's table, 4 the templates not yet filled)
+before the reader was changed. Final
+(*measured*, same host and day, `env BIOBOX_TREE=/tmp/biobox-wt/C-81 sh scripts/pod_pytest.sh C-81
+tests/r1/test_c81_gwv1_sag3_wet1.py tests/r1/test_r232_index.py tests/r0`, one process): **285 passed, 1 skipped in 26.36 s** (the skip: the skani test under the tools-hidden `PATH`).

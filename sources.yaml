@@ -5546,8 +5546,9 @@ sources:
     staged: >-
       card C-81, 2026-11-26: all 280,420 vOTU records (3,741,506,338 bp; DEC-65 (1): 5,210 exact DTRs trimmed by
       710,277 bp and staged circular; 3,740,796,061 bp staged; 70 contigs held by H1, none by MV1, V2, V3, MV2) as stage
-      GWV1 in /tmp/if2453/c81/meta/GWV1/ and /stor/scratch/Wilke/if2453/bio-box-staging/GWV1/gwv1_gwvc.fna.gz on
-      wilkcomp02, then to tower:/mnt/user/research-bulk/bio-box/sources/GWV1/;
+      GWV1 in /tmp/if2453/c81/meta/GWV1/ and /stor/scratch/Wilke/if2453/bio-box-staging/GWV1/ (gwv1_gwvc.fna.gz and the
+      78 MB records.tsv) on wilkcomp02, then to tower:/mnt/user/research-bulk/bio-box/sources/GWV1/; a 2.9 % sample
+      share meets the vOTU threshold with MV1, V2, V3 or MV2 (recorded, not cut);
       planning/measurements/2026-11-26_gwv1_sag3_wet1_inputs.md. redistributable: true (DEC-80 (3): the record states
       cc-by-4.0)
     note: >-
