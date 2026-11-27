@@ -441,7 +441,7 @@ caller gets the byte pass by default:
 do not name it (`rg -n -i check_inputs` on them: no line). So no mode of a stage build gets slower, and the running wave
 (from the frozen mirror `/tmp/if2453/ci/rel1126c`) is untouched. What the pass costs a staging script is given below.
 
-### The read-only runs (part 4): two of the three
+### The three read-only runs (part 4)
 
 Detached units `systemd-run --user --unit=r21-<what> --collect -p MemoryMax=16G -p MemorySwapMax=0 -p CPUQuota=100%
 -p IOSchedulingClass=idle`, at `nice -n 19`, one at a time, one thread, each started after a look at the active units
@@ -460,32 +460,21 @@ read-only, under `/usr/bin/time -v`; stdout to `/tmp/if2453/r21/<what>.json`, st
 |---|---|---:|---:|---:|---:|---|
 | `r21-oldlr2` | old `LR2`: `/tmp/if2453/c66/LR2`, `lr2_compendia.fna.gz` (6,329,546,501 B) | **1** | 11:56 | 712.0 s | 392,228 kB | 6 (below) |
 | `r21-newlr2` | re-staged `LR2`: `/tmp/if2453/r19/LR2`, `lr2_compendia_r19.fna.gz` (5,906,399,819 B) | **0** | 9:59 | 599.2 s | 370,724 kB | `[]` |
-| `r21-gwv1` | virus stage `GWV1`: `/tmp/if2453/c81/meta/GWV1`, `gwv1_gwvc.fna.gz` | not run | | | | (below) |
-
-**`GWV1` was not run.** From 05:17 to 05:52 CST card R-23's worker held two to four read-only units on the pod at
-every look (`r23-find`, `r23-scan-2` to `-7`, `r23-scan-spx1`, `r23-gv1`; *measured*, `systemctl --user
-list-units`, seven looks), and this card's brief allows no third unit beside another card's. The run is one command,
-about 2 minutes of one CPU (*estimate*: 3,740,796,061 bases, §3, at the 27.9 s per Gbp below), for when the pod has
-room:
-
-```
-systemd-run --user --unit=r21-gwv1 --collect -p MemoryMax=16G -p MemorySwapMax=0 -p CPUQuota=100% \
-    -p IOSchedulingClass=idle -p StandardOutput=file:/tmp/if2453/r21/gwv1.json \
-    -p StandardError=file:/tmp/if2453/r21/gwv1.err nice -n 19 /usr/bin/time -v singularity exec --cleanenv \
-    --env PYTHONPATH=/tmp/if2453/ci/R-21/src --bind /tmp/if2453/ci/R-21:/tmp/if2453/ci/R-21:ro \
-    --bind /tmp/if2453/c81/meta/GWV1:/tmp/if2453/c81/meta/GWV1:ro \
-    --bind /stor/scratch/Wilke/if2453/bio-box-staging/GWV1:/stor/scratch/Wilke/if2453/bio-box-staging/GWV1:ro \
-    /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif python \
-    /tmp/if2453/ci/R-21/scripts/stress/build_stage_pod/s2_check_inputs.py GWV1 \
-    /tmp/if2453/c81/meta/GWV1/genomes.json /tmp/if2453/c81/meta/GWV1/objects_staging.json
-```
-
-R-19's scan found `GWV1`'s file clean of every byte kind (§3), so it is expected to exit 0 unless the uid comparison
-finds a record outside its tables.
+| `r21-gwv1` | virus stage `GWV1`: `/tmp/if2453/c81/meta/GWV1`, `gwv1_gwvc.fna.gz` | **0** | 2:24 | 142.1 s | 421,236 kB | `[]` |
 
 All *measured* (`wilkcomp02`, 2026-11-27, `/usr/bin/time -v` in `/tmp/if2453/r21/<what>.err`: wall clock, user +
 system time, maximum resident set size; the reports in `/tmp/if2453/r21/<what>.json`). `r21-oldlr2` ran 04:56 to
-05:08 CST, `r21-newlr2` 05:09 to 05:19 CST.
+05:08 CST, `r21-newlr2` 05:09 to 05:19 CST, `r21-gwv1` 05:52 to 05:55 CST.
+
+`r21-gwv1` ran while card R-23's worker held three read-only scan units (`r23-scan-5`, `r23-scan-7`, `r23-scan-spx1`).
+The brief allowed no third unit beside another card's. I first left the run out for that reason. Then the
+orchestrating session allowed it: the limit protects the pod's threads, and a run of about 2 CPU-minutes at one
+thread may run beside R-23's scans.
+
+**`GWV1` passes:** 280,420 genomes, 280,420 `genome_input` rows, gene-call mode `gv-meta`, and 280,420 records with
+3,740,796,061 bases, the same as R-19's scan (§3). All 280,420 contigs are held by the object, no record lies outside
+the genomes, and `problems: []`. The byte pass took 133.8 s of wall time and 132.8 CPU-seconds, 35.5 s per Gbp
+(*derived*: 132.8 / 3.741). That rate is above `LR2`'s 27.9, because `GWV1` has more records per base.
 
 **The old `LR2` fails and the damage is named** (`/tmp/if2453/r21/oldlr2.json`): 575,827 records, 21,670,443,395
 bases, and
@@ -523,8 +512,9 @@ RSS 371 to 392 MB for `LR2`'s 44,064 to 49,205 genomes; the byte pass added none
 
 From R-19's scans (§2, §3) the check now also fails `NX1` as card C-66 staged it (69 records with 17,393 `-`; card
 R-20 re-stages it) and `GV1` (`gap_byte`: 3 records, 6 `-`); every other staged input scanned clean of the byte kinds.
-The uid comparison was not run on them. `GV1` is staged under `/tmp/if2453/s2/inputs/` and was not touched: whether
-its 6 gap bytes are removed, or its check is run with `--tables-only`, is for the card that stages or builds it.
+The uid comparison was not run on them. `GV1` is staged under `/tmp/if2453/s2/inputs/` and was not touched. Its gap
+bytes belong to card R-23, which is re-staging `GV1` without them (the orchestrating session, 2026-11-27). So the check
+should fail the old `GV1`, and that is the right result.
 
 ### Tests
 
