@@ -47,8 +47,10 @@
 # ends each worker before its next file. TERM or INT ends every worker (a transfer at once; a move into place and its
 # two record lines are finished first), each removes its .partial, and then the lock is released. A worker that ends
 # without finishing its share (killed) stops the run: the others are ended, exit 1, no DONE line. The lock names the
-# workers: a lock whose run has ended is not taken while a worker of it lives, and a worker whose run has ended stops
-# before its next file. --jobs above 1 needs bash 4.3 or later (wait -n). With --jobs 1 nothing of this applies.
+# workers and each open transfer (curl.<K>): a transfer left by a killed worker is ended by the run, and the lock is
+# kept while it lives; a lock whose run has ended is not taken while a worker or a transfer of it lives; a worker whose
+# run has ended stops before its next file, or while it waits for the write lock. Ctrl-C (INT to the process group) is
+# acted on by the run alone. --jobs above 1 needs bash 4.3 or later (wait -n). With --jobs 1 nothing of this applies.
 #
 # Options:
 #   --dest DIR     where files go (default /mnt/user/research-bulk/bio-box/sources_incoming)
@@ -99,7 +101,8 @@ for f in "$@"; do [ -f "$f" ] || die "no job list: $f"; done
 TMPD=$(mktemp -d "${TMPDIR:-/tmp}/fetch_to_tower.XXXXXX") || die "cannot make a temporary directory"
 LOCK=
 PAR=0  # 1 while workers of --jobs above 1 may run: the run then ends them before it removes anything
-cleanup() { [ "$PAR" = 0 ] || stop_workers; rm -rf "$TMPD"; [ -z "$LOCK" ] || rm -rf "$LOCK"; }
+KEEPLOCK=0  # 1 when a transfer of a killed worker still runs: the lock then stays, naming it
+cleanup() { [ "$PAR" = 0 ] || stop_workers; rm -rf "$TMPD"; [ -z "$LOCK" ] || [ "$KEEPLOCK" = 1 ] || rm -rf "$LOCK"; }
 trap cleanup EXIT
 trap 'echo "fetch_to_tower: stopped by a signal" >&2; exit 130' INT TERM
 
@@ -196,6 +199,14 @@ if ! mkdir "$LOCKDIR" 2>/dev/null; then
       exit 3
     fi
   done
+  for c in "$LOCKDIR"/curl.*; do
+    [ -f "$c" ] || continue
+    t=$(cat "$c" 2>/dev/null)
+    if [ -n "$t" ] && kill -0 "$t" 2>/dev/null; then
+      echo "fetch_to_tower: a transfer (pid $t) of an ended run still runs; $LOCKDIR is kept until it ends" >&2
+      exit 3
+    fi
+  done
   rm -rf "$LOCKDIR"
   mkdir "$LOCKDIR" 2>/dev/null || { echo "fetch_to_tower: cannot take $LOCKDIR" >&2; exit 3; }
 fi
@@ -207,18 +218,36 @@ md5_of() { if command -v md5sum >/dev/null 2>&1; then md5sum "$1" | awk '{print 
 in_sums() { [ -f "$1" ] && awk -v f="$2" '{ l = $0; sub(/^[0-9a-f]+  /, "", l); if (l == f) found = 1 } END { exit !found }' "$1"; }
 
 OK=0 SKIP=0 FAIL=0
-CPID= INBOOK=0 STOPPING=0 cur=
-# hold and release take and give the run's write lock (a directory: mkdir is atomic) when --jobs is above 1; with one
-# connection they do nothing. A stop that reaches a worker while it holds the lock is acted on at release.
-hold() { [ "$JOBS" = 1 ] && return 0; until mkdir "$TMPD/write.lock" 2>/dev/null; do sleep 0.1 2>/dev/null || sleep 1; done; INBOOK=1; }
-release() { [ "$JOBS" = 1 ] && return 0; rmdir "$TMPD/write.lock"; INBOOK=0; [ "$STOPPING" = 0 ] || worker_end; }
+CPID= INBOOK=0 STOPPING=0 cur= FORKING=0 BEFORE= WK=
+# hold and release take and give the run's write lock when --jobs is above 1; with one connection they do nothing. The
+# lock is a symlink whose target is the holder's pid (ln -s makes it with its content at once, or fails), so a stop
+# can tell its own lock from another's. While the run lives, a holder that dies is a worker that dies, and the run
+# stops every worker; once the run has ended, a waiter ends when the holder is dead. A stop that reaches a holder is
+# acted on at release.
+hold() {
+  [ "$JOBS" = 1 ] && return 0
+  until ln -s "$BASHPID" "$TMPD/write.lock" 2>/dev/null; do
+    if ! kill -0 $$ 2>/dev/null; then  # the run has ended: nobody stops a holder that died, so end if it has
+      h=$(readlink "$TMPD/write.lock" 2>/dev/null)
+      [ -z "$h" ] || kill -0 "$h" 2>/dev/null || worker_end
+    fi
+    sleep 0.1 2>/dev/null || sleep 1
+  done
+  INBOOK=1
+}
+release() { [ "$JOBS" = 1 ] && return 0; rm -f "$TMPD/write.lock"; INBOOK=0; [ "$STOPPING" = 0 ] || worker_end; }
 fail() { hold; printf '%s\t%s\t%s\n' "$1" "$2" "$3" >&2; release; FAIL=$((FAIL + 1)); }
 get() {  # curl: in the foreground with --jobs 1; else in the background, so that a stop ends the transfer at once
   if [ "$JOBS" = 1 ]; then curl "$@"; return; fi
-  curl "$@" &
+  # the transfer writes its own pid into the lock before curl starts (exec keeps the pid), so that a transfer whose
+  # worker is killed is still named there: the run ends it, and no run takes the lock while it lives
+  BEFORE=${!:-} FORKING=1
+  ( echo "$BASHPID" > "$LOCK/curl.$WK"; exec curl "$@" ) &
   CPID=$!
+  FORKING=0
   wait "$CPID"
   local rc=$?
+  rm -f -- "$LOCK/curl.$WK"
   CPID=
   return "$rc"
 }
@@ -287,14 +316,19 @@ if [ "$JOBS" = 1 ]; then
   fetch_jobs < "$TMPD/jobs"
 else
   # --- --jobs above 1: the jobs dealt out in turn to JOBS workers, each the loop above on its own share ---------------
-  worker_end() {  # a stop reached a worker: end its transfer, remove its .partial, exit
-    [ -z "$CPID" ] || { kill -TERM "$CPID" 2>/dev/null; wait "$CPID" 2>/dev/null; }
+  worker_end() {  # a stop reached a worker: end its transfer, give back the write lock if it holds it, remove its .partial
+    # a stop between the fork of a transfer and CPID=$!: $! is then already the new transfer
+    if [ -z "$CPID" ] && [ "$FORKING" = 1 ] && [ "${!:-}" != "$BEFORE" ]; then CPID=$!; fi
+    [ -z "$CPID" ] || { kill -TERM "$CPID" 2>/dev/null; wait "$CPID" 2>/dev/null; rm -f -- "$LOCK/curl.$WK"; }
+    [ "$(readlink "$TMPD/write.lock" 2>/dev/null)" != "$BASHPID" ] || rm -f "$TMPD/write.lock"
     [ -z "$cur" ] || rm -f -- "$cur"
     exit 143
   }
   worker() {  # worker K: the jobs of share K; its counts to tally.K when its share is done
     trap - EXIT
-    trap 'STOPPING=1; [ "$INBOOK" = 1 ] || worker_end' TERM INT
+    WK=$1
+    trap '' INT  # a Ctrl-C reaches the whole process group: only the run acts on it, and it ends the workers by TERM
+    trap 'STOPPING=1; [ "$INBOOK" = 1 ] || worker_end' TERM
     fetch_jobs < "$TMPD/jobs.$1"
     printf '%s %s %s\n' "$OK" "$SKIP" "$FAIL" > "$TMPD/tally.$1"
     exit 0
@@ -309,15 +343,39 @@ else
     done
     [ "$LAUNCHED" -ge "$JOBS" ] || [ -z "${!:-}" ] || kill -TERM "$!" 2>/dev/null  # a stop while starting them
     wait
+    # A transfer still named in the lock belongs to a worker that was killed: it is no child of the run and cannot be
+    # waited for. End it, give it 2 s, and keep the lock (naming it) while it lives, so no run starts beside it.
+    t=0
+    while :; do
+      live=
+      for c in "$LOCK"/curl.*; do
+        [ -f "$c" ] || continue
+        p=$(cat "$c" 2>/dev/null)
+        if [ -n "$p" ] && kill -0 "$p" 2>/dev/null; then
+          live="$live $p"
+          [ "$t" != 0 ] || kill -TERM "$p" 2>/dev/null
+        else
+          rm -f -- "$c"
+        fi
+      done
+      [ -n "$live" ] || break
+      if [ "$t" -ge 20 ]; then
+        KEEPLOCK=1
+        echo "fetch_to_tower: transfer(s)$live of a killed worker still run; $LOCK is kept until they end" >&2
+        break
+      fi
+      t=$((t + 1))
+      sleep 0.1 2>/dev/null || sleep 1
+    done
   }
   awk -v n="$JOBS" -v d="$TMPD" '{ print > (d "/jobs." ((NR - 1) % n)) }' "$TMPD/jobs"
   LAUNCHED=0 PAR=1
   while [ "$LAUNCHED" -lt "$JOBS" ]; do
     worker "$LAUNCHED" &
     WPID[$LAUNCHED]=$!
+    echo "$!" >> "$LOCK/workers"  # at once: a run killed while it starts them still names every worker
     LAUNCHED=$((LAUNCHED + 1))
   done
-  echo "${WPID[*]}" > "$LOCK/workers"
   while :; do
     wait -n
     wrc=$?  # 127: no worker left to wait for

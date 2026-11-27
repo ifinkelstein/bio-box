@@ -87,6 +87,12 @@ order, and the run's last line counts `ok`, `skip` and `fail` over all workers. 
 next file. `TERM` or `INT` ends every worker and its transfer, removes their `.partial` files and releases the lock; a
 rerun fetches what is missing. `--jobs` above 1 needs bash 4.3 or later and is refused on an older bash.
 
+The lock (`.fetch_to_tower.lock`) names the run, its workers and each open transfer (`pid`, `workers`, `curl.<K>`), and
+a new run refuses it while any of them lives. Pids can be reused, so after a run was killed with `SIGKILL` look for
+leftover workers and `curl` processes (`ps`) before you clear a lock by hand. curl's own error messages (`-S`) go to
+stderr outside the line lock: each is a whole line, but their order against the run's lines is not kept. A run killed
+with `SIGKILL` also leaves its temporary directory (`fetch_to_tower.XXXXXX` under `$TMPDIR` or `/tmp`) behind.
+
 A job already in its directory's `SHA256SUMS` is skipped. Two lists write into directories that already hold landed
 files: `12_later_batch6b_direct.tsv` (`RNA_VIROID/`) and `18_later_rescue.tsv` (`DSV70/`, `EUK_Y1000/`). None of
 their jobs has landed. The lock of `fetch_to_tower.sh` does not see the old `_fetch_batch2.sh` runs of batches 4 and 5.

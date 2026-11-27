@@ -15,6 +15,7 @@ import io
 import json
 import os
 import re
+import shutil
 import signal
 import subprocess
 import sys
@@ -662,10 +663,14 @@ def test_no_url_form_of_the_tree_leaves_a_figshare_file_id_open():
 # open at once and can stop a run while every worker is inside one. No test sleeps to wait for state; they poll.
 
 GATED_CURL = """#!{python}
-import glob, json, os, sys, time
+import glob, json, os, signal, sys, time
 args = sys.argv[1:]
 out, url = args[args.index("-o") + 1], args[-1]
 gate = os.environ.get("STUB_GATE")
+if gate and os.environ.get("STUB_IGNORE_TERM") == url:  # a transfer that a TERM does not end
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    with open(os.path.join(gate, "ignoring.%d" % os.getpid()), "w") as f:
+        f.write(str(os.getppid()))
 running = 0
 if gate:
     mark = os.path.join(gate, "run.%d" % os.getpid())
@@ -698,6 +703,28 @@ import json, os, sys, time
 with open(os.environ["SLEEP_LOG"], "a") as f:
     f.write(json.dumps({{"args": sys.argv[1:], "ppid": os.getppid()}}) + "\\n")
 time.sleep(min(float(sys.argv[1]), 0.05))
+"""
+
+# A stub `mv` (the script's move into place, done under the write lock): it marks itself in STUB_MV_GATE
+# (`mv.<pid>`: its parent, its directory and its target) and polls (60 s at most) for `<gate>/open`; it then runs the
+# real mv, or with STUB_MV_AFTER runs it first and then waits (the file is in place, its record lines not yet written).
+MV = """#!{python}
+import json, os, subprocess, sys, time
+args, gate, real = sys.argv[1:], os.environ.get("STUB_MV_GATE"), os.environ["REAL_MV"]
+code = None
+if gate and os.environ.get("STUB_MV_AFTER"):
+    code = subprocess.run([real, *args]).returncode
+if gate:
+    tmp = os.path.join(gate, "tmp.mv.%d" % os.getpid())
+    with open(tmp, "w") as f:
+        json.dump({{"ppid": os.getppid(), "dir": os.getcwd(), "file": args[-1]}}, f)
+    os.replace(tmp, os.path.join(gate, "mv.%d" % os.getpid()))
+    end = time.monotonic() + 60
+    while not os.path.exists(os.path.join(gate, "open")):
+        if time.monotonic() > end:
+            sys.exit(28)
+        time.sleep(0.01)
+sys.exit(code if code is not None else subprocess.run([real, *args]).returncode)
 """
 
 DATE = r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ"
@@ -733,12 +760,13 @@ def run_to(w: dict, dest: Path, *lists: Path, args: tuple = (), env: dict | None
     return subprocess.run(cmd, env=env or w["env"], capture_output=True, text=True, timeout=120)
 
 
-def start(w: dict, *lists: Path, args: tuple = (), env: dict | None = None, tag: str = "bg") -> subprocess.Popen:
+def start(w: dict, *lists: Path, args: tuple = (), env: dict | None = None, tag: str = "bg",
+          new_session: bool = False) -> subprocess.Popen:
     """The run in the background, its stdout and stderr to files (the workers write to them too)."""
     cmd = ["bash", str(SCRIPT), "--dest", str(w["dest"]), "--sources", str(w["src"]), "--pause", "0", *args,
            *map(str, lists)]
     with open(w["tmp"] / f"{tag}.out", "w") as out, open(w["tmp"] / f"{tag}.err", "w") as err:
-        return subprocess.Popen(cmd, env=env or w["genv"], stdout=out, stderr=err)
+        return subprocess.Popen(cmd, env=env or w["genv"], stdout=out, stderr=err, start_new_session=new_session)
 
 
 def said(w: dict, tag: str = "bg") -> str:
@@ -987,8 +1015,7 @@ def test_r22_a_worker_that_is_killed_stops_the_run_and_a_rerun_fetches_the_rest(
         if p.poll() is None:
             p.kill()
     assert "ended without finishing a share" in said(w) and "DONE" not in said(w)
-    os.kill(orphan, signal.SIGKILL)  # the killed worker's transfer has no worker left to end it
-    poll(lambda: not alive(orphan), what="the orphaned transfer to end")
+    assert not alive(orphan), "the killed worker's transfer outlived the run, which released the lock"
     no_run_left(w)
     (w["gate"] / "open").write_text("")
     r = run(w, lst, args=("--jobs", "2"))
@@ -1033,3 +1060,170 @@ def test_r22_a_lock_whose_run_has_ended_is_not_taken_while_a_worker_of_it_lives(
     r = run(w, jobs(w, good_rows()))
     assert r.returncode == 0, r.stdout + r.stderr
     assert not lock.exists()
+
+
+# --- review of 2026-11-27: transfers that outlive a worker, the write lock, a stop inside the bookkeeping ----------------
+
+
+@pytest.mark.covers("R-22")
+def test_r22_a_transfer_that_outlives_its_killed_worker_keeps_the_lock_until_it_ends(pworld):
+    w = pworld
+    rows = many(w, 4)
+    lst = jobs(w, rows)
+    lock = w["dest"] / ".fetch_to_tower.lock"
+    p = start(w, lst, args=("--jobs", "2"), env=dict(w["genv"], STUB_IGNORE_TERM=rows[0][2]))
+    orphan = None
+    try:
+        poll(lambda: len(running(w)) == 2 and bool(list(w["gate"].glob("ignoring.*"))), p, w,
+             "2 transfers open, one that ignores TERM")
+        ig = next(w["gate"].glob("ignoring.*"))
+        orphan, victim = int(ig.name.split(".")[1]), int(ig.read_text())
+        os.kill(victim, signal.SIGKILL)
+        assert p.wait(timeout=60) == 1, said(w)
+        assert alive(orphan), "the stub transfer should still run: it ignores TERM"
+        assert lock.exists(), "the lock was released while a transfer of the run could still write"
+        n = len(calls(w))
+        r = run(w, lst, args=("--jobs", "2"))
+        assert r.returncode == 3 and "transfer" in r.stderr, r.stdout + r.stderr
+        assert len(calls(w)) == n, "a rerun made a request while the old transfer ran"
+    finally:
+        (w["gate"] / "open").write_text("")
+        if p.poll() is None:
+            p.kill()
+    poll(lambda: not alive(orphan), what="the orphaned transfer to end")
+    r = run(w, lst, args=("--jobs", "2"))
+    assert r.returncode == 0 and r.stdout.splitlines()[-1] == "DONE\tok=4\tskip=0\tfail=0", r.stdout + r.stderr
+    for name, f, _u, _m, _l in rows:
+        assert (w["dest"] / name / f).read_bytes() == gdata(int(f[1:4]))
+    assert not partials(w)
+    no_run_left(w)
+
+
+def mv_env(w: dict, after: bool = False) -> tuple[Path, dict]:
+    """Stub `mv` and `sleep` first on PATH; the real mv is the one this test process finds."""
+    for name, text in (("mv", MV), ("sleep", SLEEP)):
+        (w["tmp"] / "bin" / name).write_text(text.format(python=sys.executable))
+        (w["tmp"] / "bin" / name).chmod(0o755)
+    gate = w["tmp"] / "mvgate"
+    gate.mkdir()
+    env = dict(w["env"], STUB_MV_GATE=str(gate), REAL_MV=shutil.which("mv"), SLEEP_LOG=str(w["tmp"] / "sleeps.jsonl"))
+    if after:
+        env["STUB_MV_AFTER"] = "1"
+    return gate, env
+
+
+def sleeps(w: dict) -> list[dict]:
+    p = w["tmp"] / "sleeps.jsonl"
+    out = []
+    for line in (p.read_text().splitlines() if p.exists() else []):
+        try:
+            out.append(json.loads(line))
+        except json.JSONDecodeError:  # a line being written
+            pass
+    return out
+
+
+def holder_and_waiter(gate: Path, w: dict):
+    """(mv stub pid, the worker holding the write lock, a worker waiting for it), or None while not yet so."""
+    marks = list(gate.glob("mv.*"))
+    if not marks:
+        return None
+    holder = json.loads(marks[0].read_text())["ppid"]
+    waiters = [x["ppid"] for x in sleeps(w) if x["args"] == ["0.1"] and x["ppid"] != holder]
+    return (int(marks[0].name.split(".")[1]), holder, waiters[0]) if waiters else None
+
+
+@pytest.mark.covers("R-22")
+def test_r22_workers_of_a_killed_run_that_wait_for_the_write_lock_end(world):
+    w = world
+    gate, env = mv_env(w)
+    p = start(w, jobs(w, many(w, 2)), args=("--jobs", "2"), env=env)
+    hw = None
+    try:
+        poll(lambda: holder_and_waiter(gate, w) is not None, p, w, "one worker in its move, one waiting for the lock")
+        hw = holder_and_waiter(gate, w)
+        stub, holder, waiter = hw
+        p.kill()  # the run first (SIGKILL), then the holder of the write lock: nobody will release it
+        p.wait(timeout=60)
+        os.kill(holder, signal.SIGKILL)
+        os.kill(stub, signal.SIGKILL)
+        poll(lambda: not alive(waiter), what="the worker waiting for the write lock to end", timeout=30)
+    finally:
+        (gate / "open").write_text("")
+        if p.poll() is None:
+            p.kill()
+        for pid in (hw or ())[1:]:
+            if alive(pid):
+                os.kill(pid, signal.SIGKILL)  # not to leave a spinning worker behind when the test fails
+
+
+@pytest.mark.covers("R-22")
+def test_r22_a_worker_killed_while_it_holds_the_write_lock_does_not_hang_the_run(world):
+    w = world
+    gate, env = mv_env(w)
+    p = start(w, jobs(w, many(w, 2)), args=("--jobs", "2"), env=env)
+    try:
+        poll(lambda: holder_and_waiter(gate, w) is not None, p, w, "one worker in its move, one waiting for the lock")
+        stub, holder, waiter = holder_and_waiter(gate, w)
+        os.kill(holder, signal.SIGKILL)
+        os.kill(stub, signal.SIGKILL)
+        assert p.wait(timeout=60) == 1, said(w)
+    finally:
+        (gate / "open").write_text("")
+        if p.poll() is None:
+            p.kill()
+    assert "ended without finishing a share" in said(w)
+    assert not alive(waiter)
+    no_run_left(w)
+
+
+@pytest.mark.covers("R-22")
+def test_r22_a_stop_between_the_move_and_its_records_writes_the_records_first(world):
+    w = world
+    gate, env = mv_env(w, after=True)
+    rows = many(w, 2)
+    lst = jobs(w, rows)
+    p = start(w, lst, args=("--jobs", "2"), env=env)
+    try:
+        poll(lambda: bool(list(gate.glob("mv.*"))), p, w, "a file moved into place, its records not yet written")
+        m = json.loads(next(gate.glob("mv.*")).read_text())
+        d, f = Path(m["dir"]), m["file"]
+        assert (d / f).is_file() and f not in (d / "SHA256SUMS").read_text()
+        os.kill(m["ppid"], signal.SIGTERM)  # delivered while the worker waits for its mv
+        (gate / "open").write_text("")
+        assert p.wait(timeout=60) == 1, said(w)
+    finally:
+        (gate / "open").write_text("")
+        if p.poll() is None:
+            p.kill()
+    data = gdata(int(f[1:4]))
+    assert f"{sha(data)}  {f}" in (d / "SHA256SUMS").read_text().splitlines(), "a stop left a file in place unrecorded"
+    assert [x for x in (d / "SOURCE_URLS.tsv").read_text().splitlines() if x.split("\t")[0] == f]
+    name = d.relative_to(w["dest"]).as_posix()
+    r = run(w, lst, args=("--jobs", "2"), env={k: v for k, v in env.items() if k not in ("STUB_MV_GATE", "STUB_MV_AFTER")})
+    assert r.returncode == 0 and f"SKIP\t{name}\t{f}" in r.stdout, r.stdout + r.stderr
+    assert not partials(w)
+
+
+@pytest.mark.covers("R-22")
+def test_r22_ctrl_c_to_the_process_group_stops_the_run_as_a_signal_to_it_does(pworld):
+    w = pworld
+    rows = many(w, 6)
+    lst = jobs(w, rows)
+    p = start(w, lst, args=("--jobs", "3"), new_session=True)
+    try:
+        poll(lambda: len(running(w)) == 3 and len(partials(w)) == 3, p, w, "3 transfers with their partials")
+        stubs = [int(m.name.split(".")[1]) for m in running(w)]
+        workers = {int(m.read_text()) for m in running(w)}
+        os.killpg(p.pid, signal.SIGINT)  # what Ctrl-C at a terminal does: every process of the group
+        assert p.wait(timeout=60) == 130, said(w)
+    finally:
+        if p.poll() is None:
+            os.killpg(p.pid, signal.SIGKILL)
+    assert "stopped by a signal" in said(w) and "DONE" not in said(w)
+    poll(lambda: not any(alive(x) for x in stubs + list(workers)), what="the workers and their transfers to end")
+    assert not partials(w)
+    no_run_left(w)
+    (w["gate"] / "open").write_text("")
+    r = run(w, lst, args=("--jobs", "3"))
+    assert r.returncode == 0 and r.stdout.splitlines()[-1] == "DONE\tok=6\tskip=0\tfail=0", r.stdout + r.stderr
