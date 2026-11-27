@@ -499,21 +499,179 @@ def test_ece2_from_the_bytes_is_byte_identical_twice_and_refuses_an_archive_with
     assert not (tmp_path / "B" / "ECE2").exists()
 
 
-def test_fasta_dir_moves_the_fasta_and_objects_staging_names_it(tmp_path):
+def test_fasta_dir_moves_only_a_fasta_of_64_mib_and_more_and_objects_staging_names_where_each_is(tmp_path,
+                                                                                                 monkeypatch):
+    from biobox import ids
+
     m = _mod()
-    fa = tmp_path / "x.fna"
-    fa.write_bytes(b">e1\n" + _rand(600, 31) + b"\n")
-    out, big = tmp_path / "meta" / "ECE2", tmp_path / "stor" / "ECE2"
+    monkeypatch.setattr(m, "STOR_MIN_BYTES", 1_000)  # the fixture's stand-in for 64 MiB
+    big_fa, small_fa = tmp_path / "x.fna", tmp_path / "y.fna"
+    big_fa.write_bytes(b">e1\n" + _rand(1_200, 31) + b"\n")
+    small_fa.write_bytes(b">e2\n" + _rand(300, 32) + b"\n")
+    out, stor = tmp_path / "meta" / "ECE2", tmp_path / "stor" / "ECE2"
+    src = {"source_name": "s", "source_release": "1", "license": "CC BY 4.0", "redistributable": True,
+           "element_class": "tycheposon"}
     rep = m.stage_ece2(
-        [{"source_name": "s", "source_release": "1", "license": "CC BY 4.0", "redistributable": True,
-          "fasta": fa, "output_name": "ece2_x.fna", "element_class": "tycheposon"}],
+        [{**src, "fasta": big_fa, "output_name": "ece2_x.fna"}, {**src, "fasta": small_fa, "output_name": "ece2_y.fna"}],
         out, root=None, root_stages=(), owner_inputs={}, retrieved="t", final_dir=Path("/tmp/if2453/s2/inputs/ECE2"),
-        fasta_dir=big,
+        fasta_dir=stor,
     )
-    assert (big / "ece2_x.fna").is_file() and not (out / "ece2_x.fna").exists()
-    assert not list(big.glob(".*partial"))
-    assert json.loads((out / "objects_staging.json").read_text())[0]["path"] == str(big / "ece2_x.fna")
-    assert rep["sha256"]["ece2_x.fna"] == __import__("biobox.ids", fromlist=["ids"]).sha256_file(big / "ece2_x.fna").hex()
+    assert (stor / "ece2_x.fna").is_file() and not (out / "ece2_x.fna").exists()
+    assert (out / "ece2_y.fna").is_file() and not (stor / "ece2_y.fna").exists()
+    assert not list(stor.glob(".*partial"))
+    staged = {Path(o["path"]).name: o["path"] for o in json.loads((out / "objects_staging.json").read_text())}
+    assert staged == {"ece2_x.fna": str(stor / "ece2_x.fna"), "ece2_y.fna": str(out / "ece2_y.fna")}
+    assert rep["sha256"]["ece2_x.fna"] == ids.sha256_file(stor / "ece2_x.fna").hex()
+
+
+def test_goev_names_and_classes():
+    m = _mod()
+    assert m.goev_genome_name("GOEV_Genomic_DB/TARA_MED_NCLDV_00046-fixed.fa") == "TARA_MED_NCLDV_00046"
+    assert m.goev_genome_name("GOEV_Genomic_DB/Schulz_GVMAG_M_3300009436_15-contigs.fa") == "Schulz_GVMAG_M_3300009436_15"
+    assert m.goev_genome_name("GOEV_Genomic_DB/Moniruzzaman_MM05_ERX555935_132_dc.fa") == "Moniruzzaman_MM05_ERX555935_132"
+    assert m.goev_class("Schulz_GVMAG_M_3300009436_15") == "environmental"
+    assert m.goev_class("Moniruzzaman_MM05_ERX555935_132") == "environmental"
+    assert m.goev_class("TARA_MED_NCLDV_00046") == "environmental"
+    assert m.goev_class("Poxviridae_LT896721_Cowpox_virus_isolate_Ger_2010_MKY") == "Poxviridae"
+    assert m.goev_class("Asfarviridae_AY261365_African_swine_fever_virus_isolate_Warmbaths") == "Asfarviridae"
+    assert m.goev_class("Mimiviridae_KC008572_UNVERIFIED_Moumouvirus_goulette") == "Mimiviridae"
+
+
+def _mir1_fixture(tmp_path: Path):
+    """The ten files of tower_mir1 in small: two Mirusviricota genomes (Medvedeva 2025), two Tara Mirusviricota MAGs and
+    a near-complete genome (Gaia 2023), a GOEV database whose Tara MAG repeats Gaia's names and bytes, a GVMAG byte-equal
+    to a GV1 contig, a Moniruzzaman GVMAG, a Mimiviridae reference and the Poxviridae and Asfarviridae references, two
+    EVE loci, a FLYE PLV file whose names hold a space, and the files that are not genomes."""
+    import gzip as gz
+    import io
+    import tarfile
+    import zipfile
+
+    small, large = tmp_path / "dl_small", tmp_path / "dl_large"
+    small.mkdir()
+    large.mkdir()
+    s = {k: _rand(n, seed) for seed, (k, n) in enumerate([
+        ("m1a", 900), ("m1b", 700), ("m2", 800), ("t5a", 600), ("t5b", 650), ("t7", 500), ("nc", 1500),
+        ("gv", 1000), ("mon", 700), ("mimi", 1100), ("pox", 900), ("asf", 950), ("eve1", 1300), ("eve2", 1200),
+        ("fl1", 800), ("fl2", 700)], start=100)}
+
+    def rec(name: str, key: str) -> bytes:
+        return b">" + name.encode() + b"\n" + s[key] + b"\n"
+
+    def zwrite(path: Path, members: dict[str, bytes]) -> None:
+        with zipfile.ZipFile(path, "w") as zf:
+            for name, data in members.items():
+                zf.writestr(name, data)
+
+    zwrite(large / "medvedeva2025_01_Genomes.zip", {
+        "01_Genomes/MIRUS_G_0001.fa": rec("MIRUS_G_0001_c0001", "m1a") + rec("MIRUS_G_0001_c0002", "m1b"),
+        "01_Genomes/MIRUS_G_0002.fa": rec("MIRUS_G_0002_c0001", "m2"),
+        "__MACOSX/01_Genomes/._MIRUS_G_0001.fa": b"fork",
+    })
+    zwrite(small / "gaia2023_Mirusviricota_Genomes.zip", {
+        "Mirus_111_MAGs.fa": rec("TARA_AON_NCLDV_00005_000000000001", "t5a")
+                             + rec("TARA_AON_NCLDV_00005_000000000002", "t5b")
+                             + rec("TARA_PSW_NCLDV_00007_000000000001", "t7"),
+        "Mirus_near_complete_genome.fa": rec("TARA_SAMEA2619782_METAG_scaffold_2_length_432583", "nc"),
+    })
+    zwrite(large / "gaia2023_GOEV_Genomic_DB.zip", {
+        "GOEV_Genomic_DB/TARA_AON_NCLDV_00005-fixed.fa": rec("TARA_AON_NCLDV_00005_000000000001", "t5a")
+                                                          + rec("TARA_AON_NCLDV_00005_000000000002", "t5b"),
+        "GOEV_Genomic_DB/Schulz_GVMAG_M_1_2-contigs.fa": rec("Schulz_GVMAG_M_1_2_000000000001", "gv"),
+        "GOEV_Genomic_DB/Moniruzzaman_MM01_ERX1_3_dc.fa": rec("Moniruzzaman_MM01_ERX1_3_c1", "mon"),
+        "GOEV_Genomic_DB/Mimiviridae_KC1_Mimivirus_x-contigs.fa": rec("KC1_1", "mimi"),
+        "GOEV_Genomic_DB/Poxviridae_LT1_Cowpox_virus-contigs.fa": rec("LT1_1", "pox"),
+        "GOEV_Genomic_DB/Asfarviridae_AY1_African_swine_fever_virus-contigs.fa": rec("AY1_1", "asf"),
+        "__MACOSX/GOEV_Genomic_DB/._Poxviridae_LT1_Cowpox_virus-contigs.fa": b"fork",
+    })
+    (large / "bellas2023_mcp-loci-hq.fna.gz").write_bytes(gz.compress(rec("MJMQ01_1408", "eve1") + rec("BJOX01_1121", "eve2"), mtime=0))
+    (small / "bellas2023_Synura_10000bp_FLYE_assembly_PLV.fasta").write_bytes(rec("Contig 317", "fl1") + rec("Contig 326", "fl2"))
+    (small / "bellas2023_Readme.txt").write_text("Readme\n")
+    zwrite(large / "medvedeva2025_Supplemental_Tables.zip", {"Table_S03_Mirusviricota_Genomes.xlsx": b"xlsx"})
+    with tarfile.open(small / "bellas2023_MCPs_group_by_genome.fasta.tar.gz", "w:gz") as tf:
+        ti = tarfile.TarInfo("MCP_grouped_by_genome/A_MCP_extract.fasta")
+        ti.size = 8
+        tf.addfile(ti, io.BytesIO(b">a\nACGT\n"))
+    return small, large, s
+
+
+def _mir1_args(small, large, out, work, *extra):
+    return ["stage-mir1", "--dl", str(small), "--large-dir", str(large), "--out", str(out),
+            "--retrieved", "2026-11-25T21:56:55Z", "--final-dir", "/tmp/if2453/s2/inputs/MIR1", "--work", str(work),
+            *extra]
+
+
+def test_mir1_from_the_bytes_splits_goev_leaves_out_pox_and_asfar_and_lets_gv1_own_its_contigs(tmp_path):
+    from biobox import ids
+
+    m = _mod()
+    small, large, s = _mir1_fixture(tmp_path)
+    gv1 = tmp_path / "GV1"
+    gv1.mkdir()
+    (gv1 / "genomes.json").write_text(json.dumps([{"contig_uids": [ids.contig_uid(s["gv"]).hex()]}]))
+    out = tmp_path / "meta" / "MIR1"
+    assert m.main([*_mir1_args(small, large, out, tmp_path / "work"), "--owner-inputs", f"GV1={gv1}",
+                   "--out-report", str(tmp_path / "rep.json")]) == 0
+    rep = json.loads((tmp_path / "rep.json").read_text())
+    assert rep["s2_check"]["exit"] == 0 and rep["s2_check"]["problems"] == []
+    # Medvedeva 2, GOEV 4 (Tara, Schulz, Moniruzzaman; Mimi), Gaia 2 of 3 (its Tara MAG repeats GOEV's contig set
+    # exactly, so it is listed once, under GOEV, which comes first: DEC-27), 2 EVE loci, 2 FLYE contigs.
+    assert rep["genomes_by_class"] == {"goev_environmental": 3, "goev_reference": 1, "mirus_gaia2023": 2,
+                                       "mirusviricota": 2, "plv_eve": 2, "plv_flye": 2}
+    assert rep["repeated_records"] == 1
+    assert rep["owned_by_stage"] == {"GV1": 1}
+    assert rep["held_genomes"] == {"tower_mir1:gaia2023_GOEV_Genomic_DB:environmental:wholly:GV1": 1}
+    assert rep["left_out"]["isolate_reference_Poxviridae"] == 1
+    assert rep["left_out"]["isolate_reference_Asfarviridae"] == 1
+    assert rep["redistributable"] is False
+    objs = {Path(o["path"]).name: o for o in json.loads((out / "objects.json").read_text())}
+    assert objs["mir1_bellas2023_eve_loci.fna"]["redistributable"] is False
+    assert objs["mir1_bellas2023_flye_plv.fna"]["redistributable"] is False
+    assert objs["mir1_medvedeva2025.fna"]["redistributable"] is True
+    uids = {u for g in json.loads((out / "genomes.json").read_text()) for u in g["contig_uids"]}
+    assert ids.contig_uid(s["pox"]).hex() not in uids and ids.contig_uid(s["asf"]).hex() not in uids
+    assert ids.contig_uid(s["gv"]).hex() in uids  # owned by GV1 by the chain, not removed
+    gaia = (out / "mir1_gaia2023_mirus.fna").read_text()
+    assert ">gaia2023_mirus|TARA_AON_NCLDV_00005_000000000001\n" in gaia
+    flye = (out / "mir1_bellas2023_flye_plv.fna").read_text()
+    assert ">bellas2023_Synura_10000bp_FLYE_assembly_PLV|Contig_317\n" in flye
+    with open(out / "left_out.tsv", newline="") as fh:
+        reasons = {(r["file"], r["member"]): r["reason"] for r in csv.DictReader(fh, delimiter="\t")}
+    assert reasons[("bellas2023_MCPs_group_by_genome.fasta.tar.gz", "")].startswith("not_genome_sequence")
+    assert reasons[("medvedeva2025_Supplemental_Tables.zip", "")].startswith("non_sequence_file")
+    genomes = json.loads((out / "genomes.json").read_text())
+    assert all(g["kind"] == "virus" and g["circular"] == [] for g in genomes)
+
+
+def test_mir1_exclude_leaves_a_source_out_and_two_runs_are_byte_identical(tmp_path):
+    m = _mod()
+    small, large, _ = _mir1_fixture(tmp_path)
+    outs = []
+    for k in (1, 2):
+        out = tmp_path / f"run{k}" / "MIR1"
+        assert m.main([*_mir1_args(small, large, out, tmp_path / f"w{k}"), "--exclude", "bellas2023_eve_loci"]) == 0
+        outs.append(out)
+    names = {Path(o["path"]).name for o in json.loads((outs[0] / "objects.json").read_text())}
+    assert "mir1_bellas2023_eve_loci.fna" not in names
+    with open(outs[0] / "left_out.tsv", newline="") as fh:
+        assert ("bellas2023_mcp-loci-hq.fna.gz", "excluded_by_option") in {
+            (r["file"], r["reason"]) for r in csv.DictReader(fh, delimiter="\t")}
+    for name in ("genomes.json", "objects.json", "records.tsv", "mir1_metadata.tsv", "mir1_medvedeva2025.fna",
+                 "mir1_goev_environmental.fna", "left_out.tsv", "inputs_SUMS"):
+        assert (outs[0] / name).read_bytes() == (outs[1] / name).read_bytes(), name
+
+
+def test_mir1_refuses_a_record_name_twice_in_the_stage(tmp_path):
+    m = _mod()
+    fa1, fa2 = tmp_path / "a.fna", tmp_path / "b.fna"
+    fa1.write_bytes(b">same\n" + _rand(300, 41) + b"\n")
+    fa2.write_bytes(b">same\n" + _rand(300, 42) + b"\n")
+    src = {"source_release": "1", "license": "CC BY 4.0", "redistributable": True, "virus_class": "plv"}
+    with pytest.raises(m.Refused):
+        m.stage_mir1([{**src, "source_name": "a", "fasta": fa1, "output_name": "a.fna"},
+                      {**src, "source_name": "b", "fasta": fa2, "output_name": "b.fna"}],
+                     tmp_path / "M", root=None, root_stages=(), owner_inputs={}, retrieved="t")
+    assert not (tmp_path / "M").exists()
 
 
 _ROOT13 = ("S1", "P1", "P2", "P3", "P4", "P5", "P6", "H1", "PL1", "C5", "V1", "G1", "SPX1")

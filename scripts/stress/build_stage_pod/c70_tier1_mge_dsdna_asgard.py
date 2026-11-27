@@ -68,7 +68,8 @@ Refused = make_inputs.Refused
 # Constants & verified source endpoints
 
 ECE2_CLASSES = ("inocle", "tycheposon")
-MIR1_CLASSES = ("mirusviricota", "mirus_goev", "plv", "plv_eve")
+MIR1_CLASSES = ("mirusviricota", "mirus_goev", "plv", "plv_eve", "mirus_gaia2023", "goev_environmental",
+                "goev_reference", "plv_flye")
 FASTA_SUFFIXES = (".fa", ".fna", ".fasta", ".fa.gz", ".fna.gz", ".fasta.gz")
 VALID_DNA_RE = re.compile(rb"^[ACGTURYKMSWBDHVNacgturykmswbdhvn]+$")
 _COMP_TABLE = bytes.maketrans(
@@ -106,6 +107,7 @@ ECE2_SIDECAR_HEAD = [
     "length", "circular", "tir_length", "owner_stage", "dec65_class", "element_set",
 ]
 LATER_HEAD = ["ordinal", "accession", "contig_uid", "length", "holder"]
+STOR_MIN_BYTES = 64 * 1024 * 1024  # AGENTS §7.3: files under 64 MiB never go to /stor
 MIR1_RECORD_HEAD = [
     "ordinal", "source", "virus_class", "genome_id", "accession", "contig_uid",
     "length", "circular", "tir_length", "owner_stage",
@@ -307,34 +309,34 @@ def _finalize_stage_dir(work: Path, out_dir: Path, rep: dict, fasta_dir: Path | 
     """Atomically rename `work` -> `out_dir`, write `objects_staging.json` (the objects where they are now, for the
     checks; `objects.json` names their later place under INPUTS), `inputs_SUMS` and `stage_report.json`.
 
-    With `fasta_dir` (a FASTA of 64 MB and more goes to `/stor`, AGENTS §7.3), each object file is moved there under
-    a dot-temporary name and renamed into place; a file already there is refused, never overwritten."""
+    With `fasta_dir` (a FASTA of 64 MiB and more goes to `/stor`, AGENTS §7.3; a smaller one stays with the
+    metadata), each such object file is moved there under a dot-temporary name and renamed into place; a file already
+    there is refused, never overwritten."""
     objs = json.loads((work / "objects.json").read_text(encoding="utf-8"))
     names = [Path(o["path"]).name for o in objs]
-    if fasta_dir is not None:
+    moved = [n for n in names if fasta_dir is not None and (work / n).stat().st_size >= STOR_MIN_BYTES]
+    if moved:
         fasta_dir = Path(fasta_dir)
         fasta_dir.mkdir(parents=True, exist_ok=True)
-        for n in names:
+        for n in moved:
             if (fasta_dir / n).exists():
                 raise Refused(f"{fasta_dir / n} exists")
     work.rename(out_dir)
-    obj_home = out_dir
-    if fasta_dir is not None:
-        for n in names:
-            part = fasta_dir / f".{n}.partial"
-            shutil.copyfile(out_dir / n, part)
-            part.rename(fasta_dir / n)
-            (out_dir / n).unlink()
-        obj_home = fasta_dir
-    staged = [{**o, "path": str(obj_home / Path(o["path"]).name)} for o in objs]
+    for n in moved:
+        part = fasta_dir / f".{n}.partial"
+        shutil.copyfile(out_dir / n, part)
+        part.rename(fasta_dir / n)
+        (out_dir / n).unlink()
+    staged = [{**o, "path": str((fasta_dir if Path(o["path"]).name in moved else out_dir) / Path(o["path"]).name)}
+              for o in objs]
     (out_dir / "objects_staging.json").write_text(json.dumps(staged, indent=1), encoding="utf-8")
     sum_files = sorted(
         p.name for p in out_dir.iterdir()
         if p.is_file() and p.name not in ("inputs_SUMS", "stage_report.json", "objects_staging.json")
     )
     paths = {n: out_dir / n for n in sum_files}
-    if fasta_dir is not None:
-        paths.update({n: fasta_dir / n for n in names})
+    if moved:
+        paths.update({n: fasta_dir / n for n in moved})
         sum_files = sorted(paths)
     sha_map = {n: ids.sha256_file(paths[n]).hex() for n in sum_files}
     bytes_map = {n: paths[n].stat().st_size for n in sum_files}
@@ -617,8 +619,14 @@ def stage_mir1(
     retrieved: str,
     final_dir: Path | None = None,
     stage_name: str = "MIR1",
+    later_inputs: dict[str, Path] | None = None,
+    fasta_dir: Path | None = None,
 ) -> dict:
     """Stage `MIR1` (Mirusviricota + GOEV + PLVs/EVEs; linear untrimmed per DEC-65, kind='virus').
+
+    A record name (the header's first token) that occurs twice in the stage is refused: the sources share names
+    (the Tara Mirusviricota of Gaia 2023 are in the GOEV database under the same names), so a source that repeats
+    another's names carries a `name_prefix`.
 
     Each source dict supports two modes:
       - `mode == "single_contig"` (default): `fasta` is one FASTA file; each record is one genome.
@@ -653,13 +661,14 @@ def stage_mir1(
 
     try:
         rep = _stage_mir1_work(
-            sources, work, obj_dir, stage_name, root, list(root_stages), owner_inputs, retrieved
+            sources, work, obj_dir, stage_name, root, list(root_stages), owner_inputs, retrieved,
+            dict(later_inputs or {}),
         )
     except BaseException:
         shutil.rmtree(work, ignore_errors=True)
         raise
 
-    return _finalize_stage_dir(work, out_dir, rep)
+    return _finalize_stage_dir(work, out_dir, rep, fasta_dir)
 
 
 def _stage_mir1_work(
@@ -671,7 +680,18 @@ def _stage_mir1_work(
     root_stages: list[str],
     owner_inputs: dict[str, Path],
     retrieved: str,
+    later_inputs: dict[str, Path] | None = None,
 ) -> dict:
+    later_inputs = later_inputs or {}
+    names: set[str] = set()
+
+    def _named(header: str, prefix: str) -> str:
+        h = f"{prefix}|{header}" if prefix else header
+        first = h.split(None, 1)[0] if h.strip() else ""
+        if first in names:
+            raise Refused(f"{stage_name}: record name {first} occurs twice in the stage")
+        names.add(first)
+        return h
     ordered_sources = sorted(sources, key=lambda s: (s["virus_class"], s["output_name"], s["source_name"]))
     # Each bin entry: (source_name, virus_class, genome_id, quality, list[(acc, cu, length, tir_len)])
     genome_bins: list[tuple[str, str, str, str, list[tuple[str, bytes, int, int]]]] = []
@@ -704,10 +724,11 @@ def _stage_mir1_work(
                             skipped.append((sname, r.accession, "non_iupac_dna", len(r.seq)))
                             skip_count += 1
                             continue
-                        meta = classify_mir1_record(r.header, vcls)
+                        hdr = _named(r.header, src.get("name_prefix", ""))
+                        meta = classify_mir1_record(hdr, vcls)
                         seq = r.seq  # Linear untrimmed (DEC-65)
                         tir_len = detect_tir(seq)
-                        w.write(b"\n".join(fasta.format_record(r.header, seq, r.line_width)) + b"\n")
+                        w.write(b"\n".join(fasta.format_record(hdr, seq, r.line_width)) + b"\n")
                         cu = ids.contig_uid(seq)
                         genome_bins.append((sname, vcls, meta["accession"], qual, [(meta["accession"], cu, len(seq), tir_len)]))
                         rec_count += 1
@@ -727,10 +748,11 @@ def _stage_mir1_work(
                                 skipped.append((sname, f"{gid}:{r.accession}", "non_iupac_dna", len(r.seq)))
                                 skip_count += 1
                                 continue
-                            meta = classify_mir1_record(r.header, vcls)
+                            hdr = _named(r.header, src.get("name_prefix", ""))
+                            meta = classify_mir1_record(hdr, vcls)
                             seq = r.seq  # Linear untrimmed (DEC-65)
                             tir_len = detect_tir(seq)
-                            w.write(b"\n".join(fasta.format_record(r.header, seq, r.line_width)) + b"\n")
+                            w.write(b"\n".join(fasta.format_record(hdr, seq, r.line_width)) + b"\n")
                             cu = ids.contig_uid(seq)
                             contigs_in_bin.append((meta["accession"], cu, len(seq), tir_len))
                             rec_count += 1
@@ -766,6 +788,7 @@ def _stage_mir1_work(
 
     all_uids = [cu for _, _, _, _, clist in genome_bins for _, cu, _, _ in clist]
     owners = v2.owners_of(all_uids, root, root_stages, owner_inputs)
+    later = _later_split(all_uids, owners, later_inputs)
 
     listing = make_inputs.Listing()
     genomes: list[dict] = []
@@ -773,11 +796,13 @@ def _stage_mir1_work(
     sidecar_rows: list[tuple] = []
     repeated_rows: list[tuple] = []
     shared_rows: list[tuple] = []
+    later_rows: list[tuple] = []
     first_of: dict[bytes, str] = {}
     class_records: Counter[str] = Counter()
     class_genomes: Counter[str] = Counter()
     contig_len: dict[bytes, int] = {}
     contig_cls: dict[bytes, str] = {}
+    held_genomes: Counter[str] = Counter()  # "<source>:<wholly|partly>:<owner>"
     ordinal = 0
 
     for sname, vcls, gid, qual, clist in genome_bins:
@@ -789,6 +814,8 @@ def _stage_mir1_work(
         for acc, cu, length, tir_len in clist:
             owner = owners.get(cu, "")
             rec_rows.append((ordinal, sname, vcls, gid, acc, cu.hex(), length, "false", tir_len, owner))
+            if not owner and cu in later:
+                later_rows.append((ordinal, acc, cu.hex(), length, later[cu]))
             if owner:
                 shared_rows.append((ordinal, gid, acc, cu.hex(), owner))
                 held_in_bin += 1
@@ -802,6 +829,8 @@ def _stage_mir1_work(
             class_records[vcls] += 1
             ordinal += 1
 
+        for o in sorted(owner_set):
+            held_genomes[f"{sname}:{'wholly' if held_in_bin == len(clist) else 'partly'}:{o}"] += 1
         g = listing.add(uids, 11, "virus", qual)
         guid = ids.genome_uid(list(dict.fromkeys(uids)))
         if g is None:
@@ -829,10 +858,26 @@ def _stage_mir1_work(
         ["ordinal", "genome_id", "accession", "contig_uid", "owner_stage"],
         shared_rows,
     )
+    make_inputs._write_tsv(work / "later_records.tsv", LATER_HEAD, later_rows)
     make_inputs._write_tsv(work / "trims.tsv", TRIM_HEAD, trims)
     make_inputs._write_tsv(work / "skipped_records.tsv", SKIPPED_HEAD, skipped)
     (work / "objects.json").write_text(json.dumps(objects_json, indent=1), encoding="utf-8")
     (work / "genomes.json").write_text(json.dumps(genomes), encoding="utf-8")
+
+    src_bases: Counter[str] = Counter()
+    src_new: Counter[str] = Counter()
+    seen_cu: set[bytes] = set()
+    for sname, _, _, _, clist in genome_bins:
+        for _, cu, length, _ in clist:
+            if cu in seen_cu:
+                continue
+            seen_cu.add(cu)
+            src_bases[sname] += length
+            if cu not in owners and cu not in later:
+                src_new[sname] += length
+    for out_name, b in by_source.items():
+        b["distinct_bases_first_here"] = src_bases[b["source_name"]]
+        b["new_bases_after_later"] = src_new[b["source_name"]]
 
     owner_contigs: Counter[str] = Counter()
     owner_bases: Counter[str] = Counter()
@@ -867,10 +912,13 @@ def _stage_mir1_work(
         "held_bases": held_bases,
         "new_contigs": total_contigs - held_contigs,
         "new_bases": total_bases - held_bases,
+        **_later_tally(contig_len, owners, later),
+        "held_genomes": dict(sorted(held_genomes.items())),
         "records_by_class": dict(sorted(class_records.items())),
         "genomes_by_class": dict(sorted(class_genomes.items())),
         "bases_by_class": dict(sorted(bases_by_class.items())),
         "by_source": by_source,
+        "later_inputs": sorted(later_inputs),
         "root_stages": root_stages,
         "owner_inputs": sorted(owner_inputs),
     }
@@ -1625,6 +1673,200 @@ def prepare_ece2_from_dl(inocles_dir: Path, tyche_tar: Path, scratch: Path) -> t
     return sources, skipped
 
 
+MIR1_PREP_LICENSE = (
+    "CC BY 4.0 (figshare {art}, as card C-70's prep note read it on 2026-11-24, "
+    "planning/measurements/2026-11-24_c70_tier1_prep.md section 1; the provider's response was not kept)"
+)
+BELLAS_LICENSE = (
+    "none confirmed: the batch-1 stager's report states CC BY 4.0 for figshare 21581355 (sources.yaml tower_mir1); "
+    "no provider record was kept (staging plan 2026-11-26 section 8), so DEC-80 (3) gives redistributable false"
+)
+GOEV_LEFT_FAMILIES = ("Poxviridae", "Asfarviridae")
+GOEV_ENV_PREFIXES = ("Schulz_GVMAG_", "TARA_", "Moniruzzaman_")
+MIR1_SOURCE_KEYS = ("medvedeva2025", "gaia2023_mirus", "goev_environmental", "goev_reference", "bellas2023_eve_loci",
+                    "bellas2023_flye_plv")
+_GAIA_RECORD_RE = re.compile(r"^(?P<genome>.+)_\d{12}$")
+
+
+def _zip_fasta_members(zip_path: Path) -> list[zipfile.ZipInfo]:
+    with zipfile.ZipFile(zip_path) as zf:
+        return sorted((i for i in zf.infolist() if not i.is_dir() and _is_fasta_name(i.filename)),
+                      key=lambda i: i.filename)
+
+
+def goev_genome_name(member: str) -> str:
+    """A GOEV member's genome name: the file stem without the archive's `-contigs`, `-fixed` or `_dc` suffix."""
+    stem = _strip_fasta_suffix(Path(member).name)
+    for suf in ("-contigs", "-fixed", "_dc"):
+        if stem.endswith(suf):
+            return stem[: -len(suf)]
+    return stem
+
+
+def goev_class(genome: str) -> str:
+    """`environmental` (the GVMAGs of Schulz 2020 and Moniruzzaman 2020, and the Tara NCLDV MAGs), or the reference's
+    family (the first `_` field of an isolate reference: `Poxviridae_LT896721_Cowpox_virus...`)."""
+    if genome.startswith(GOEV_ENV_PREFIXES):
+        return "environmental"
+    return genome.split("_", 1)[0]
+
+
+def prepare_mir1_from_dl(small_dir: Path, large_dir: Path, scratch: Path,
+                         exclude: Iterable[str] = ()) -> tuple[list[dict], list[tuple]]:
+    """The MIR1 sources as the ten files of `tower_mir1` hold them (card C-70, 2026-11-26), and what is left out.
+
+    - `medvedeva2025_01_Genomes.zip`: the 1,257 `01_Genomes/MIRUS_G_*.fa`, one genome per file (multi-contig).
+    - `gaia2023_Mirusviricota_Genomes.zip`: `Mirus_111_MAGs.fa` split into genomes by the record name less its
+      12-digit contig suffix, and `Mirus_near_complete_genome.fa` as one genome; their names carry the prefix
+      `gaia2023_mirus|` because the GOEV database repeats the Tara names.
+    - `gaia2023_GOEV_Genomic_DB.zip`: one genome per FASTA member; the isolate references of *Poxviridae* and
+      *Asfarviridae* are left out (DEC-79 (1)'s catch); the other references and the environmental MAGs are staged as
+      two sources. Byte-equal `GV1` contigs are owned by `GV1` by the ownership of the stage, not removed here.
+    - `bellas2023_mcp-loci-hq.fna.gz`: the 7,382 high-quality EVE loci, one genome per record.
+    - the three `bellas2023_*_FLYE_*PLV.fasta`: PLV-bearing contigs of two protist nanopore assemblies, one genome per
+      record, named `<file stem>|<header, spaces as _>`.
+    - left out: `medvedeva2025_Supplemental_Tables.zip` and `bellas2023_Readme.txt` (not sequence),
+      `bellas2023_MCPs_group_by_genome.fasta.tar.gz` (MCP gene sequences, not genomes).
+    `exclude` names keys of MIR1_SOURCE_KEYS to leave out as well (recorded)."""
+    small_dir, large_dir, scratch = Path(small_dir), Path(large_dir), Path(scratch)
+    exclude = set(exclude)
+    bad = exclude - set(MIR1_SOURCE_KEYS)
+    if bad:
+        raise Refused(f"MIR1: unknown source to exclude {sorted(bad)}")
+    scratch.mkdir(parents=True, exist_ok=True)
+
+    def need(path: Path) -> Path:
+        if not path.is_file():
+            raise Refused(f"MIR1: {path} is missing")
+        return path
+
+    sources: list[dict] = []
+    left: list[tuple] = []
+
+    med_zip = need(large_dir / "medvedeva2025_01_Genomes.zip")
+    if "medvedeva2025" in exclude:
+        left.append((med_zip.name, "", med_zip.stat().st_size, "excluded_by_option"))
+    else:
+        d = scratch / "medvedeva2025"
+        d.mkdir()
+        bins = []
+        with zipfile.ZipFile(med_zip) as zf:
+            for i in _zip_fasta_members(med_zip):
+                target = d / Path(i.filename).name
+                with zf.open(i) as src, open(target, "wb") as dst:
+                    shutil.copyfileobj(src, dst)
+                bins.append((_strip_fasta_suffix(target.name), target))
+        sources.append({
+            "source_name": "tower_mir1:medvedeva2025_01_Genomes",
+            "source_release": "figshare 28955240 file 54652007, medvedeva2025_01_Genomes.zip 01_Genomes/ (Medvedeva et al. 2025)",
+            "license": MIR1_PREP_LICENSE.format(art=28955240), "redistributable": True,
+            "mode": "multi_contig_bins", "bin_fastas": bins, "output_name": "mir1_medvedeva2025.fna",
+            "virus_class": "mirusviricota",
+        })
+
+    gaia_zip = need(small_dir / "gaia2023_Mirusviricota_Genomes.zip")
+    if "gaia2023_mirus" in exclude:
+        left.append((gaia_zip.name, "", gaia_zip.stat().st_size, "excluded_by_option"))
+    else:
+        d = scratch / "gaia2023_mirus"
+        d.mkdir()
+        per: dict[str, list[bytes]] = defaultdict(list)
+        with zipfile.ZipFile(gaia_zip) as zf:
+            for i in _zip_fasta_members(gaia_zip):
+                stem = _strip_fasta_suffix(Path(i.filename).name)
+                with zf.open(i) as fh:
+                    for r in v2.iter_fasta_stream(fh):
+                        tok = r.header.split(None, 1)[0]
+                        m = _GAIA_RECORD_RE.match(tok)
+                        gid = m.group("genome") if (m and stem == "Mirus_111_MAGs") else stem
+                        per[gid].append(b"\n".join(fasta.format_record(r.header, r.seq, r.line_width)) + b"\n")
+        bins = []
+        for gid in sorted(per):
+            target = d / f"{gid}.fa"
+            target.write_bytes(b"".join(per[gid]))
+            bins.append((gid, target))
+        sources.append({
+            "source_name": "tower_mir1:gaia2023_Mirusviricota_Genomes",
+            "source_release": "figshare 20284713 file 36228657, gaia2023_Mirusviricota_Genomes.zip (Gaia et al. 2023)",
+            "license": MIR1_PREP_LICENSE.format(art=20284713), "redistributable": True,
+            "mode": "multi_contig_bins", "bin_fastas": bins, "output_name": "mir1_gaia2023_mirus.fna",
+            "virus_class": "mirus_gaia2023", "name_prefix": "gaia2023_mirus",
+        })
+
+    goev_zip = need(large_dir / "gaia2023_GOEV_Genomic_DB.zip")
+    env_bins, ref_bins = [], []
+    d = scratch / "goev"
+    d.mkdir()
+    with zipfile.ZipFile(goev_zip) as zf:
+        for i in _zip_fasta_members(goev_zip):
+            gid = goev_genome_name(i.filename)
+            cls = goev_class(gid)
+            key = "goev_environmental" if cls == "environmental" else "goev_reference"
+            if cls in GOEV_LEFT_FAMILIES:
+                left.append((goev_zip.name, i.filename, i.file_size,
+                             f"isolate_reference_{cls}: not the set's subject (DEC-79 (1) catch)"))
+                continue
+            if key in exclude:
+                left.append((goev_zip.name, i.filename, i.file_size, "excluded_by_option"))
+                continue
+            target = d / f"{gid}.fa"
+            if target.exists():
+                raise Refused(f"MIR1: two GOEV members for genome {gid}")
+            with zf.open(i) as src, open(target, "wb") as dst:
+                shutil.copyfileobj(src, dst)
+            (env_bins if key == "goev_environmental" else ref_bins).append((gid, target))
+    for key, bins in (("goev_environmental", env_bins), ("goev_reference", ref_bins)):
+        if bins:
+            sources.append({
+                "source_name": f"tower_mir1:gaia2023_GOEV_Genomic_DB:{key[5:]}",
+                "source_release": "figshare 20284713 file 36228654, gaia2023_GOEV_Genomic_DB.zip (Gaia et al. 2023)",
+                "license": MIR1_PREP_LICENSE.format(art=20284713), "redistributable": True,
+                "mode": "multi_contig_bins", "bin_fastas": bins, "output_name": f"mir1_{key}.fna",
+                "virus_class": key,
+            })
+
+    eve = need(large_dir / "bellas2023_mcp-loci-hq.fna.gz")
+    if "bellas2023_eve_loci" in exclude:
+        left.append((eve.name, "", eve.stat().st_size, "excluded_by_option"))
+    else:
+        sources.append({
+            "source_name": "tower_mir1:bellas2023_mcp-loci-hq",
+            "source_release": "figshare 21581355 file 39542833, bellas2023_mcp-loci-hq.fna.gz (Bellas et al. 2023)",
+            "license": BELLAS_LICENSE, "redistributable": False,
+            "mode": "single_contig", "fasta": eve, "output_name": "mir1_bellas2023_eve_loci.fna",
+            "virus_class": "plv_eve",
+        })
+
+    flye = sorted(p for p in small_dir.iterdir() if p.name.startswith("bellas2023_") and "FLYE" in p.name
+                  and _is_fasta_name(p.name))
+    if "bellas2023_flye_plv" in exclude:
+        left.extend((p.name, "", p.stat().st_size, "excluded_by_option") for p in flye)
+    elif flye:
+        cat = scratch / "bellas2023_flye_plv.fna"
+        with open(cat, "wb") as w:
+            for p in flye:
+                stem = _strip_fasta_suffix(p.name)
+                with _open_fasta_in(p) as fh:
+                    for r in v2.iter_fasta_stream(fh):
+                        h = f"{stem}|{r.header.replace(' ', '_')}"
+                        w.write(b"\n".join(fasta.format_record(h, r.seq, r.line_width)) + b"\n")
+        sources.append({
+            "source_name": "tower_mir1:bellas2023_FLYE_PLV",
+            "source_release": "figshare 21581355 files 39543070, 39543211, 39543214 (Bellas et al. 2023)",
+            "license": BELLAS_LICENSE, "redistributable": False,
+            "mode": "single_contig", "fasta": cat, "output_name": "mir1_bellas2023_flye_plv.fna",
+            "virus_class": "plv_flye",
+        })
+
+    for name, reason in (("medvedeva2025_Supplemental_Tables.zip", "non_sequence_file: supplementary tables (xlsx)"),
+                         ("bellas2023_Readme.txt", "non_sequence_file"),
+                         ("bellas2023_MCPs_group_by_genome.fasta.tar.gz", "not_genome_sequence: MCP gene sequences")):
+        for base in (small_dir, large_dir):
+            if (base / name).is_file():
+                left.append((name, "", (base / name).stat().st_size, reason))
+    return sources, sorted(left)
+
+
 def _prepare_ece2_sources(dl_dir: Path, scratch: Path) -> list[dict]:
     sources: list[dict] = []
     inocle_fastas = _collect_fastas_recursive(dl_dir / "inocles_zenodo", scratch, "inocles")
@@ -1784,6 +2026,9 @@ def main(argv: list[str]) -> int:
     p_fm.add_argument("--dl", type=Path, required=True)
     p_sm = sub.add_parser("stage-mir1")
     _add_stage_args(p_sm)
+    p_sm.add_argument("--large-dir", type=Path, default=None,
+                      help="the directory of tower_mir1's files of 64 MiB and more; with it, --dl holds the others")
+    p_sm.add_argument("--exclude", action="append", default=[], choices=MIR1_SOURCE_KEYS)
 
     p_fa = sub.add_parser("fetch-asg1")
     p_fa.add_argument("--dl", type=Path, required=True)
@@ -1833,11 +2078,22 @@ def main(argv: list[str]) -> int:
                 owner_inputs=owner_inputs, retrieved=args.retrieved, final_dir=args.final_dir,
                 later_inputs=later_inputs, fasta_dir=args.fasta_dir,
             )
+        elif args.cmd == "stage-mir1" and args.large_dir is not None:
+            sources, left = prepare_mir1_from_dl(args.dl, args.large_dir, scratch, args.exclude)
+            rep = stage_mir1(
+                sources, args.out, root=args.root, root_stages=root_stages,
+                owner_inputs=owner_inputs, retrieved=args.retrieved, final_dir=args.final_dir,
+                later_inputs=later_inputs, fasta_dir=args.fasta_dir,
+            )
+            make_inputs._write_tsv(args.out / "left_out.tsv", ["file", "member", "bytes", "reason"], left)
+            rep["left_out"] = dict(sorted(Counter(r[3].split(":", 1)[0] for r in left).items()))
+            rep["excluded"] = sorted(args.exclude)
         elif args.cmd == "stage-mir1":
             sources = _prepare_mir1_sources(args.dl, scratch)
             rep = stage_mir1(
                 sources, args.out, root=args.root, root_stages=root_stages,
                 owner_inputs=owner_inputs, retrieved=args.retrieved, final_dir=args.final_dir,
+                later_inputs=later_inputs, fasta_dir=args.fasta_dir,
             )
         else:
             entries = _prepare_asg1_entries(args.dl, scratch)
