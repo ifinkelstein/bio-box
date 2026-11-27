@@ -390,3 +390,158 @@ CPU-minutes, the upper bounds summed); the re-stage is most of it.
   template was rewritten (`AssertionError: ... '2026-11-27_staged_fasta_scan.md' in ('...2026-11-26_lr2_sag1_nx1_r232.md',)`).
 - `env BIOBOX_TREE=/tmp/biobox-wt/R-19 sh scripts/pod_pytest.sh R-19 tests/r1/test_r19_fasta_scan.py
   tests/r1/test_c76_lr2_sag1_nx1_r232.py tests/r1/test_r232_index.py tests/r0`: **308 passed in 18.34 s** (*measured*, `wilkcomp02`, 2026-11-27, one process).
+
+## 2026-11-27, card R-21: `s2_check_inputs.py` reads the bytes of every object
+
+§5 named the gap: the check never opened an object. Card R-21 adds a byte pass to it, on by default.
+
+### What the pass does
+
+`s2_check_inputs.py [--tables-only] STAGE GENOMES_JSON OBJECTS_JSON`. After the table checks, which are unchanged,
+each object of OBJECTS_JSON is read once, streaming, by `r19_fasta_scan._Scan` (imported, not copied: a subclass adds
+the hashing), and each record's `contig_uid` is hashed as its pieces arrive: blake3-128 of the upper-cased sequence,
+`biobox.ids.contig_uid`'s definition, over a buffer of at most 1 MiB. Records are split as `biobox.fasta.iter_records`
+splits them (CR/LF stripped, blank lines skipped; ingest neither trims nor rotates a record, so neither does the
+check). Problems, one line per object and kind with the count and the first record and header:
+
+| Name | What | Ingest |
+|---|---|---|
+| `header_not_utf8` | a header that is not UTF-8 | stops (`fasta.iter_records` decodes every header) |
+| `gap_byte` | `-` or `.` in a sequence, the two counted apart | stores the bytes |
+| `non_iupac_byte` | any other byte outside `ACGTURYSWKMBDHVN` (either case), with the most frequent values | stores the bytes |
+| `empty_record` | a record with no sequence | stores it |
+| `record_not_in_genomes` | a record whose `contig_uid` is in no genome of GENOMES_JSON | stores it, with no `genome_input` row |
+| `contigs_in_no_object` | (once per stage) a contig of GENOMES_JSON that no object holds | `genome_input` names a contig that ingest never stores |
+| `sequence_before_first_header` | a line before the first `>` | stops |
+| `read_error` | a truncated gzip, trailing bytes that are not gzip | stops |
+| `compression_not_as_named` | the first two bytes say gzip and the name does not end in `.gz`, or the reverse | opens by the name, so reads the wrong bytes or stops |
+| `header_too_long`, `no_records` | a header over 1 MiB; a file with no record | (R-19's limit); nothing to ingest |
+
+A header that is UTF-8 and not ASCII (`MGE1`'s en dash, §2) is counted and is not a problem. Memory: a dict of the
+stage's contig uids keyed by the parsed genomes' own uid objects, one line piece and the hash buffer; no sequence is
+held. `--tables-only` skips the pass (the report's `byte_pass` is then `null`), for a re-run after a change of metadata
+only. The report gains `tables_only` and `byte_pass` (per object: records, bases, the counts above, wall and CPU
+seconds; for the stage: contigs, contigs in no object, wall, CPU and the process's peak RSS from `VmHWM`).
+
+### Callers
+
+Found with `rg -n s2_check_inputs scripts tests` (2026-11-27). Every caller passes three positional arguments, so every
+caller gets the byte pass by default:
+
+- staging scripts: `c70_tier1_mge_dsdna_asgard.py`, `c75_grare_inputs.py`, `c76_lr2_sag1_nx1_r232.py` (`run`,
+  `restage-lr2`, and card R-20's `restage-nx1`), `c77_sag2_inputs.py`, `c79_metavr_mv2_eukv.py`,
+  `c80_kavagutti_inphared.py`, `c81_gwv1_sag3_wet1.py`, and `a26_r26_11_4_chain.py finalize-all` (card A-26's one
+  finalization of the `r26.11.4` inputs, already run);
+- the shell runners of earlier staging cards: `c26_inputs.sh`, `c36_inputs.sh`, `c39_run.sh`, `c40_run.sh`,
+  `c41_run.sh`, `c48c_v2_gv1_run.sh`, `c48e_run.sh`, `c52_run.sh`, `s2_h1.sh`;
+- tests: the staging tests of cards C-62, C-63, C-64, C-66, C-68, C-75, C-77, C-78, C-79, C-80 and C-81 run it on their
+  fixtures; all pass unchanged with the pass on.
+
+**No stage driver calls it**: `stage_driver.sh`, `stage_queue.sh`, `stage_wave.sh`, `stage_check.py` and `stage_est.py`
+do not name it (`rg -n -i check_inputs` on them: no line). So no mode of a stage build gets slower, and the running wave
+(from the frozen mirror `/tmp/if2453/ci/rel1126c`) is untouched. What the pass costs a staging script is given below.
+
+### The read-only runs (part 4): two of the three
+
+Detached units `systemd-run --user --unit=r21-<what> --collect -p MemoryMax=16G -p MemorySwapMax=0 -p CPUQuota=100%
+-p IOSchedulingClass=idle`, at `nice -n 19`, one at a time, one thread, each started after a look at the active units
+(no build unit of `MV1` or `V3`; the wave was in `PL3`'s Pfam scan) and with no `STOP` file in the root. The check
+needs `biobox`, so it ran in the image (`/stor/home/if2453/bio-box/images/bio-box_faec1f4.sif`, the image card R-19
+used) with `PYTHONPATH=/tmp/if2453/ci/R-21/src` (this card's mirror, made by `pod_pytest.sh`), every input bound
+read-only, under `/usr/bin/time -v`; stdout to `/tmp/if2453/r21/<what>.json`, stderr to `<what>.err`:
+
+```
+/usr/bin/time -v singularity exec --cleanenv --env PYTHONPATH=/tmp/if2453/ci/R-21/src --bind <each input>:<same>:ro \
+    .../bio-box_faec1f4.sif python /tmp/if2453/ci/R-21/scripts/stress/build_stage_pod/s2_check_inputs.py \
+    <STAGE> <meta>/genomes.json <meta>/objects_staging.json
+```
+
+| Unit | Stage, metadata, FASTA | Exit | Wall | CPU | Peak RSS | `problems` |
+|---|---|---:|---:|---:|---:|---|
+| `r21-oldlr2` | old `LR2`: `/tmp/if2453/c66/LR2`, `lr2_compendia.fna.gz` (6,329,546,501 B) | **1** | 11:56 | 712.0 s | 392,228 kB | 6 (below) |
+| `r21-newlr2` | re-staged `LR2`: `/tmp/if2453/r19/LR2`, `lr2_compendia_r19.fna.gz` (5,906,399,819 B) | **0** | 9:59 | 599.2 s | 370,724 kB | `[]` |
+| `r21-gwv1` | virus stage `GWV1`: `/tmp/if2453/c81/meta/GWV1`, `gwv1_gwvc.fna.gz` | not run | | | | (below) |
+
+**`GWV1` was not run.** From 05:17 to 05:52 CST card R-23's worker held two to four read-only units on the pod at
+every look (`r23-find`, `r23-scan-2` to `-7`, `r23-scan-spx1`, `r23-gv1`; *measured*, `systemctl --user
+list-units`, seven looks), and this card's brief allows no third unit beside another card's. The run is one command,
+about 2 minutes of one CPU (*estimate*: 3,740,796,061 bases, §3, at the 27.9 s per Gbp below), for when the pod has
+room:
+
+```
+systemd-run --user --unit=r21-gwv1 --collect -p MemoryMax=16G -p MemorySwapMax=0 -p CPUQuota=100% \
+    -p IOSchedulingClass=idle -p StandardOutput=file:/tmp/if2453/r21/gwv1.json \
+    -p StandardError=file:/tmp/if2453/r21/gwv1.err nice -n 19 /usr/bin/time -v singularity exec --cleanenv \
+    --env PYTHONPATH=/tmp/if2453/ci/R-21/src --bind /tmp/if2453/ci/R-21:/tmp/if2453/ci/R-21:ro \
+    --bind /tmp/if2453/c81/meta/GWV1:/tmp/if2453/c81/meta/GWV1:ro \
+    --bind /stor/scratch/Wilke/if2453/bio-box-staging/GWV1:/stor/scratch/Wilke/if2453/bio-box-staging/GWV1:ro \
+    /stor/home/if2453/bio-box/images/bio-box_faec1f4.sif python \
+    /tmp/if2453/ci/R-21/scripts/stress/build_stage_pod/s2_check_inputs.py GWV1 \
+    /tmp/if2453/c81/meta/GWV1/genomes.json /tmp/if2453/c81/meta/GWV1/objects_staging.json
+```
+
+R-19's scan found `GWV1`'s file clean of every byte kind (§3), so it is expected to exit 0 unless the uid comparison
+finds a record outside its tables.
+
+All *measured* (`wilkcomp02`, 2026-11-27, `/usr/bin/time -v` in `/tmp/if2453/r21/<what>.err`: wall clock, user +
+system time, maximum resident set size; the reports in `/tmp/if2453/r21/<what>.json`). `r21-oldlr2` ran 04:56 to
+05:08 CST, `r21-newlr2` 05:09 to 05:19 CST.
+
+**The old `LR2` fails and the damage is named** (`/tmp/if2453/r21/oldlr2.json`): 575,827 records, 21,670,443,395
+bases, and
+
+- `header_not_utf8`: 20,526 records, first record 504,176;
+- `gap_byte`: 27,217 records hold 1,583,054 `-` and 1,517,095 `.`, first record 504,174
+  (`5ddd4555721b18a765049dbb2004e612`);
+- `non_iupac_byte`: 27,396 records hold 360,828,943 other bytes (the ten most frequent values about 1.8 M each, as in
+  compressed data), first record 504,174;
+- `empty_record`: 130 records, first record 504,217;
+- `record_not_in_genomes`: 26,484 records, first record 504,175 (its header `d497c8fd…` is the stager's uid of the
+  contig, whose written sequence was cut by a wrapped line starting with `>`, so it hashes to something else);
+- `contigs_in_no_object`: 5,958 contigs of its `genomes.json`, the first `d497c8fd3b9f82f0db378d604ffe5225`.
+
+The counts agree with §4.1 and card C-81 (*derived*): records 575,827, not UTF-8 20,526, records outside IUPAC 27,396,
+empty 130 and first offending record 504,174 equal R-19's scan; 1,583,054 + 1,517,095 + 360,828,943 = 363,929,092
+bytes outside IUPAC, R-19's count; 26,484 records not in `genomes.json` is the count C-81 found matching no contig of
+its `records.tsv`. The same tables pass `--tables-only` (as C-66's and C-76's checks passed them; shown on a fixture of
+this case in the tests, not run again on the pod).
+
+**The re-staged `LR2` passes:** 44,064 genomes, 549,193 `genome_input` rows (as §4.4), 548,565 records and
+21,254,892,153 bases (as R-19's scan), all 548,565 contigs held by the object, no record outside the genomes,
+`problems: []`.
+
+**Cost.** The table checks take seconds (*measured*: 599.2 CPU-seconds for the process, 592.1 of them the byte pass, on
+the new `LR2`); the pass costs what R-19's scan of the same file cost (598.9 CPU-seconds, §4.4), so the hashing adds
+little to the reading (gzip inflation and the line split). On clean gzip FASTA it ran at 27.9 s per Gbp (*derived*:
+592.1 s / 21.255 Gbp); for the largest stage, about 40 Gbp of gzip FASTA, that is about 19 minutes of one CPU
+(*derived*: 27.9 × 40 = 1,114 s) added to its staging script's run, and nothing to a stage build. A damaged file costs
+more (old `LR2`: 32.7 s per Gbp, *derived*: 708.6 s / 21.670 Gbp). Memory is the parsed tables, not the sequence: peak
+RSS 371 to 392 MB for `LR2`'s 44,064 to 49,205 genomes; the byte pass added none that `ps` showed (*measured*:
+393,740 kB RSS in the first minute of `r21-oldlr2` and again ten minutes later, near its end).
+
+### What follows for the other staged stages (not run here)
+
+From R-19's scans (§2, §3) the check now also fails `NX1` as card C-66 staged it (69 records with 17,393 `-`; card
+R-20 re-stages it) and `GV1` (`gap_byte`: 3 records, 6 `-`); every other staged input scanned clean of the byte kinds.
+The uid comparison was not run on them. `GV1` is staged under `/tmp/if2453/s2/inputs/` and was not touched: whether
+its 6 gap bytes are removed, or its check is run with `--tables-only`, is for the card that stages or builds it.
+
+### Tests
+
+`tests/r1/test_r21_check_inputs_bytes.py` (13 tests, 14 cases, 28 with the two `PATH` modes): a clean stage of a plain
+CRLF file and a gzip file with a UTF-8 header that is not ASCII and a lower-case copy of a contig, its uids checked
+against `biobox.fasta.iter_records` and `biobox.ids.contig_uid`; `LR2`'s case (compressed bytes written as contigs,
+the tables made from them: passes `--tables-only`, fails the pass); each named problem alone, with its count and first
+record; gap bytes apart from other bytes; a repeated record and case variants are no problem; a contig found in
+either of two objects; compression against the name, both ways; `--tables-only` keeps the table checks; usage errors
+exit 2; and a 16 MiB unwrapped record passed under 8 MiB of traced memory. Truth by hand (uids by blake3 in the test).
+Seen failing first against the old check: 22 of 28 failed (`KeyError: 'byte_pass'`, `assert 0 == 1`,
+`AttributeError: module 's2_check_inputs' has no attribute 'byte_pass'`); the six that passed are the cases with no
+problem to find and the usage errors. Two fixture errors of the first draft were corrected after that run, both in the
+test's own truth: the `LR2` fixture's compressed bytes held no `>` (a repeated pattern; now seeded random bytes), and
+one sequence was 31 letters, not 30. The `no_records` case was added later and seen failing with that line of the check
+disabled (`AssertionError: [] assert (0 == 1)`, 2 failed). Every test file that runs the check (the staging tests of
+C-62, C-63, C-64, C-66, C-68, C-75, C-76, C-77, C-78, C-79, C-80, C-81) passes unchanged: `env
+BIOBOX_TREE=/tmp/biobox-wt/R-21 sh scripts/pod_pytest.sh R-21 tests/r1/test_r21_check_inputs_bytes.py
+tests/r1/test_r19_fasta_scan.py <those twelve files> tests/r0`: **509 passed, 1 skipped in 309.32 s** (*measured*,
+`wilkcomp02`, 2026-11-27, one process).
