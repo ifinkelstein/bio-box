@@ -423,14 +423,15 @@ def test_the_template_names_the_new_files_and_keeps_the_stages_values():
     assert str(c.inputs) == "/tmp/if2453/s2/inputs/GV1"
     assert (c.depth, c.library, c.crispr, c.min_contig_len, c.genecall_mode) == \
         (live.depth, live.library, live.crispr, live.min_contig_len, live.genecall_mode)
-    assert c.after == live.after == ("V2", "PL3", "GART2")
+    # card A-29 promoted the template into stages/GV1.conf (AFTER= of the r26.11.5 chain, the chain's EXPECT lines)
+    assert c.after == ("V2", "PL3", "GART2") and live.after == ("NX1",)
     assert {k: v[0] for k, v in c.judge.items()} == {k: v[0] for k, v in live.judge.items()}
-    assert {k: v[0] for k, v in c.expect.items()} == {k: v[0] for k, v in live.expect.items()}
+    assert all(live.expect[k][0] == v[0] for k, v in c.expect.items())
     assert NOTE in c.notes
     assert {n for _, n in c.sums} == {"genomes.json", "objects.json", NEW_FASTA}
     note = (REPO / NOTE).read_text(encoding="utf-8")
     for h, n in c.sums:
         assert h in note, f"SUM of {n} is not in the note"
-    assert not set(c.sums) & set(live.sums), "the template's files are new; the staged ones stay as they are"
+    assert set(c.sums) == set(live.sums), "card A-29 promoted the template: the live conf names the new files"
     for st, (n, src) in c.expect.items():
         assert src == NOTE and (f"{n:,}" in note or f" {n} " in note), st
