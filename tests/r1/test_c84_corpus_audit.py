@@ -106,6 +106,13 @@ def _make_synthetic_fixture(tmp_path: Path) -> tuple[Path, Path, Path, Path, dic
                 "batch5_proks/EMERGE",
             ],
             "tower_sources_dirs": ["G1", "CG1", "GRARE1"],
+            "stage_confs": ["C1", "CG1", "G1", "GRARE1"],
+            "template_confs": ["ET1", "GRARE1"],
+            "tower_job_lists": {
+                "01_test.tsv": _num(2, "measured", "fixture 01_test.tsv line count"),
+                "22_eemc1.tsv": _num(1, "measured", "fixture 22_eemc1.tsv line count"),
+            },
+            "sources_yaml_names": ["globdb_r226", "tower_asg1", "tower_eemc1"],
         },
         "summary_tiers": [
             {
@@ -308,20 +315,115 @@ def test_unlabelled_or_unsourced_numbers_fail_exit_1(tmp_path: Path):
     assert "source" in r_src.stderr
 
 
+def test_snapshot_only_ignores_new_disk_files_and_catches_observed_mismatches(tmp_path: Path):
+    inv_path, sources_path, jobs_dir, stages_dir, inv = _make_synthetic_fixture(tmp_path)
+
+    # Simulate future cards (e.g. A-32, C-82) adding new files/entries on disk without editing the snapshot JSON
+    (stages_dir / "RMD1.conf").write_text("STAGE=RMD1\nDEPTH=called\n", encoding="utf-8")
+    (stages_dir / "templates" / "GBRMGD.conf").write_text("STAGE=GBRMGD\nDEPTH=called\n", encoding="utf-8")
+    (jobs_dir / "23_asg1_fna.tsv").write_text(
+        "ASG1_FNA\ta.fna.gz\thttps://ftp.ncbi.nlm.nih.gov/a.fna.gz\t-\tINSDC\n",
+        encoding="utf-8",
+    )
+    sources_path.write_text(
+        sources_path.read_text(encoding="utf-8")
+        + "  - name: ncbi_c82_asg1_fna\n"
+        + "    url: https://ftp.ncbi.nlm.nih.gov/genomes/all/{file}\n",
+        encoding="utf-8",
+    )
+
+    # Live --check fails because the new on-disk files are not in the historical snapshot
+    r_live = _run_cli(
+        [
+            "--check",
+            "--inventory",
+            str(inv_path),
+            "--sources",
+            str(sources_path),
+            "--jobs-dir",
+            str(jobs_dir),
+            "--stages-dir",
+            str(stages_dir),
+        ]
+    )
+    assert r_live.returncode == 1
+
+    # --check --snapshot-only passes even with new on-disk files (and even when on-disk paths do not exist)
+    for hide in (False, True):
+        r_snap = _run_cli(
+            [
+                "--check",
+                "--snapshot-only",
+                "--inventory",
+                str(inv_path),
+                "--sources",
+                str(tmp_path / "nonexistent_sources.yaml"),
+                "--jobs-dir",
+                str(tmp_path / "nonexistent_jobs"),
+                "--stages-dir",
+                str(tmp_path / "nonexistent_stages"),
+            ],
+            hide_pod_tools=hide,
+        )
+        assert r_snap.returncode == 0, f"hide={hide} stderr={r_snap.stderr} stdout={r_snap.stdout}"
+        assert "unclassified=0" in r_snap.stdout
+        assert "number_problems=0" in r_snap.stdout
+
+    # --snapshot-only catches an unclassified stage conf in observed.stage_confs
+    bad_sconf = copy.deepcopy(inv)
+    bad_sconf["observed"]["stage_confs"].append("MISSING_STAGE_CONF")
+    p_sconf = tmp_path / "bad_snap_sconf.json"
+    p_sconf.write_text(json.dumps(bad_sconf), encoding="utf-8")
+    r_sconf = _run_cli(["--check", "--snapshot-only", "--inventory", str(p_sconf)])
+    assert r_sconf.returncode == 1
+    assert "MISSING_STAGE_CONF" in r_sconf.stderr
+
+    # --snapshot-only catches an unclassified template conf in observed.template_confs
+    bad_tconf = copy.deepcopy(inv)
+    bad_tconf["observed"]["template_confs"].append("MISSING_TPL_CONF")
+    p_tconf = tmp_path / "bad_snap_tconf.json"
+    p_tconf.write_text(json.dumps(bad_tconf), encoding="utf-8")
+    r_tconf = _run_cli(["--check", "--snapshot-only", "--inventory", str(p_tconf)])
+    assert r_tconf.returncode == 1
+    assert "MISSING_TPL_CONF" in r_tconf.stderr
+
+    # --snapshot-only catches job count mismatch against observed.tower_job_lists
+    bad_jcnt = copy.deepcopy(inv)
+    bad_jcnt["tower_job_lists"][0]["jobs"]["value"] = 77
+    p_jcnt = tmp_path / "bad_snap_jcnt.json"
+    p_jcnt.write_text(json.dumps(bad_jcnt), encoding="utf-8")
+    r_jcnt = _run_cli(["--check", "--snapshot-only", "--inventory", str(p_jcnt)])
+    assert r_jcnt.returncode == 1
+    assert "01_test.tsv" in r_jcnt.stderr
+
+    # --snapshot-only catches missing source reconciliation against observed.sources_yaml_names
+    bad_src = copy.deepcopy(inv)
+    bad_src["observed"]["sources_yaml_names"].append("unmapped_snapshot_source")
+    p_src = tmp_path / "bad_snap_src.json"
+    p_src.write_text(json.dumps(bad_src), encoding="utf-8")
+    r_src = _run_cli(["--check", "--snapshot-only", "--inventory", str(p_src)])
+    assert r_src.returncode == 1
+    assert "unmapped_snapshot_source" in r_src.stderr
+
+
 def test_committed_inventory_and_roadmap_pass_all_checks():
     assert INVENTORY.is_file(), f"missing committed inventory: {INVENTORY}"
     assert ROADMAP_MD.is_file(), f"missing committed roadmap note: {ROADMAP_MD}"
 
-    sources_file = REPO.joinpath("sources.yaml")
-    extra = ["--sources", str(sources_file)] if sources_file.is_file() else ["--no-require-sources"]
-
     for hide in (False, True):
-        res = _run_cli(["--check", "--inventory", str(INVENTORY), *extra], hide_pod_tools=hide)
+        res = _run_cli(["--check", "--snapshot-only", "--inventory", str(INVENTORY)], hide_pod_tools=hide)
         assert res.returncode == 0, f"hide={hide} stderr={res.stderr} stdout={res.stdout}"
         assert "unclassified=0" in res.stdout
         assert "number_problems=0" in res.stdout
 
-    data = json.loads(INVENTORY.read_text(encoding="utf-8"))
+    raw_json = INVENTORY.read_text(encoding="utf-8")
+    data = json.loads(raw_json)
+    obs = data["observed"]
+    assert isinstance(obs.get("stage_confs"), list) and len(obs["stage_confs"]) == 48
+    assert isinstance(obs.get("template_confs"), list) and len(obs["template_confs"]) == 24
+    assert isinstance(obs.get("tower_job_lists"), dict) and len(obs["tower_job_lists"]) == 23
+    assert isinstance(obs.get("sources_yaml_names"), list) and len(obs["sources_yaml_names"]) == 227
+
     stage_names = {entry["name"] for entry in data["pod_stages_and_assets"]}
     r3_stages = {"S1", "P1", "P2", "P3", "P4", "P5", "P6", "H1", "PL1", "C5", "V1", "G1", "SPX1"}
     r4_stages = {
@@ -352,3 +454,9 @@ def test_committed_inventory_and_roadmap_pass_all_checks():
         "Priority 6",
     ):
         assert heading in md, f"missing heading {heading!r} in {ROADMAP_MD.name}"
+
+    # Verify ASG1 attribution (Appler/Baker, not Eme) and R-24 DSV70 diagnosis (PRJNA1244896 / S-BSST2227)
+    assert "Eme " not in raw_json and "Eme " not in md
+    assert "Appler" in raw_json and "Appler" in md
+    assert "PRJNA1244896" in raw_json and "PRJNA1244896" in md
+    assert "S-BSST2227" in raw_json and "S-BSST2227" in md

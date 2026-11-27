@@ -137,12 +137,44 @@ def _check_disposition(disp: Any, context: str, problems: list[str]) -> None:
         )
 
 
+def _extract_observed_job_counts(obs_jobs: Any, problems: list[str]) -> dict[str, int] | None:
+    """Extract `{filename: int_count}` from `observed.tower_job_lists` (mapping or `{file, jobs}` list)."""
+    if isinstance(obs_jobs, dict):
+        out: dict[str, int] = {}
+        for fn, obj in obs_jobs.items():
+            cnt = obj.get("value") if isinstance(obj, dict) else None
+            if isinstance(cnt, bool) or not isinstance(cnt, int):
+                problems.append(f"observed.tower_job_lists[{fn!r}]: missing integer value")
+                continue
+            out[str(fn)] = cnt
+        return out
+    if isinstance(obs_jobs, list):
+        out = {}
+        for idx, item in enumerate(obs_jobs):
+            if not isinstance(item, dict) or not isinstance(item.get("file"), str):
+                problems.append(f"observed.tower_job_lists[{idx}]: missing string 'file'")
+                continue
+            fn = item["file"]
+            if fn in out:
+                problems.append(f"observed.tower_job_lists: duplicate file {fn!r}")
+            jobs_obj = item.get("jobs")
+            cnt = jobs_obj.get("value") if isinstance(jobs_obj, dict) else None
+            if isinstance(cnt, bool) or not isinstance(cnt, int):
+                problems.append(f"observed.tower_job_lists[{fn!r}]: missing integer jobs.value")
+                continue
+            out[fn] = cnt
+        return out
+    problems.append("observed.tower_job_lists: missing or invalid mapping/list")
+    return None
+
+
 def validate_inventory(
     data: dict[str, Any],
     *,
     stages_dir: Path,
     jobs_dir: Path,
     sources_path: Path | None,
+    snapshot_only: bool = False,
 ) -> tuple[list[str], list[str]]:
     """Validate classification completeness and numeric labels; returns `(unclassified, number_problems)`."""
     unclassified: list[str] = []
@@ -223,26 +255,58 @@ def validate_inventory(
             for item in sorted({str(x) for x in obs_list} - seen_pod):
                 unclassified.append(f"observed.{key}: unclassified pod stage/dir {item!r}")
 
-        if not stages_dir.is_dir():
-            unclassified.append(f"stages_dir not found: {stages_dir}")
+        if snapshot_only:
+            obs_sconfs = observed.get("stage_confs")
+            if not isinstance(obs_sconfs, list):
+                unclassified.append("observed.stage_confs: missing list")
+            else:
+                for missing in sorted({str(x) for x in obs_sconfs} - seen_pod):
+                    unclassified.append(f"observed.stage_confs: unclassified stage conf {missing!r}")
+
+            obs_tconfs = observed.get("template_confs")
+            if not isinstance(obs_tconfs, list):
+                unclassified.append("observed.template_confs: missing list")
+            else:
+                for missing in sorted({str(x) for x in obs_tconfs} - seen_pod):
+                    unclassified.append(f"observed.template_confs: unclassified template conf {missing!r}")
         else:
-            conf_stems = {p.stem for p in stages_dir.glob("*.conf")}
-            for missing in sorted(conf_stems - seen_pod):
-                unclassified.append(f"stages/*.conf: unclassified stage conf {missing!r}")
-            tpl_dir = stages_dir / "templates"
-            if tpl_dir.is_dir():
-                tpl_stems = {p.stem for p in tpl_dir.glob("*.conf")}
+            if not stages_dir.is_dir():
+                unclassified.append(f"stages_dir not found: {stages_dir}")
+            else:
+                conf_stems = {p.stem for p in stages_dir.glob("*.conf")}
+                for missing in sorted(conf_stems - seen_pod):
+                    unclassified.append(f"stages/*.conf: unclassified stage conf {missing!r}")
+                if "stage_confs" in observed:
+                    obs_sconfs = observed.get("stage_confs")
+                    if not isinstance(obs_sconfs, list):
+                        unclassified.append("observed.stage_confs: expected list")
+                    else:
+                        obs_sc_set = {str(x) for x in obs_sconfs}
+                        for diff in sorted(conf_stems ^ obs_sc_set):
+                            unclassified.append(
+                                f"observed.stage_confs: mismatch with stages/*.conf on {diff!r}"
+                            )
+
+                tpl_dir = stages_dir / "templates"
+                tpl_stems = {p.stem for p in tpl_dir.glob("*.conf")} if tpl_dir.is_dir() else set()
                 for missing in sorted(tpl_stems - seen_pod):
                     unclassified.append(f"stages/templates/*.conf: unclassified template conf {missing!r}")
+                if "template_confs" in observed:
+                    obs_tconfs = observed.get("template_confs")
+                    if not isinstance(obs_tconfs, list):
+                        unclassified.append("observed.template_confs: expected list")
+                    else:
+                        obs_tc_set = {str(x) for x in obs_tconfs}
+                        for diff in sorted(tpl_stems ^ obs_tc_set):
+                            unclassified.append(
+                                f"observed.template_confs: mismatch with stages/templates/*.conf on {diff!r}"
+                            )
 
     # 4. tower_jobs/*.tsv job lists and exact job counts
     job_rows = data.get("tower_job_lists")
     if not isinstance(job_rows, list):
         unclassified.append("tower_job_lists: missing list")
-    elif not jobs_dir.is_dir():
-        unclassified.append(f"jobs_dir not found: {jobs_dir}")
     else:
-        disk_jobs = {p.name: count_job_lines(p) for p in jobs_dir.glob("*.tsv")}
         seen_jobs: dict[str, dict[str, Any]] = {}
         for idx, row in enumerate(job_rows):
             if not isinstance(row, dict) or not isinstance(row.get("file"), str):
@@ -254,18 +318,40 @@ def validate_inventory(
             seen_jobs[fn] = row
             _check_disposition(row.get("disposition"), f"tower_job_lists[{fn}]", unclassified)
 
-        for missing in sorted(set(disk_jobs) - set(seen_jobs)):
-            unclassified.append(f"tower_job_lists: unclassified job list {missing!r}")
-        for extra in sorted(set(seen_jobs) - set(disk_jobs)):
-            unclassified.append(f"tower_job_lists: unknown job list {extra!r} not on disk")
-        for fn, expected_cnt in sorted(disk_jobs.items()):
-            if fn in seen_jobs:
-                jobs_obj = seen_jobs[fn].get("jobs")
-                rec_cnt = jobs_obj.get("value") if isinstance(jobs_obj, dict) else None
-                if rec_cnt != expected_cnt:
-                    unclassified.append(
-                        f"tower_job_lists[{fn}]: recorded jobs={rec_cnt!r} != disk jobs={expected_cnt}"
-                    )
+        expected_jobs: dict[str, int] | None = None
+        if snapshot_only:
+            expected_jobs = _extract_observed_job_counts(observed.get("tower_job_lists"), unclassified)
+        elif not jobs_dir.is_dir():
+            unclassified.append(f"jobs_dir not found: {jobs_dir}")
+        else:
+            expected_jobs = {p.name: count_job_lines(p) for p in jobs_dir.glob("*.tsv")}
+            if "tower_job_lists" in observed:
+                obs_jobs_map = _extract_observed_job_counts(observed.get("tower_job_lists"), unclassified)
+                if obs_jobs_map is not None and obs_jobs_map != expected_jobs:
+                    for fn in sorted(set(expected_jobs) ^ set(obs_jobs_map)):
+                        unclassified.append(
+                            f"observed.tower_job_lists: file set mismatch with jobs_dir on {fn!r}"
+                        )
+                    for fn in sorted(set(expected_jobs) & set(obs_jobs_map)):
+                        if obs_jobs_map[fn] != expected_jobs[fn]:
+                            unclassified.append(
+                                f"observed.tower_job_lists[{fn}]: observed={obs_jobs_map[fn]} != disk={expected_jobs[fn]}"
+                            )
+
+        if expected_jobs is not None:
+            src_label = "observed.tower_job_lists" if snapshot_only else "disk"
+            for missing in sorted(set(expected_jobs) - set(seen_jobs)):
+                unclassified.append(f"tower_job_lists: unclassified job list {missing!r}")
+            for extra in sorted(set(seen_jobs) - set(expected_jobs)):
+                unclassified.append(f"tower_job_lists: unknown job list {extra!r} not in {src_label}")
+            for fn, expected_cnt in sorted(expected_jobs.items()):
+                if fn in seen_jobs:
+                    jobs_obj = seen_jobs[fn].get("jobs")
+                    rec_cnt = jobs_obj.get("value") if isinstance(jobs_obj, dict) else None
+                    if rec_cnt != expected_cnt:
+                        unclassified.append(
+                            f"tower_job_lists[{fn}]: recorded jobs={rec_cnt!r} != {src_label} jobs={expected_cnt}"
+                        )
 
     # 5. sources.yaml reconciliation
     src_rows = data.get("sources_yaml_reconciliation")
@@ -287,7 +373,19 @@ def validate_inventory(
             if not isinstance(row.get("detail"), str) or not row["detail"].strip():
                 unclassified.append(f"sources_yaml_reconciliation[{nm}]: missing detail")
 
-        if sources_path is not None:
+        if snapshot_only:
+            obs_src = observed.get("sources_yaml_names")
+            if not isinstance(obs_src, list):
+                unclassified.append("observed.sources_yaml_names: missing list")
+            else:
+                obs_src_set = {str(x) for x in obs_src}
+                for missing in sorted(obs_src_set - seen_src):
+                    unclassified.append(f"observed.sources_yaml_names: unclassified source entry {missing!r}")
+                for extra in sorted(seen_src - obs_src_set):
+                    unclassified.append(
+                        f"observed.sources_yaml_names: reconciliation entry {extra!r} not in observed.sources_yaml_names"
+                    )
+        elif sources_path is not None:
             if not sources_path.is_file():
                 unclassified.append(f"sources_path not found: {sources_path}")
             else:
@@ -296,6 +394,16 @@ def validate_inventory(
                     unclassified.append(f"sources.yaml: unclassified source entry {missing!r}")
                 for extra in sorted(seen_src - yaml_names):
                     unclassified.append(f"sources.yaml: reconciliation entry {extra!r} not in sources.yaml")
+                if "sources_yaml_names" in observed:
+                    obs_src = observed.get("sources_yaml_names")
+                    if not isinstance(obs_src, list):
+                        unclassified.append("observed.sources_yaml_names: expected list")
+                    else:
+                        obs_src_set = {str(x) for x in obs_src}
+                        for diff in sorted(yaml_names ^ obs_src_set):
+                            unclassified.append(
+                                f"observed.sources_yaml_names: mismatch with sources.yaml on {diff!r}"
+                            )
 
     # 6. Summary tiers & roadmap priorities presence
     if not isinstance(data.get("summary_tiers"), list) or not data["summary_tiers"]:
@@ -309,6 +417,11 @@ def validate_inventory(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true", help="Run exhaustive inventory and label checks")
+    parser.add_argument(
+        "--snapshot-only",
+        action="store_true",
+        help="Validate classifications and counts against observed.* snapshot fields without reading on-disk stages, tower_jobs, or sources.yaml",
+    )
     parser.add_argument("--inventory", type=Path, default=DEFAULT_INVENTORY)
     parser.add_argument("--sources", type=Path, default=DEFAULT_SOURCES)
     parser.add_argument("--no-require-sources", action="store_true", help="Skip on-disk sources.yaml comparison")
@@ -330,12 +443,13 @@ def main(argv: list[str] | None = None) -> int:
         print("c84_corpus_audit: top-level JSON value must be an object", file=sys.stderr)
         return 1
 
-    sources_path = None if args.no_require_sources else args.sources
+    sources_path = None if (args.no_require_sources or args.snapshot_only) else args.sources
     unclassified, number_problems = validate_inventory(
         data,
         stages_dir=args.stages_dir,
         jobs_dir=args.jobs_dir,
         sources_path=sources_path,
+        snapshot_only=args.snapshot_only,
     )
 
     if unclassified or number_problems:
