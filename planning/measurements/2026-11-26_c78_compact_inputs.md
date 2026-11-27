@@ -248,3 +248,91 @@ line (nothing held by the root or `r26.11.4`).
 **Left on `tower`** (`CATALOG_GOAL.md` §4.1): `assemblies_fna.tar.gz`, the 453 single-protist library assemblies
 (9.64 GB uncompressed), host and symbiont DNA together, for card C-60 (its non-eukaryote part is what the bins and
 viruses already took); `source_data.tar.gz`'s notebooks, trees and figures (not sequence).
+
+## 6. `DPN1`
+
+**Bytes** (*measured*, the relay's log, 19:10 to 19:22 CST): `Nanobdellota_Zen.zip` (9,013,602,602 B in 636 s, 14.17
+MB/s) and `3662_DPANN_archaeal_genomes.tar.gz` (976,420,873 B, 12.68 MB/s) to
+`/stor/scratch/Wilke/if2453/bio-box-staging/DPN1/dl/`, the MGE FASTA and the two metadata tables to
+`/tmp/if2453/c78/dl/DPN1/`; each sha256 equal to `tower`'s `SHA256SUMS`. The relay copies whole files, so the zip came
+whole although 0.56 GB of it is genome FASTA (§1). Eight of the zip's small tables were copied out byte for byte
+(`extract`, `/tmp/if2453/c78/dl/DPN1/tables/`); `genomes/README.md` says the 208 closed genomes are each one contig
+"rotated to ORC1/Cdc6 at position 1" (206) or as assembled (2, `KR0015B_u14002131`, `SA1420A_u36387404`, which are
+also in `noncircular_51/`), and that the 51 open ones are 48 high-quality non-circular genomes and 3 carried along.
+
+**The metadata table of the MGEs has no class column** (`SeqId`, `Bioproject`, `Biosample`, `SRA`; *measured*), so
+the card's "MGE records by the metadata table's class (`virus` or `plasmid`)" cannot be applied: the 26 contigs
+(507,561 bp) are staged as `kind="virus"` (their file is "DPANN viruses and unclassified MGEs"; pyrodigal-gv calls
+them), DEC-65 (1) as for metagenome-assembled records.
+
+**Steps** (the script's notes say each rule):
+
+| Step (unit) | What it did (*measured*) |
+|---|---|
+| `dpn1-extract` (`c78-dpn1-prep`, 1 CPU, 20:05 to 20:10 CST) | 4,164 genome FASTA, one plain file each under `/tmp/if2453/c78/work/dpn1/genomes/`: `dpann3662` 3,662 (3,183,643,963 bp; all 3,662 in the metadata table), `nanobdellota_closed` 208 (256,842,619 bp), `nanobdellota_open` 51 (58,142,329 bp), `ncbi_hq` 243 (238,355,963 bp); the zip's other 97,697 members passed over |
+| `dpn1-refs` (`c78-dpn1-refs`, 8 CPUs, 20:18 to 20:25 CST) | card C-75's `globdb_r226_archaea.fna.gz` split by its list into 14,839 genomes in 15 batches, each sketched (`skani sketch --separate-sketches`, 1.2 to 2.8 s a batch) and its FASTA deleted; every record's `contig_uid` looked up: **8,381 references are held** (half their bases or more in one stage): `G1` 7,138, `GRARE1` 709, `P1..P6` 476, `SAG1` 27, `SPX1` 23, `ECE1` 6, `LR2` 1, `NX1` 1; of the 6,967 GTDB R226 representatives 509 are held |
+| `dpn1-skani` (`c78-dpn1-skani`, 8 threads) | `skani dist` of the 4,164 against the 14,839 sketches (15.3 s wall, 5,965 rows) and `skani triangle -E` among the 4,164 (6.9 s, 11,826 rows), skani's default screen and `--min-af` 15 |
+| `dpn1` (`c78-dpn1-stage`, 4 CPUs, 20:28 to 20:36 CST) | the decisions, the code screen (3 workers), the stage |
+
+**Decisions** (`dpn1_decisions.tsv`, every genome with its best reference hit, *measured*):
+
+| Category | Candidates | Removed: ANI to a held reference | Removed: within the stage | Kept | Kept bp |
+|---|---:|---:|---:|---:|---:|
+| `nanobdellota_closed` | 208 | 10 | 55 | **143** | 178,938,973 |
+| `nanobdellota_open` | 51 | 0 | 17 | 34 | 39,938,284 |
+| `ncbi_hq` | 243 | 19 | 120 | 104 | 101,741,201 |
+| `dpann3662` | 3,662 | 678 | 1,488 | 1,496 | 1,399,368,050 |
+| **all** | **4,164** | **707** (567,963,783 bp) | **1,680** (1,449,034,583 bp) | **1,777** | **1,719,986,508** |
+
+The 707 matched references held by `G1` 633, `P5` 33, `P3` 25, `P2` 7, `P4` 4, `GRARE1` 3, `SAG1` 2. Of the 1,777 kept,
+1,386 have a best hit at 96 % / 50 % on a reference that no stage holds (a GTDB R226 representative that is not a
+complete genome): recorded, not removed (the staging rules: an ANI match removes only against a held stage). Within the
+stage the closed genomes rank first, so 55 closed genomes were removed only for another closed genome of the same
+species (96.75 to 100 % ANI; the time series `B5`, `B7`, `B10` sampled the same populations); 10 closed genomes were
+removed for a `G1` MAG of their species (98.9 to 99.98 % ANI): the rule keeps the held MAG, not the closed genome. This
+is the card's rule as written; whether a closed genome should replace a held MAG of its species is a question
+(§10).
+
+**The stage.** 1,777 genomes (`kind="prokaryote"`, records whole; the 143 closed ones circular under DEC-65 (1),
+quality `complete`; the 2 unrotated closed genomes and 2 MGEs had an exact terminal repeat, 4 trims, 542 bp) and the 26
+MGEs: 1,803 genomes, 135,166 records, 135,161 distinct contigs, 1,720,477,344 bp. Codes: all 1,777 code 11 (card
+C-58's screen, the GTDB taxonomy as the hint).
+
+| | Value (*measured*, report `/tmp/if2453/c78/work/dpn1_report.json`) |
+|---|---:|
+| Held by the root's stored stages | `SPX1` 24, `G1` 9, `P3` 1 |
+| Held by the `r26.11.4` stages | `MV1` 22, `V2` 8, `SYM1` 2, `PL3` 1 (67 contigs in all, 4,417,916 bp) |
+| Held only by an `r26.11.5` stage before it | `GRARE2` 2 (97,747 bp) |
+| New | 135,094 contigs, **1,716,059,428 bp** (1.716 Gbp; 1,715,961,681 after `GRARE2`) |
+| r232 status of the 1,777 (C-74's `lookup`, by the GCA accession in the name) | in GTDB R232 and GlobDB r232 1,142; in GTDB R232 only 179; in neither 223; not visible (no accession: IMG and Tara genomes, the study's own) 233. None removed for it |
+| `s2_check_inputs.py` | exit 0, `problems: []`, 1,803 genomes, 135,166 rows, kinds `prokaryote` and `virus`, code 11 |
+
+**Depth.** 1.716 new Gbp is over "about 1.5 Gbp" (plan Q4, STATUS W5 (4)), so `DEPTH=called` (as `NX1`), default
+gene-call mode, `CRISPR=yes`. Against the plan: 1.716 new Gbp inside 0.3 to 3 (*estimate*). Build cost (*derived*,
+plan §3 R1, 24.6 to 24.8 CPU-minutes per new Gbp, × 1.716): about **42 to 43 CPU-minutes**, under the plan's "under
+80 called".
+
+| File | Where | Bytes | sha256 |
+|---|---|---:|---|
+| `dpn1_dpann_genomes.fna.gz` (BGZF) | `/stor/scratch/Wilke/if2453/bio-box-staging/DPN1/` | 536,597,424 | `a9c8769e432c2ac033ae1bfc8ed09cce022ba9fba0e9aa2e2ad476a4af66746b` |
+| `dpn1_dpann_mges.fna` | `/tmp/if2453/c78/meta/DPN1/` (under 64 MiB) | 516,694 | `8a3b8cf8c19190f0ba08a16107b607522c9bfd94c00e28bafb3cec63c848ba11` |
+| `genomes.json` | `/tmp/if2453/c78/meta/DPN1/` | 5,064,059 | `bfd38fc193161b606481aa780c9481f640da7d3bd4f6d0f8eb239fc5bef47033` |
+| `objects.json` | same | 1,322 | `d886b1484a026292ac5a33678db28ee765385d0afbebb907a41404541ee714a4` |
+| `objects_staging.json` | same | 1,342 | `6808bff8ecbf8d6ab161fc2fcc3afcb7e4f2098b099c5b160efdd5cba67ecc06` |
+| `records.tsv` | same | 24,110,692 | `cfc88aefb7fce3dd35bac8c00c304f5307f9c9a37810a883fbac42a83036b343` |
+| `dpn1_decisions.tsv` | same | 487,063 | `9cb04b912092b076f7b0c34db36fd9c609dd76a75cec198d009965bb1e4e9ab8` |
+| `r232_status.tsv` | same | 184,301 | `42ca48bf3c219bca58e9c846b818aeed535fde67bb51b027e012159d3a2708ca` |
+| `genetic_codes.tsv` | same | 97,590 | `dbbee40d86860223f0b4c1508247d49b9e33bd7c9dfbff4ae5c9b278a4dba4a5` |
+| `trims.tsv` | same | 654 | `eb533e2a4ee918400f31048b72987d41b6f5a495129f8d0652f020e8ab1fbde4` |
+| `shared_records.tsv` | same | 4,567 | `32df30ec8d5115e8321998beb2a9d90ac4573ee6091b142c352080970deecd74` |
+| `later_records.tsv` | same | 173 | `2e25c578e5fb6c6a063d020ad91c89734c6508eb1542659ac804e4165e2ec559` |
+| `skipped_records.tsv` (header only) | same | 35 | `db7c37d692118c360eb731405dafb7ffd7ad6fb3fa32b9470a2ba6c23cd86d39` |
+| `repeated_records.tsv` (header only) | same | 39 | `d109495ee76e4643c181eae183c452c9a84560f97a79bbe22d6630780368c565` |
+
+All *measured*. The work files of the steps (`/tmp/if2453/c78/work/dpn1/`: `genomes.tsv`, `ref_holders.tsv`,
+`ref_records.tsv`, `skani_dist.tsv`, `skani_triangle.tsv`, the reports) stay on `/tmp`; the per-genome FASTA and the
+reference sketches were scratch. Template: `DEPTH=called`, `CRISPR=yes`, `AFTER=SAG2`, `EXPECT=held_by` `P3` 1, `G1` 9,
+`SPX1` 24, `V2` 8, `PL3` 1, `SYM1` 2, `MV1` 22.
+
+**Left on `tower`** (`CATALOG_GOAL.md` §4.1): nothing of `DPN1`'s FASTA. Inside the zip (now also on `/stor`), the
+non-genome members: structures, OrthoFinder output, KofamScan tables, proteomes and genes, trees, HMMs, figures.

@@ -649,6 +649,7 @@ STAGED = {
     "LRP1": ("annotated", ("pfam", "38.2", "gathering"), ("SYM2",), {"lrp1_urban_water_plasmidome.fna"}),
     "MIR2": ("annotated", ("pfam", "38.2", "gathering"), ("LRP1",),
              {"mir2_bulzu_2025_plv_virophage.fna", "mir2_bellas_2026_plv_framework.fna"}),
+    "DPN1": ("called", None, ("SAG2",), {"dpn1_dpann_genomes.fna.gz", "dpn1_dpann_mges.fna"}),
     "SYM2": ("annotated", ("pfam", "38.2", "gathering"), ("DPN1",),
              {"sym2_protist_symbiont_bins.fna", "sym2_protist_viruses.fna"}),
 }
