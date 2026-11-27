@@ -52,6 +52,21 @@ def _revcomp(seq: bytes) -> bytes:
     return seq.translate(bytes.maketrans(b"ACGTacgt", b"TGCAtgca"))[::-1]
 
 
+@pytest.fixture(params=["normal-path", "tools-hidden"], autouse=True)
+def path_mode(request, monkeypatch):
+    """Every test also runs with PATH reduced to /usr/bin:/bin (GitHub Actions has none of the pod's tools)."""
+    if request.param == "tools-hidden":
+        monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    return request.param
+
+
+def _rand(n: int, seed: int) -> bytes:
+    import random
+
+    rng = random.Random(seed)
+    return bytes(rng.choice(b"ACGT") for _ in range(n))
+
+
 def test_license_gate_enforces_dec51_redistributability():
     m = _mod()
     for ok in ("CC BY 4.0", "CC-BY-4.0", "CC BY-SA 4.0", "CC0 1.0", "MIT", "INSDC (public)"):
@@ -316,29 +331,211 @@ def test_determinism_independent_of_input_order(tmp_path):
         assert (d1 / fname).read_bytes() == (d2 / fname).read_bytes(), f"non-deterministic {fname}"
 
 
-def test_refuses_non_redistributable_sources_across_all_stages(tmp_path):
+def test_dec80_an_unconfirmed_or_closed_licence_is_staged_with_redistributable_false(tmp_path):
+    """Migrated from the prep's refusal test (DEC-80, 2026-11-26): a licence that no record confirms, or one that
+    does not permit redistribution, no longer refuses the staging; the objects say `redistributable: false`."""
     m = _mod()
     fa = tmp_path / "x.fna"
-    fa.write_bytes(b">seq1\n" + (b"ACGT" * 50) + b"\n")
+    fa.write_bytes(b">seq1\n" + _rand(400, 1) + b"\n")
 
+    rep = m.stage_ece2(
+        [{"source_name": "bad", "source_release": "1", "license": "CC BY-NC 4.0", "redistributable": True,
+          "fasta": fa, "output_name": "x.fna.gz", "element_class": "tycheposon"}],
+        tmp_path / "E", root=None, root_stages=(), owner_inputs={}, retrieved="2026-11-24T00:00:00Z",
+    )
+    assert rep["redistributable"] is False
+    assert json.loads((tmp_path / "E" / "objects.json").read_text())[0]["redistributable"] is False
+    rep = m.stage_mir1(
+        [{"source_name": "bad", "source_release": "1", "license": "CC BY 4.0", "redistributable": False,
+          "fasta": fa, "output_name": "x.fna.gz", "virus_class": "plv"}],
+        tmp_path / "M", root=None, root_stages=(), owner_inputs={}, retrieved="2026-11-24T00:00:00Z",
+    )
+    assert rep["redistributable"] is False
+    assert json.loads((tmp_path / "M" / "objects.json").read_text())[0]["redistributable"] is False
+    rep = m.stage_asg1(
+        [{"genome_id": "g1", "source_name": "bad", "source_release": "1", "license": "",
+          "redistributable": True, "fasta": fa}],
+        tmp_path / "A", root=None, root_stages=(), owner_inputs={}, retrieved="2026-11-24T00:00:00Z",
+    )
+    assert rep["redistributable"] is False
+    assert json.loads((tmp_path / "A" / "objects.json").read_text())[0]["redistributable"] is False
+
+
+# --- card C-70 on the bytes of tower (2026-11-26) -------------------------------------------------------------------
+
+
+def test_dec65_one_for_metagenome_assembled_circular_elements():
+    """DEC-65 (1): an exact 50 bp terminal repeat loses its trailing copy and stays circular; no repeat stays circular
+    untrimmed; a repeat longer than 1,000 bp makes the record linear and untrimmed."""
+    m = _mod()
+    body = _rand(5_000, 2)
+    exact = body + body[:50]
+    seq, circ, cls, k = m.apply_dec65_metagenomic(exact)
+    assert (seq, circ, cls, k) == (body, True, "exact", 50)
+    seq, circ, cls, k = m.apply_dec65_metagenomic(body)
+    assert (seq, circ, cls, k) == (body, True, "none", 0)
+    long_rep = body + body[:1_500]
+    seq, circ, cls, k = m.apply_dec65_metagenomic(long_rep)
+    assert (seq, circ, cls, k) == (long_rep, False, "long", 0)
+
+
+def _ece2_fixture(tmp_path: Path):
+    """Two Inocle files whose one record is named `sequence1` each (as on tower), the second with an exact 40 bp
+    terminal repeat; a pro-tycheposons archive with the element FASTA, its table, host genomes and files that are not
+    sequence."""
+    import io
+    import tarfile
+
+    ino = tmp_path / "dl_ece2"
+    ino.mkdir()
+    i1 = _rand(3_000, 11)
+    i2_body = _rand(3_200, 12)
+    (ino / "Inocle_001.fasta").write_bytes(b">sequence1\n" + i1 + b"\n")
+    (ino / "Inocle_002.fasta").write_bytes(b">sequence1\n" + i2_body + i2_body[:40] + b"\n")
+    (ino / "SHA256SUMS").write_text("not a fasta\n")
+    e1, e2 = _rand(1_200, 21), _rand(900, 22)
+    host = _rand(4_000, 23)
+    files = {
+        "LICENSE": b"see LICENSE-MIT and LICENSE-CC-BY-SA\n",
+        "elements-pro/pro-623-elements.fna": b">eAAA_00001\n" + e1 + b"\n>eBBB_00002\n" + e2 + b"\n",
+        "elements-pro/pro-623-elements.tsv": b"contig_id\tstart\tend\telement_id\tset\n"
+                                             b"c1\t0\t1200\teAAA_00001\tTycheposon\nc2\t0\t900\teBBB_00002\tOther\n",
+        "data-pro/pro-623-allmaps.fna.xz": b"xz bytes of host genomes",
+        "MIT0604-nanopore/MIT0604-2019-NH4.fa": b">MIT0604\n" + host + b"\n",
+        "elements-gorg-single-cells/gorg-best-elements.tsv": b"contig_id\tstart\tend\n",
+        "YR-phylogeny/yr-all-nr40.faa": b">p\nMKV\n",
+    }
+    tar = tmp_path / "pro-tycheposons-abc.tar.gz"
+    with tarfile.open(tar, "w:gz") as tf:
+        for name, data in files.items():
+            ti = tarfile.TarInfo(f"pro-tycheposons-abc/{name}")
+            ti.size = len(data)
+            tf.addfile(ti, io.BytesIO(data))
+    return ino, tar, {"i1": i1, "i2": i2_body, "e1": e1, "e2": e2, "host": host}
+
+
+def test_ece2_from_the_bytes_names_inocles_trims_by_dec65_and_takes_only_the_element_fasta(tmp_path):
+    from biobox import ids
+
+    m = _mod()
+    ino, tar, s = _ece2_fixture(tmp_path)
+    holder = tmp_path / "EGV1"
+    holder.mkdir()
+    (holder / "genomes.json").write_text(json.dumps([{"contig_uids": [ids.contig_uid(s["e2"]).hex()]}]))
+    later = tmp_path / "SAG1"
+    later.mkdir()
+    (later / "genomes.json").write_text(json.dumps([{"contig_uids": [ids.contig_uid(s["i1"]).hex()]}]))
+    out = tmp_path / "meta" / "ECE2"
+    rc = m.main([
+        "stage-ece2", "--dl", str(ino), "--tycheposons-tar", str(tar), "--out", str(out),
+        "--retrieved", "2026-11-25T21:56:05Z", "--owner-inputs", f"EGV1={holder}", "--later", f"SAG1={later}",
+        "--final-dir", "/tmp/if2453/s2/inputs/ECE2", "--work", str(tmp_path / "work"),
+        "--out-report", str(tmp_path / "rep.json"),
+    ])
+    assert rc == 0
+    rep = json.loads((tmp_path / "rep.json").read_text())
+    assert rep["s2_check"]["exit"] == 0 and rep["s2_check"]["problems"] == []
+    assert rep["genomes"] == 4 and rep["contigs"] == 4
+    assert rep["circular_genomes"] == 2 and rep["trims"] == 1
+    assert rep["dec65_classes"] == {"exact": 1, "none": 1}
+    assert rep["records_by_set"] == {"tycheposon:Other": 1, "tycheposon:Tycheposon": 1}
+    assert rep["owned_by_stage"] == {"EGV1": 1}
+    assert rep["later_held_by"] == {"SAG1": 1}
+    assert rep["new_contigs_after_later"] == 2
+    assert rep["redistributable"] is True
+
+    ino_fa = (out / "ece2_inocles.fna").read_bytes()
+    assert b">Inocle_001|sequence1\n" in ino_fa and b">Inocle_002|sequence1\n" in ino_fa
+    genomes = json.loads((out / "genomes.json").read_text())
+    uids = {u for g in genomes for u in g["contig_uids"]}
+    assert ids.contig_uid(s["i2"]).hex() in uids  # the trimmed circle
+    assert ids.contig_uid(s["host"]).hex() not in uids
+    circ = {u for g in genomes for u in g["circular"]}
+    assert circ == {ids.contig_uid(s["i1"]).hex(), ids.contig_uid(s["i2"]).hex()}
+    assert all(g["kind"] == "plasmid" for g in genomes)
+
+    with open(out / "skipped_members.tsv", newline="") as fh:
+        skipped = {r["member"].split("/", 1)[1]: r["reason"] for r in csv.DictReader(fh, delimiter="\t")}
+    assert skipped["data-pro/pro-623-allmaps.fna.xz"].startswith("host_genomes_not_the_subject")
+    assert skipped["MIT0604-nanopore/MIT0604-2019-NH4.fa"].startswith("host_genome_not_the_subject")
+    assert skipped["elements-gorg-single-cells/gorg-best-elements.tsv"].startswith("coordinates_only")
+    assert "elements-pro/pro-623-elements.fna" not in skipped
+
+    objs = json.loads((out / "objects.json").read_text())
+    staging = json.loads((out / "objects_staging.json").read_text())
+    assert sorted(Path(o["path"]).name for o in objs) == ["ece2_inocles.fna", "ece2_tycheposons.fna"]
+    assert all(o["path"].startswith("/tmp/if2453/s2/inputs/ECE2/") for o in objs)
+    assert all(Path(o["path"]).parent == out for o in staging)
+    with open(out / "later_records.tsv", newline="") as fh:
+        assert [r["holder"] for r in csv.DictReader(fh, delimiter="\t")] == ["SAG1"]
+    assert "objects_staging.json" not in (out / "inputs_SUMS").read_text()
+
+
+def test_ece2_from_the_bytes_is_byte_identical_twice_and_refuses_an_archive_without_the_elements(tmp_path):
+    import io
+    import tarfile
+
+    m = _mod()
+    ino, tar, _ = _ece2_fixture(tmp_path)
+    outs = []
+    for k in (1, 2):
+        out = tmp_path / f"run{k}" / "ECE2"
+        assert m.main(["stage-ece2", "--dl", str(ino), "--tycheposons-tar", str(tar), "--out", str(out),
+                       "--retrieved", "2026-11-25T21:56:05Z", "--final-dir", "/tmp/if2453/s2/inputs/ECE2",
+                       "--work", str(tmp_path / f"w{k}")]) == 0
+        outs.append(out)
+    for name in ("genomes.json", "objects.json", "records.tsv", "ece2_metadata.tsv", "ece2_inocles.fna",
+                 "ece2_tycheposons.fna", "trims.tsv", "skipped_members.tsv", "inputs_SUMS"):
+        assert (outs[0] / name).read_bytes() == (outs[1] / name).read_bytes(), name
+
+    bad = tmp_path / "bad.tar.gz"
+    with tarfile.open(bad, "w:gz") as tf:
+        ti = tarfile.TarInfo("x/README.org")
+        ti.size = 3
+        tf.addfile(ti, io.BytesIO(b"abc"))
     with pytest.raises(m.Refused):
-        m.stage_ece2(
-            [{"source_name": "bad", "source_release": "1", "license": "CC BY-NC 4.0", "redistributable": True,
-              "fasta": fa, "output_name": "x.fna.gz", "element_class": "inocle"}],
-            tmp_path / "E", root=None, root_stages=(), owner_inputs={}, retrieved="2026-11-24T00:00:00Z",
-        )
-    with pytest.raises(m.Refused):
-        m.stage_mir1(
-            [{"source_name": "bad", "source_release": "1", "license": "CC BY 4.0", "redistributable": False,
-              "fasta": fa, "output_name": "x.fna.gz", "virus_class": "plv"}],
-            tmp_path / "M", root=None, root_stages=(), owner_inputs={}, retrieved="2026-11-24T00:00:00Z",
-        )
-    with pytest.raises(m.Refused):
-        m.stage_asg1(
-            [{"genome_id": "g1", "source_name": "bad", "source_release": "1", "license": "restricted",
-              "redistributable": True, "fasta": fa}],
-            tmp_path / "A", root=None, root_stages=(), owner_inputs={}, retrieved="2026-11-24T00:00:00Z",
-        )
+        m.main(["stage-ece2", "--dl", str(ino), "--tycheposons-tar", str(bad), "--out", str(tmp_path / "B" / "ECE2"),
+                "--retrieved", "x", "--work", str(tmp_path / "wb")])
+    assert not (tmp_path / "B" / "ECE2").exists()
+
+
+def test_fasta_dir_moves_the_fasta_and_objects_staging_names_it(tmp_path):
+    m = _mod()
+    fa = tmp_path / "x.fna"
+    fa.write_bytes(b">e1\n" + _rand(600, 31) + b"\n")
+    out, big = tmp_path / "meta" / "ECE2", tmp_path / "stor" / "ECE2"
+    rep = m.stage_ece2(
+        [{"source_name": "s", "source_release": "1", "license": "CC BY 4.0", "redistributable": True,
+          "fasta": fa, "output_name": "ece2_x.fna", "element_class": "tycheposon"}],
+        out, root=None, root_stages=(), owner_inputs={}, retrieved="t", final_dir=Path("/tmp/if2453/s2/inputs/ECE2"),
+        fasta_dir=big,
+    )
+    assert (big / "ece2_x.fna").is_file() and not (out / "ece2_x.fna").exists()
+    assert not list(big.glob(".*partial"))
+    assert json.loads((out / "objects_staging.json").read_text())[0]["path"] == str(big / "ece2_x.fna")
+    assert rep["sha256"]["ece2_x.fna"] == __import__("biobox.ids", fromlist=["ids"]).sha256_file(big / "ece2_x.fna").hex()
+
+
+_ROOT13 = ("S1", "P1", "P2", "P3", "P4", "P5", "P6", "H1", "PL1", "C5", "V1", "G1", "SPX1")
+_R26_11_4 = ("V2", "PL2", "PL3", "CG1", "MGE1", "SAT1", "ECE1", "O1", "O2", "LPL1", "SYM1", "LRV1", "LGRT1", "MGE2",
+             "MV1", "V3", "LR1", "GART1", "GART2")
+
+
+@pytest.mark.parametrize(("stage", "note", "holders"), [
+    ("ECE2", "planning/measurements/2026-11-26_c70_tier1_inputs.md", (*_ROOT13, *_R26_11_4, "GV1", "EGV1")),
+])
+def test_c70_template_has_real_sums_found_in_the_note_and_expect_lines_over_its_holders(stage, note, holders):
+    se = _stage_est()
+    conf_path = BSP / "stages" / "templates" / f"{stage}.conf"
+    c = se.read_conf(conf_path, stage=stage, tree=REPO)
+    assert note in c.notes
+    text = conf_path.read_text()
+    sums = [ln.split()[0][4:] for ln in text.splitlines() if ln.startswith("SUM=")]
+    assert sums and all(s != "0" * 64 for s in sums)
+    note_text = (REPO / note).read_text()
+    assert all(s in note_text for s in sums)
+    expect = [ln.split()[1] for ln in text.splitlines() if ln.startswith("EXPECT=held_by")]
+    assert tuple(expect) == holders
 
 
 @pytest.mark.parametrize(

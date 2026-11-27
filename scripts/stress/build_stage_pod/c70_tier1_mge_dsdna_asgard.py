@@ -99,12 +99,13 @@ NON_REDISTRIBUTABLE_LICENSE_RE = re.compile(r"(?:cc[\s-]*by[\s-]*nc|non-?commerc
 
 ECE2_RECORD_HEAD = [
     "ordinal", "source", "element_class", "accession", "contig_uid", "length",
-    "circular", "tir_length", "owner_stage",
+    "circular", "tir_length", "owner_stage", "dec65_class", "element_set", "later_holder",
 ]
 ECE2_SIDECAR_HEAD = [
     "stage", "source", "element_class", "genome_uid", "contig_uid", "accession",
-    "length", "circular", "tir_length", "owner_stage",
+    "length", "circular", "tir_length", "owner_stage", "dec65_class", "element_set",
 ]
+LATER_HEAD = ["ordinal", "accession", "contig_uid", "length", "holder"]
 MIR1_RECORD_HEAD = [
     "ordinal", "source", "virus_class", "genome_id", "accession", "contig_uid",
     "length", "circular", "tir_length", "owner_stage",
@@ -141,6 +142,49 @@ def is_redistributable_license(license_str: str) -> bool:
     if NON_REDISTRIBUTABLE_LICENSE_RE.search(s):
         return False
     return bool(REDISTRIBUTABLE_LICENSE_RE.search(s))
+
+
+def redistributable_of(src: dict) -> bool:
+    """DEC-80 (3): `true` only where the source says so and its recorded licence permits it; never a refusal."""
+    return bool(src.get("redistributable", False)) and is_redistributable_license(src.get("license", ""))
+
+
+def apply_dec65_metagenomic(seq: bytes) -> tuple[bytes, bool, str, int]:
+    """DEC-65 (1) for a one-record circular element of a metagenome-assembled set: an exact terminal repeat of 20 to
+    1,000 bp loses its trailing copy and is staged circular; no repeat and no near agreement (`none`) is staged
+    circular untrimmed; anything else (`partial`, `long`, `low_complexity`, `unresolved`) is staged linear untrimmed.
+    Returns (staged sequence, circular, class, bases trimmed)."""
+    e = v2.ends(seq)
+    cls = v2.classify(e)
+    if cls == "exact":
+        return v2.trim(seq, e.exact), True, cls, e.exact
+    if cls == "none":
+        return seq, True, cls, 0
+    return seq, False, cls, 0
+
+
+def _later_split(uids: list[bytes], owners: dict[bytes, str], later_inputs: dict[str, Path]) -> dict[bytes, str]:
+    """Holders among the `r26.11.5` stages before this one (card A-29 owns their EXPECT lines): only contigs the
+    root, `r26.11.4`, `GV1` and `EGV1` do not hold already."""
+    if not later_inputs:
+        return {}
+    rest = [u for u in uids if u not in owners]
+    return v2.owners_of(rest, None, [], later_inputs) if rest else {}
+
+
+def _later_tally(contig_len: dict[bytes, int], owners: dict[bytes, str], later: dict[bytes, str]) -> dict:
+    c: Counter[str] = Counter()
+    b: Counter[str] = Counter()
+    for cu, n in contig_len.items():
+        if cu in later and cu not in owners:
+            c[later[cu]] += 1
+            b[later[cu]] += n
+    return {
+        "later_held_by": dict(sorted(c.items())),
+        "later_held_bases_by": dict(sorted(b.items())),
+        "new_contigs_after_later": sum(1 for cu in contig_len if cu not in owners and cu not in later),
+        "new_bases_after_later": sum(n for cu, n in contig_len.items() if cu not in owners and cu not in later),
+    }
 
 
 def detect_tir(seq: bytes, min_len: int = 20, max_len: int = 100_000) -> int:
@@ -259,15 +303,41 @@ def classify_mir1_record(header: str, virus_class: str) -> dict:
     }
 
 
-def _finalize_stage_dir(work: Path, out_dir: Path, rep: dict) -> dict:
-    """Atomically rename `work` -> `out_dir`, write `inputs_SUMS` and `stage_report.json`."""
+def _finalize_stage_dir(work: Path, out_dir: Path, rep: dict, fasta_dir: Path | None = None) -> dict:
+    """Atomically rename `work` -> `out_dir`, write `objects_staging.json` (the objects where they are now, for the
+    checks; `objects.json` names their later place under INPUTS), `inputs_SUMS` and `stage_report.json`.
+
+    With `fasta_dir` (a FASTA of 64 MB and more goes to `/stor`, AGENTS §7.3), each object file is moved there under
+    a dot-temporary name and renamed into place; a file already there is refused, never overwritten."""
+    objs = json.loads((work / "objects.json").read_text(encoding="utf-8"))
+    names = [Path(o["path"]).name for o in objs]
+    if fasta_dir is not None:
+        fasta_dir = Path(fasta_dir)
+        fasta_dir.mkdir(parents=True, exist_ok=True)
+        for n in names:
+            if (fasta_dir / n).exists():
+                raise Refused(f"{fasta_dir / n} exists")
     work.rename(out_dir)
+    obj_home = out_dir
+    if fasta_dir is not None:
+        for n in names:
+            part = fasta_dir / f".{n}.partial"
+            shutil.copyfile(out_dir / n, part)
+            part.rename(fasta_dir / n)
+            (out_dir / n).unlink()
+        obj_home = fasta_dir
+    staged = [{**o, "path": str(obj_home / Path(o["path"]).name)} for o in objs]
+    (out_dir / "objects_staging.json").write_text(json.dumps(staged, indent=1), encoding="utf-8")
     sum_files = sorted(
         p.name for p in out_dir.iterdir()
-        if p.is_file() and p.name not in ("inputs_SUMS", "stage_report.json")
+        if p.is_file() and p.name not in ("inputs_SUMS", "stage_report.json", "objects_staging.json")
     )
-    sha_map = {n: ids.sha256_file(out_dir / n).hex() for n in sum_files}
-    bytes_map = {n: (out_dir / n).stat().st_size for n in sum_files}
+    paths = {n: out_dir / n for n in sum_files}
+    if fasta_dir is not None:
+        paths.update({n: fasta_dir / n for n in names})
+        sum_files = sorted(paths)
+    sha_map = {n: ids.sha256_file(paths[n]).hex() for n in sum_files}
+    bytes_map = {n: paths[n].stat().st_size for n in sum_files}
     with open(out_dir / "inputs_SUMS", "w", encoding="utf-8") as w:
         for n in sum_files:
             w.write(f"{sha_map[n]}  {n}\n")
@@ -291,19 +361,20 @@ def stage_ece2(
     retrieved: str,
     final_dir: Path | None = None,
     stage_name: str = "ECE2",
+    later_inputs: dict[str, Path] | None = None,
+    fasta_dir: Path | None = None,
 ) -> dict:
-    """Stage `ECE2` (Inocles circular + Tycheposons linear, 0 trims per DEC-65, kind='plasmid')."""
+    """Stage `ECE2` (Inocles circular by DEC-65 (1), Tycheposons linear untrimmed by DEC-65 (2), kind='plasmid').
+
+    A source with `dec65_metagenomic` has each record it flags circular put through `apply_dec65_metagenomic`; any
+    other record is staged byte-identical. A source whose licence no record confirms is staged all the same, with
+    `redistributable: false` (DEC-80)."""
     if not sources:
         raise Refused(f"{stage_name}: no sources to stage")
     out_dir = Path(out_dir)
     if out_dir.exists():
         raise Refused(f"{out_dir} exists")
     for s in sources:
-        if not s.get("redistributable", False) or not is_redistributable_license(s.get("license", "")):
-            raise Refused(
-                f"{stage_name}: refusing non-redistributable source {s.get('source_name')!r} "
-                f"(license={s.get('license')!r}, DEC-51)"
-            )
         if s.get("element_class") not in ECE2_CLASSES:
             raise Refused(f"{stage_name}: invalid element_class {s.get('element_class')!r}")
         fa = Path(s["fasta"])
@@ -317,13 +388,14 @@ def stage_ece2(
 
     try:
         rep = _stage_ece2_work(
-            sources, work, obj_dir, stage_name, root, list(root_stages), owner_inputs, retrieved
+            sources, work, obj_dir, stage_name, root, list(root_stages), owner_inputs, retrieved,
+            dict(later_inputs or {}),
         )
     except BaseException:
         shutil.rmtree(work, ignore_errors=True)
         raise
 
-    return _finalize_stage_dir(work, out_dir, rep)
+    return _finalize_stage_dir(work, out_dir, rep, fasta_dir)
 
 
 def _stage_ece2_work(
@@ -335,13 +407,15 @@ def _stage_ece2_work(
     root_stages: list[str],
     owner_inputs: dict[str, Path],
     retrieved: str,
+    later_inputs: dict[str, Path],
 ) -> dict:
     ordered_sources = sorted(sources, key=lambda s: (s["element_class"], s["output_name"], s["source_name"]))
-    staged_records: list[tuple[str, str, str, bytes, int, bool, int]] = []
+    staged_records: list[tuple[str, str, str, bytes, int, bool, int, str, str]] = []
     skipped: list[tuple[str, str, str, int]] = []
-    trims: list[tuple] = []  # Always empty under DEC-65
+    trims: list[tuple] = []
     objects_json: list[dict] = []
     by_source: dict[str, dict] = {}
+    dtr_counts: Counter[str] = Counter()
 
     for src in ordered_sources:
         sname = src["source_name"]
@@ -349,6 +423,8 @@ def _stage_ece2_work(
         fa_path = Path(src["fasta"])
         elem_cls = src["element_class"]
         topo_map: dict[str, str] = src.get("topology_map") or {}
+        set_map: dict[str, str] = src.get("set_map") or {}
+        dec65 = bool(src.get("dec65_metagenomic"))
         dst_fa = work / out_name
         rec_count = 0
         base_count = 0
@@ -365,12 +441,20 @@ def _stage_ece2_work(
                     skip_count += 1
                     continue
                 meta = classify_ece2_record(r.header, elem_cls, topo_map.get(r.accession))
-                seq = r.seq  # Byte-identical, NEVER trimmed (DEC-65)
+                seq = r.seq
                 circ = bool(meta["circular"])
+                dtr = ""
+                if circ and dec65:
+                    seq, circ, dtr, k = apply_dec65_metagenomic(r.seq)
+                    dtr_counts[dtr] += 1
+                    if k:
+                        trims.append((sname, meta["accession"], meta["accession"], ids.contig_uid(r.seq).hex(),
+                                      ids.contig_uid(seq).hex(), len(r.seq), k, k, len(seq)))
                 tir_len = 0 if circ else detect_tir(seq)
                 w.write(b"\n".join(fasta.format_record(r.header, seq, r.line_width)) + b"\n")
                 cu = ids.contig_uid(seq)
-                staged_records.append((sname, elem_cls, meta["accession"], cu, len(seq), circ, tir_len))
+                staged_records.append((sname, elem_cls, meta["accession"], cu, len(seq), circ, tir_len, dtr,
+                                       set_map.get(meta["accession"], "")))
                 rec_count += 1
                 base_count += len(seq)
 
@@ -383,7 +467,7 @@ def _stage_ece2_work(
             "source_name": sname,
             "source_release": src["source_release"],
             "license": src["license"],
-            "redistributable": True,
+            "redistributable": redistributable_of(src),
             "retrieved_at": retrieved,
         })
         by_source[out_name] = {
@@ -392,6 +476,7 @@ def _stage_ece2_work(
             "records": rec_count,
             "bases": base_count,
             "skipped": skip_count,
+            "redistributable": redistributable_of(src),
         }
 
     if not staged_records:
@@ -399,6 +484,7 @@ def _stage_ece2_work(
 
     all_uids = [x[3] for x in staged_records]
     owners = v2.owners_of(all_uids, root, root_stages, owner_inputs)
+    later = _later_split(all_uids, owners, later_inputs)
 
     listing = make_inputs.Listing()
     genomes: list[dict] = []
@@ -412,12 +498,19 @@ def _stage_ece2_work(
     circular_genomes = 0
     tir_count = 0
 
-    for ordinal, (sname, elem_cls, acc, cu, length, circ, tir_len) in enumerate(staged_records):
+    later_rows: list[tuple] = []
+    set_counts: Counter[str] = Counter()
+    for ordinal, (sname, elem_cls, acc, cu, length, circ, tir_len, dtr, eset) in enumerate(staged_records):
         owner = owners.get(cu, "")
-        rec_rows.append((ordinal, sname, elem_cls, acc, cu.hex(), length, str(circ).lower(), tir_len, owner))
+        rec_rows.append((ordinal, sname, elem_cls, acc, cu.hex(), length, str(circ).lower(), tir_len, owner,
+                         dtr, eset, later.get(cu, "")))
         if owner:
             shared_rows.append((ordinal, acc, cu.hex(), owner))
+        elif cu in later:
+            later_rows.append((ordinal, acc, cu.hex(), length, later[cu]))
         class_counts[elem_cls] += 1
+        if eset:
+            set_counts[f"{elem_cls}:{eset}"] += 1
 
         qual = "complete" if circ else "contig"
         g = listing.add([cu], 11, "plasmid", qual)
@@ -435,7 +528,7 @@ def _stage_ece2_work(
             tir_count += 1
         sidecar_rows.append((
             stage_name, sname, elem_cls, guid.hex(), cu.hex(), acc,
-            length, str(circ).lower(), tir_len, owner,
+            length, str(circ).lower(), tir_len, owner, dtr, eset,
         ))
 
     sidecar_rows.sort(key=lambda t: (t[2], t[1], t[5], t[4]))
@@ -451,6 +544,7 @@ def _stage_ece2_work(
         ["ordinal", "accession", "contig_uid", "owner_stage"],
         shared_rows,
     )
+    make_inputs._write_tsv(work / "later_records.tsv", LATER_HEAD, later_rows)
     make_inputs._write_tsv(work / "trims.tsv", TRIM_HEAD, trims)
     make_inputs._write_tsv(work / "skipped_records.tsv", SKIPPED_HEAD, skipped)
     (work / "objects.json").write_text(json.dumps(objects_json, indent=1), encoding="utf-8")
@@ -479,7 +573,7 @@ def _stage_ece2_work(
 
     return {
         "stage": stage_name,
-        "redistributable": True,
+        "redistributable": all(o["redistributable"] for o in objects_json),
         "records": len(staged_records),
         "skipped_records": len(skipped),
         "genomes": len(genomes),
@@ -489,19 +583,23 @@ def _stage_ece2_work(
         "linear_genomes": len(genomes) - circular_genomes,
         "genomes_with_tir": tir_count,
         "repeated_records": len(repeated_rows),
-        "trims": 0,
+        "trims": len(trims),
+        "dec65_classes": dict(sorted(dtr_counts.items())),
+        "records_by_set": dict(sorted(set_counts.items())),
         "owned_by_stage": dict(sorted(owner_contigs.items())),
         "owned_bases_by_stage": dict(sorted(owner_bases.items())),
         "held_contigs": held_contigs,
         "held_bases": held_bases,
         "new_contigs": total_contigs - held_contigs,
         "new_bases": total_bases - held_bases,
+        **_later_tally(contig_len, owners, later),
         "records_by_class": dict(sorted(class_counts.items())),
         "genomes_by_class": dict(sorted(genome_class_counts.items())),
         "bases_by_class": dict(sorted(bases_by_class.items())),
         "by_source": by_source,
         "root_stages": root_stages,
         "owner_inputs": sorted(owner_inputs),
+        "later_inputs": sorted(later_inputs),
     }
 
 
@@ -533,11 +631,6 @@ def stage_mir1(
     if out_dir.exists():
         raise Refused(f"{out_dir} exists")
     for s in sources:
-        if not s.get("redistributable", False) or not is_redistributable_license(s.get("license", "")):
-            raise Refused(
-                f"{stage_name}: refusing non-redistributable source {s.get('source_name')!r} "
-                f"(license={s.get('license')!r}, DEC-51)"
-            )
         if s.get("virus_class") not in MIR1_CLASSES:
             raise Refused(f"{stage_name}: invalid virus_class {s.get('virus_class')!r}")
         mode = s.get("mode", "single_contig")
@@ -655,7 +748,7 @@ def _stage_mir1_work(
             "source_name": sname,
             "source_release": src["source_release"],
             "license": src["license"],
-            "redistributable": True,
+            "redistributable": redistributable_of(src),
             "retrieved_at": retrieved,
         })
         by_source[out_name] = {
@@ -758,7 +851,7 @@ def _stage_mir1_work(
 
     return {
         "stage": stage_name,
-        "redistributable": True,
+        "redistributable": all(o["redistributable"] for o in objects_json),
         "records": ordinal,
         "skipped_records": len(skipped),
         "genomes": len(genomes),
@@ -977,11 +1070,6 @@ def stage_asg1(
     if out_dir.exists():
         raise Refused(f"{out_dir} exists")
     for e in mag_entries:
-        if not e.get("redistributable", False) or not is_redistributable_license(e.get("license", "")):
-            raise Refused(
-                f"{stage_name}: refusing non-redistributable MAG {e.get('genome_id')!r} "
-                f"(license={e.get('license')!r}, DEC-51)"
-            )
         if not Path(e["fasta"]).is_file():
             raise Refused(f"{stage_name}: MAG FASTA not found: {e['fasta']}")
 
@@ -1108,7 +1196,7 @@ def _stage_asg1_work(
         "source_name": first_src.get("source_name", "appler_2026_asgard"),
         "source_release": first_src.get("source_release", "figshare.26426707 (Appler et al. 2026 Nature)"),
         "license": first_src.get("license", "CC BY 4.0"),
-        "redistributable": True,
+        "redistributable": all(redistributable_of(e) for e in ordered),
         "retrieved_at": retrieved,
     }]
 
@@ -1145,7 +1233,7 @@ def _stage_asg1_work(
 
     return {
         "stage": stage_name,
-        "redistributable": True,
+        "redistributable": objects_json[0]["redistributable"],
         "records": ordinal,
         "skipped_records": len(skipped),
         "skani_dropped": len(skani_rows),
@@ -1442,6 +1530,101 @@ def _concat_fastas(paths: list[Path], out_fa: Path) -> Path | None:
     return out_fa if out_fa.stat().st_size > 0 else None
 
 
+INOCLE_LICENSE = (
+    "CC BY 4.0 (Zenodo record 16656823, as card C-70's prep note read it on 2026-11-24, "
+    "planning/measurements/2026-11-24_c70_tier1_prep.md section 1; the provider's response was not kept)"
+)
+TYCHE_LICENSE = (
+    "CC BY-SA 4.0 (data) and MIT (code), the archive's own LICENSE, LICENSE-CC-BY-SA and LICENSE-MIT files "
+    "at commit a0f299fd6932e5ea81c52cbaf6f2c81aa19be724"
+)
+TYCHE_ELEMENTS = "elements-pro/pro-623-elements.fna"
+TYCHE_TABLE = "elements-pro/pro-623-elements.tsv"
+
+
+def _tyche_reason(rel: str) -> str:
+    """Why a member of the pro-tycheposons archive is not staged (only the element FASTA is)."""
+    low = rel.lower()
+    if rel.startswith("data-pro/") and ".fna" in low:
+        return "host_genomes_not_the_subject: the 623 Prochlorococcus genome assemblies the elements were found in"
+    if rel.startswith("MIT0604-nanopore/") or rel == "element-finder/test/MIT0604.fna":
+        return "host_genome_not_the_subject: Prochlorococcus MIT0604 isolate genome assemblies"
+    if low.endswith(".ffn"):
+        return "not_genome_sequence: tRNA and tmRNA gene sequences (element finder reference)"
+    if low.endswith((".faa", ".afa")):
+        return "not_genome_sequence: protein sequences or alignment"
+    if rel in ("elements-gorg-single-cells/gorg-best-elements.tsv", "elements-tara-viral/tov-n1000-5to20kb-best-elements.tsv"):
+        return "coordinates_only: element coordinates on GORG single cells or Tara viral contigs, no sequence"
+    return "non_sequence_file"
+
+
+def prepare_ece2_from_dl(inocles_dir: Path, tyche_tar: Path, scratch: Path) -> tuple[list[dict], list[tuple]]:
+    """The two ECE2 sources as the bytes on the pod hold them (card C-70, 2026-11-26).
+
+    Inocles: one FASTA per element (`Inocle_001.fasta` .. `Inocle_029.fasta`), each one record named `sequence1`; the
+    header becomes `<file stem>|<header>` so that the 29 names differ. Tycheposons: only the member
+    `elements-pro/pro-623-elements.fna` of the archive, with each element's `set` from `pro-623-elements.tsv`; every
+    other member is listed with the reason it is left out. Returns (sources, skipped members)."""
+    scratch.mkdir(parents=True, exist_ok=True)
+    sources: list[dict] = []
+    skipped: list[tuple] = []
+    ino_files = sorted(p for p in Path(inocles_dir).iterdir() if p.is_file() and _is_fasta_name(p.name))
+    if not ino_files:
+        raise Refused(f"{inocles_dir}: no Inocle FASTA")
+    ino_cat = scratch / "inocles_named.fna"
+    with open(ino_cat, "wb") as w:
+        for p in ino_files:
+            stem = _strip_fasta_suffix(p.name)
+            with _open_fasta_in(p) as fh:
+                for r in v2.iter_fasta_stream(fh):
+                    w.write(b"\n".join(fasta.format_record(f"{stem}|{r.header}", r.seq, r.line_width)) + b"\n")
+    sources.append({
+        "source_name": "tower_ece2:inocles",
+        "source_release": "Zenodo record 16656823, Inocle_001.fasta to Inocle_029.fasta (Kiguchi et al. 2025)",
+        "license": INOCLE_LICENSE,
+        "redistributable": True,
+        "fasta": ino_cat,
+        "output_name": "ece2_inocles.fna",
+        "element_class": "inocle",
+        "dec65_metagenomic": True,
+    })
+
+    elements = scratch / "pro-623-elements.fna"
+    set_map: dict[str, str] = {}
+    found = False
+    with tarfile.open(tyche_tar, "r:*") as tf:
+        for m in sorted(tf.getmembers(), key=lambda x: x.name):
+            if not m.isfile():
+                continue
+            rel = m.name.split("/", 1)[1] if "/" in m.name else m.name
+            if rel == TYCHE_ELEMENTS:
+                with tf.extractfile(m) as src, open(elements, "wb") as dst:
+                    shutil.copyfileobj(src, dst)
+                found = True
+                continue
+            if rel == TYCHE_TABLE:
+                text = tf.extractfile(m).read().decode("utf-8")
+                for row in csv.DictReader(text.splitlines(), delimiter="\t"):
+                    set_map[row["element_id"]] = row.get("set", "")
+                skipped.append((m.name, m.size, "table_read_for_the_element_set_column"))
+                continue
+            skipped.append((m.name, m.size, _tyche_reason(rel)))
+    if not found:
+        raise Refused(f"{tyche_tar}: no member {TYCHE_ELEMENTS}")
+    sources.append({
+        "source_name": "tower_ece2:pro-tycheposons",
+        "source_release": "github thackl/pro-tycheposons at a0f299fd6932e5ea81c52cbaf6f2c81aa19be724, "
+                          f"{TYCHE_ELEMENTS} (Hackl et al. 2023)",
+        "license": TYCHE_LICENSE,
+        "redistributable": True,
+        "fasta": elements,
+        "output_name": "ece2_tycheposons.fna",
+        "element_class": "tycheposon",
+        "set_map": set_map,
+    })
+    return sources, skipped
+
+
 def _prepare_ece2_sources(dl_dir: Path, scratch: Path) -> list[dict]:
     sources: list[dict] = []
     inocle_fastas = _collect_fastas_recursive(dl_dir / "inocles_zenodo", scratch, "inocles")
@@ -1546,15 +1729,44 @@ def _parse_kv(items: list[str]) -> dict[str, Path]:
 # CLI
 
 
+def chain_owner_inputs(chain_home: Path | None, extra: dict[str, Path]) -> dict[str, Path]:
+    """Holders before this stage whose `EXPECT` lines its template carries, in build order: the 19 stages of
+    `r26.11.4` (`a26_r26_11_4_chain.R26_11_4_CHAIN`, inputs under `chain_home`), then `extra` in the order given
+    (`GV1`, `EGV1`, and the stages of this card already staged)."""
+    out: dict[str, Path] = {}
+    if chain_home is not None:
+        import a26_r26_11_4_chain as a26
+
+        out.update({s: Path(chain_home) / s for s, _ in a26.R26_11_4_CHAIN})
+    out.update(extra)
+    return out
+
+
 def _add_stage_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--dl", type=Path, required=True)
     p.add_argument("--out", type=Path, required=True)
     p.add_argument("--retrieved", required=True)
     p.add_argument("--root", type=Path, default=None)
     p.add_argument("--root-stages", default=DEFAULT_ROOT_STAGES)
-    p.add_argument("--owner-inputs", action="append", default=[])
+    p.add_argument("--chain-home", type=Path, default=None,
+                   help="the r26.11.4 stages' inputs, owners in a26's chain order before --owner-inputs")
+    p.add_argument("--owner-inputs", action="append", default=[], metavar="NAME=DIR")
+    p.add_argument("--later", action="append", default=[], metavar="NAME=DIR",
+                   help="an r26.11.5 stage before this one (recorded in later_records.tsv, card A-29's EXPECT)")
     p.add_argument("--final-dir", type=Path, default=None)
+    p.add_argument("--fasta-dir", type=Path, default=None, help="where the FASTA goes (/stor for 64 MB and more)")
+    p.add_argument("--work", type=Path, default=None)
     p.add_argument("--out-report", type=Path, default=None)
+
+
+def _s2_check(stage: str, meta: Path) -> dict:
+    p = subprocess.run([sys.executable, str(Path(__file__).resolve().parent / "s2_check_inputs.py"), stage,
+                        str(meta / "genomes.json"), str(meta / "objects_staging.json")],
+                       capture_output=True, text=True, check=False)
+    doc = json.loads(p.stdout) if p.stdout.strip().startswith("{") else {"stdout": p.stdout}
+    return {"exit": p.returncode, "problems": doc.get("problems"), "genomes": doc.get("genomes"),
+            "genome_input_rows": doc.get("genome_input_rows"), "kinds": doc.get("kinds"),
+            "codes": doc.get("codes"), "gene_call_mode": doc.get("gene_call_mode"), "stderr": p.stderr[-2000:]}
 
 
 def main(argv: list[str]) -> int:
@@ -1565,6 +1777,8 @@ def main(argv: list[str]) -> int:
     p_fe.add_argument("--dl", type=Path, required=True)
     p_se = sub.add_parser("stage-ece2")
     _add_stage_args(p_se)
+    p_se.add_argument("--tycheposons-tar", type=Path, default=None,
+                      help="the pro-tycheposons archive; with it, --dl is the directory of the Inocle FASTA files")
 
     p_fm = sub.add_parser("fetch-mir1")
     p_fm.add_argument("--dl", type=Path, required=True)
@@ -1595,15 +1809,29 @@ def main(argv: list[str]) -> int:
         return 0
 
     root_stages = [s.strip() for s in args.root_stages.split(",") if s.strip()]
-    owner_inputs = _parse_kv(args.owner_inputs)
-    scratch = args.dl / f".extract_scratch_{args.cmd}"
+    owner_inputs = chain_owner_inputs(args.chain_home, _parse_kv(args.owner_inputs))
+    later_inputs = _parse_kv(args.later)
+    base = args.work if args.work is not None else args.dl
+    scratch = base / f".extract_scratch_{args.cmd}"
     shutil.rmtree(scratch, ignore_errors=True)
+    stage = {"stage-ece2": "ECE2", "stage-mir1": "MIR1", "stage-asg1": "ASG1"}[args.cmd]
     try:
-        if args.cmd == "stage-ece2":
+        if args.cmd == "stage-ece2" and args.tycheposons_tar is not None:
+            sources, skipped_members = prepare_ece2_from_dl(args.dl, args.tycheposons_tar, scratch)
+            rep = stage_ece2(
+                sources, args.out, root=args.root, root_stages=root_stages,
+                owner_inputs=owner_inputs, retrieved=args.retrieved, final_dir=args.final_dir,
+                later_inputs=later_inputs, fasta_dir=args.fasta_dir,
+            )
+            make_inputs._write_tsv(args.out / "skipped_members.tsv", ["member", "bytes", "reason"],
+                                   skipped_members)
+            rep["skipped_members"] = dict(sorted(Counter(r[2].split(":", 1)[0] for r in skipped_members).items()))
+        elif args.cmd == "stage-ece2":
             sources = _prepare_ece2_sources(args.dl, scratch)
             rep = stage_ece2(
                 sources, args.out, root=args.root, root_stages=root_stages,
                 owner_inputs=owner_inputs, retrieved=args.retrieved, final_dir=args.final_dir,
+                later_inputs=later_inputs, fasta_dir=args.fasta_dir,
             )
         elif args.cmd == "stage-mir1":
             sources = _prepare_mir1_sources(args.dl, scratch)
@@ -1636,10 +1864,12 @@ def main(argv: list[str]) -> int:
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
 
+    rep["owner_stages"] = [*(root_stages if args.root is not None else []), *owner_inputs]
+    rep["s2_check"] = _s2_check(stage, args.out)
     if args.out_report is not None:
         args.out_report.write_text(json.dumps(rep, indent=1, sort_keys=True), encoding="utf-8")
     print(json.dumps(rep, indent=1, sort_keys=True))
-    return 0
+    return 0 if rep["s2_check"]["exit"] == 0 and rep["s2_check"]["problems"] == [] else 1
 
 
 if __name__ == "__main__":
