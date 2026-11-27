@@ -549,8 +549,8 @@ def test_rmd1_stage_records_r232_status_by_kind_and_is_deterministic(rm):
 # the conf templates
 # ==================================================================================================================
 
-# RMD1's template is written when its staging ends; add ("RMD1", "rmd1_reef_genomes.fna.gz", "WET1") here with it.
-@pytest.mark.parametrize("stage,fasta_name,after", [("GBRMGD", "gbrmgd_bins.fna.gz", "RMD1")])
+@pytest.mark.parametrize("stage,fasta_name,after", [("GBRMGD", "gbrmgd_bins.fna.gz", "RMD1"),
+                                                    ("RMD1", "rmd1_reef_genomes.fna.gz", "WET1")])
 def test_templates_pass_stage_est_and_carry_the_cards_values(stage, fasta_name, after):
     est = _load("stage_est", "stage_est.py")
     path = TEMPLATES / f"{stage}.conf"

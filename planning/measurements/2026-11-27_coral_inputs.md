@@ -10,8 +10,9 @@
   `/tmp/if2453/c74/GTDB_R232_META/`, the data root `/tmp/if2453/r10/root`, `/tmp/if2453/s2/inputs/` (the `r26.11.4`
   stages), and the staged metadata of the `r26.11.5` stages on the pod (§2.2). Nothing was written to the root or to
   `/tmp/if2453/s2/inputs/`; nothing under `/stor` was overwritten or deleted.
-- **Written:** the archives (`dl/`) and the staged FASTA to `/stor/scratch/Wilke/if2453/bio-box-staging/{GBRMGD,RMD1}/`;
-  metadata to `/tmp/if2453/c83/meta/{GBRMGD,RMD1}/`; census tables, reports and ANI tables to `/tmp/if2453/c83/work/`.
+- **Written:** the archives (`dl/`), the staged FASTA and `RMD1`'s `records.tsv` (over 64 MB) to
+  `/stor/scratch/Wilke/if2453/bio-box-staging/{GBRMGD,RMD1}/`; metadata to `/tmp/if2453/c83/meta/{GBRMGD,RMD1}/`;
+  census tables, reports and ANI tables to `/tmp/if2453/c83/work/`.
 
 ## 0. What each archive holds (read before anything was staged)
 
@@ -23,10 +24,11 @@ letters, gap bytes, other bytes); a member is `dna` only when every sequence byt
 | Archive | Members | By kind | Genomes by kind | Staged | Left out |
 |---|---:|---|---|---|---|
 | `prokaryote_bins_5283.tar.bz2` (`GBR_MGD`) | 5,283 files and one directory `prokaryote_bins/` | 5,283 `dna` (plain FASTA, none compressed inside), 467,187 records, 10,244,764,294 bp; no protein, alignment, table or other file | 5,283 prokaryote metagenome bins (MAGs: the file names are binners' names, `<site>__metabat2_refined_<n>`, `__rosella_refine_<n>`, `__vamb_<n>`; the headers say `[group=P]`); no eukaryote, virus, isolate or single cell | all 5,283 | nothing |
-| `RMDv1-genomes.tar.gz` (`RMD1`) | 13,549 files and one directory `RMDv1-genomes/` | 13,549 `dna` (plain FASTA, none compressed inside), 4,850,322 records, 40,388,129,994 bp; no protein, alignment, table or other file | 13,549 prokaryote genomes, each a row of `genomes-aggregated-summary.tsv` (GTDB-Tk R207 and CheckM): 1,524 Tara Pacific coral MAGs (`TPAC-CORAL-MAGS`), 11,922 MAGs of other reef studies (`EXTERNAL-MAGS`), 103 isolate genomes (`EXTERNAL-ISOG`); no eukaryote (every member is a row of the prokaryote table), no virus, no single cell | all 13,549 planned; **staging not finished at this commit** (§3) | nothing |
+| `RMDv1-genomes.tar.gz` (`RMD1`) | 13,549 files and one directory `RMDv1-genomes/` | 13,549 `dna` (plain FASTA, none compressed inside), 4,850,322 records, 40,388,129,994 bp; no protein, alignment, table or other file | 13,549 prokaryote genomes, each a row of `genomes-aggregated-summary.tsv` (GTDB-Tk R207 and CheckM): 1,524 Tara Pacific coral MAGs (`TPAC-CORAL-MAGS`), 11,922 MAGs of other reef studies (`EXTERNAL-MAGS`), 103 isolate genomes (`EXTERNAL-ISOG`); no eukaryote (every member is a row of the prokaryote table), no virus, no single cell | all 13,549 | nothing |
 
 The census table of `GBR_MGD` has sha256 `857de8909e7d46725c2e15b40505ac71a9a02f258f8cc17d4161203451dd0dc6`
-(1,320,530 B). Its headers are the assembly's contig names with the bin's name in brackets
+(1,320,530 B), and that of `RMD1` has sha256 `8fe1d9f180cd4597f6f4991273a70819d48d190bdd5ce1b82519b4b5dc240e9e`
+(2,551,030 B) (*measured*). `GBR_MGD`'s headers are the assembly's contig names with the bin's name in brackets
 (`IMOS__P__hoskyn_2__contig_3485_pilon:p [group=P] [bin:hoskyn_2__rosella_refine_806_0] [length=622590bp]`, some with
 `[proviral_region:virsorter=...]`): Pilon-polished assemblies of reef-water samples. The archive holds **no table**:
 no completeness, contamination, taxonomy, sample or accession. The Zenodo record may hold other files (eukaryote bins,
@@ -66,7 +68,7 @@ table of completeness was fetched (a label, not a measurement of the bins' quali
 | Genetic codes | code 11: 5,283; conflicts 0 |
 | r232 status | `not_visible`: 5,283 (10,244,764,294 bp): no bin carries an accession |
 | Held by the root or `r26.11.4` (exact `contig_uid`, build order) | 0 |
-| Held by the `r26.11.5` stages staged before it (§2.2) | 0 |
+| Held by the `r26.11.5` stages before it (§2.2, `RMD1` included) | 0 |
 | **New after both** | **466,872 contigs, 10,238,417,378 bp** |
 | `s2_check_inputs.py GBRMGD` (with `objects_staging.json`, the byte pass included) | exit 0, `problems: []`, 5,283 genomes, 467,187 `genome_input` rows, codes `[11]`, kinds `["prokaryote"]` |
 
@@ -111,39 +113,87 @@ bacterial-bin FASTA, and all 14,839 genomes of card C-75's r226 archaea.
 | `SAG3` | 3,568 | 548 | 92 | 94.4 |
 | `WET1` | 4,164 | 0 | 0 | 128.2 |
 | r226 archaea (card C-75) | 14,839 | 541 | 530 | 295.2 |
-| **any** | | | **2,190 of 5,283 (41.5 %)** | 1,629.2 |
+| **any of the 13 above** | | | **2,190 of 5,283 (41.5 %)** | 1,629.2 |
+| `RMD1` (§3, run after `RMD1` was staged, `/tmp/if2453/c83/work/gbrmgd_ani_rmd1/`) | 13,549 | 110 | 104 (over all 14) | 511.7 |
+| **any (all 14, `RMD1` included)** | | | **2,247 of 5,283 (42.5 %)** | 2,140.9 |
 
-All *measured*; the percentage *derived*. **Nothing is cut by it.** Reading: the reef-water bins are largely of
+All *measured*; the percentages (`2,190 / 5,283`, `2,247 / 5,283`) and CPU sums *derived* (`merge_gbr_ani.py` over the
+two `ani_hits.tsv` tables: of the 110 bins meeting `RMD1`, 57 met none of the 13 earlier sets and 53 also met an
+earlier set; over all 14 groups the best-hit counts are `SAG1` 1,438, `r226_archaea` 530, `RMD1` 104, `SAG3` 92,
+`GRARE3` 57, `SAG2` 16, `GRARE1` 8, `GRARE2` 2). **Nothing is cut by it.** Reading: the reef-water bins are largely of
 species that the surface-ocean single cells of `SAG1` (GORG-Tropics) and the marine archaea of GlobDB r226 already
-hold, which is what open-water bins of the Great Barrier Reef would be; none is byte-identical to a held contig
-(§2.1). `RMD1` as a reference group for `GBRMGD` is not yet run (§3).
+hold, which is what open-water bins of the Great Barrier Reef would be, while only 110 of 5,283 bins (2.1 %, *derived*)
+match `RMD1`'s coral-holobiont and reef genomes at 96 % ANI, and none is byte-identical to a held contig (§2.1).
 
-## 3. `RMD1` (not finished at this commit)
+## 3. `RMD1`
 
-**Done:** the relay (§1); the census (§0: 13,549 DNA members, 4,850,322 records, **40,388,129,994 bp**, *measured*;
-inside the card's 10 to 60 Gbp, so its stop is not in play; the session's estimate was 30 to 40 Gbp: 1 % over its upper
-end); the plan (`rmd1-plan`, *measured*, `/tmp/if2453/c83/work/rmd1_plan.json`), below.
+### 3.1 Plan and staging (`c83_coral_inputs.py rmd1-plan` and `rmd1-stage`, reports `/tmp/if2453/c83/work/rmd1_plan.json` and `rmd1_report.json`)
 
-| Plan of `RMD1` | Genomes | bp |
-|---|---:|---:|
-| MAGs (`TPAC-CORAL-MAGS` 1,524, `EXTERNAL-MAGS` 11,922), quality from CheckM: `mag_hq` (over 90 % complete, under 5 % contaminated) 6,319, `mag_mq` 7,127 | 13,446 | 39,907,128,492 |
-| isolates (`EXTERNAL-ISOG`), `assembly_quality` `scaffold` (the table gives no assembly level) | 103 | 481,001,502 |
-| r232 status: isolates by their BioSample through GTDB R232's `ncbi_biosample`, then C-74's `lookup`: `in_gtdb_and_globdb_r232` 52, `in_gtdb_r232` 51 (all 103 found) | 103 | |
-| r232 status: MAGs `not_visible` (a MAG's BioSample in the table is its metagenome's, shared by every MAG of that sample; no GTDB R232 genome carries any of these BioSamples) | 13,446 | |
-| table rows not in the archive / members not in the table / left out | 0 / 0 / 0 | |
+The census (§0: 13,549 DNA members, 4,850,322 records, **40,388,129,994 bp**, *measured*) is inside the card's 10 to 60
+Gbp, so its stop is not in play; the session's estimate was 30 to 40 Gbp (*estimate*), 1.0 % under the measured total
+(*derived*: 40.388 / 40 − 1). Notice `sources.yaml` `tower_batch6b_coral_rmd1` had described the archive as 4,224 coral
+genomes (the batch-6b worker's statement); in fact the tarball holds all 13,549 prokaryote genomes of
+`genomes-aggregated-summary.tsv` (`TPAC-CORAL-MAGS` 1,524, `EXTERNAL-MAGS` 11,922, `EXTERNAL-ISOG` 103; 0 rows missing
+from either side, *measured*).
 
-Rule of the stage (as `GBRMGD`'s, §2.1): `kind="prokaryote"`, the code screened per genome with GTDB-Tk's lineage as
-the hint, contig names (`<genome>-scaffold_<n>`) given the genome's id and `|`, one BGZF FASTA
-`rmd1_reef_genomes.fna.gz`; `redistributable: false` (the tarball's job list says `open-academic`, the worker's label,
-not a licence; the tables' Zenodo record states `cc-by-4.0`; DEC-80 (2), (3)). The screen workers are replaced after
-500 genomes each (`max_tasks_per_child`), so that no process passes 300 CPU-minutes.
+Rule of the stage (as `GBRMGD`'s, §2.1): `kind="prokaryote"`, the genetic code screened per genome with GTDB-Tk's R207
+lineage as the hint (screen workers replaced after 500 genomes each, `max_tasks_per_child=500`, so that no process
+passes 300 CPU-minutes), contig names (`<genome>-scaffold_<n>`) given the genome's id and `|` (all 4,850,322 renamed),
+one BGZF FASTA `rmd1_reef_genomes.fna.gz`; `redistributable: false` (the tarball's job list says `open-academic`, the
+worker's label, not a licence; the tables' Zenodo record states `cc-by-4.0`; DEC-80 (2), (3)).
 
-**Not done at this commit:** the staging itself (unit `c83-rmd1-stage`, started 2026-11-27 09:17:19 CST, still running at this commit, writing
-`/stor/scratch/Wilke/if2453/bio-box-staging/RMD1/rmd1_reef_genomes.fna.gz` and `/tmp/if2453/c83/meta/RMD1/`, report
-and `s2_check_inputs.py` result in `/tmp/if2453/c83/work/rmd1_report.json`); its overlap counts; its ANI step and
-`GBRMGD` against `RMD1` (`/tmp/if2453/c83/bin/rmd1_ani.sh`, not started); `RMD1.conf`; `stage_est.py conf`; the move
-of its `records.tsv` (over 64 MB) to `/stor`; the mirror to `tower`; the `sources.yaml` and `CATALOG_GOAL.md` lines
-of `RMD1`.
+| | Value (*measured*) |
+|---|---:|
+| Genomes / FASTA records | 13,549 / 4,850,322 (40,388,129,994 bp) |
+| MAGs (`TPAC-CORAL-MAGS` 1,524, `EXTERNAL-MAGS` 11,922): `mag_hq` (> 90 % complete, < 5 % contaminated) 6,319 (22,198,353,875 bp), `mag_mq` 7,127 (17,708,774,617 bp) | 13,446 (39,907,128,492 bp) |
+| Isolates (`EXTERNAL-ISOG`), `assembly_quality` `scaffold` (the table gives no assembly level) | 103 (481,001,502 bp) |
+| Genomes listed (DEC-27 repeated contig sets) / left out | 13,549 (0) / 0 |
+| Distinct contigs (bp) | 4,846,326 (40,327,579,088); 3,511 contigs in more than one genome (`s2_check_inputs.py` accepts them, DEC-27) |
+| Genetic codes | code 11: 13,471; code 4: 77; code 25: 1; conflicts 0 |
+| r232 status: isolates by BioSample through GTDB R232's `ncbi_biosample`, then C-74's `lookup` | `in_gtdb_and_globdb_r232`: 52 (237,785,229 bp; 51 GTDB R232 species representatives, 1 non-representative); `in_gtdb_r232`: 51 (243,216,273 bp; all non-representative); all 103 isolates found |
+| r232 status: MAGs (`not_visible`: a MAG's BioSample in the table is its metagenome's, shared across MAGs of that sample; 0 GTDB R232 genomes carry any of these BioSamples) | `not_visible`: 13,446 (39,907,128,492 bp) |
+| Held by the root or `r26.11.4` (exact `contig_uid`, build order) | 46,396 contigs, 432,502,879 bp: `GART1` 23,718 (233,286,298 bp), `G1` 19,569 (140,085,452), `GART2` 3,004 (18,151,452), `PL3` 89 (6,390,718), `P3` 5 (19,270,294), `MV1` 3 (81,529), `P5` 3 (10,879,628), `LR1` 2 (10,553), `MGE1` 1 (1,331), `P2` 1 (3,904,512), `PL2` 1 (441,112) |
+| New after the root and `r26.11.4` | 4,799,930 contigs, 39,895,076,209 bp |
+| Held by the 22 `r26.11.5` stages before it (§2.2) | 137,573 contigs, 1,593,431,851 bp: `GRARE2` 64,697 (854,957,355 bp), `GRARE1` 49,388 (499,477,440), `GRARE3` 23,488 (238,997,056); the other 19 stages 0 |
+| **New after both** | **4,662,357 contigs, 38,301,644,358 bp** |
+| Exact `contig_uid` overlap with `GBRMGD` (`c83_coral_inputs.py overlap`, `/tmp/if2453/c83/work/gbrmgd_vs_rmd1_overlap.json`) | 0 contigs, 0 bp (`GBRMGD`'s `later_records.tsv` stays empty) |
+| `s2_check_inputs.py RMD1` (with `objects_staging.json`, the byte pass included) | exit 0, `problems: []`, 13,549 genomes, 4,850,322 `genome_input` rows, codes `[4, 11, 25]`, kinds `["prokaryote"]` |
+
+Depth: 38.302 Gbp new is well over the card's 1.5 Gbp, so `DEPTH=called`, `CRISPR=yes`, default gene-call mode;
+`AFTER=WET1` (DEC-85 (1)). The template carries the 11 `EXPECT=held_by` lines of the root and `r26.11.4` stages above;
+card A-29 adds `GRARE1..3` from `later_records.tsv`. `stage_est.py conf` on `RMD1.conf` and `GBRMGD.conf`, in the image:
+exit 0 (*measured*).
+
+### 3.2 ANI against the staged prokaryote sets of `r26.11.5` and the r226 archaea (recorded, not cut)
+
+`c83_coral_inputs.py ani` (*measured*, `/tmp/if2453/c83/work/rmd1_ani/summary.json`, `ani_hits.tsv` and one skani table
+per group, unit `c83-rmd1-ani`): the same rule and 13 reference groups as `GBRMGD`'s (§2.3), 8 threads per `skani dist`
+process, ANI >= 96 over an aligned fraction >= 50 % (the larger of the two). No genome — MAG or closed/draft isolate —
+is removed on an ANI match (standing rules; DEC-84 (2)).
+
+| Reference group | Genomes | Genomes meeting (in the group) | Best hit there | skani CPU-s |
+|---|---:|---:|---:|---:|
+| `GRARE1` | 4,779 | 600 | 596 | 560.4 |
+| `GRARE2` | 3,806 | 417 | 417 | 569.4 |
+| `GRARE3` | 3,638 | 405 | 405 | 513.1 |
+| `LR2` (MAGs) | 5,159 | 2 | 2 | 572.5 |
+| `SAG1` | 5,537 | 22 | 20 | 411.8 |
+| `NX1` | 893 | 1 | 1 | 370.1 |
+| `SAG2` | 9,698 | 23 | 20 | 398.4 |
+| `DPN1` | 1,840 | 2 | 2 | 353.0 |
+| `SYM2` (bins) | 625 | 3 | 2 | 286.5 |
+| `KAVHIFI` (bacterial MAGs) | 2,214 | 0 | 0 | 362.7 |
+| `SAG3` | 3,568 | 17 | 6 | 342.3 |
+| `WET1` | 4,164 | 4 | 4 | 479.1 |
+| r226 archaea (card C-75) | 14,839 | 385 | 331 | 629.4 |
+| **any** | | | **1,806 of 13,549 (13.3 %)** | 5,848.7 |
+
+All *measured*; the percentage (`1,806 / 13,549`) and the skani CPU-s sum *derived*. **Nothing is cut by it.** Reading:
+unlike the open-water reef bins of `GBRMGD` (41.5 % meeting, mostly surface-ocean `SAG1`), `RMD1`'s coral-holobiont and
+reef-associated genomes barely overlap `SAG1` (22 genomes) or `NX1` (1 genome); nearly all of its 1,806 matches fall in
+`GRARE1..3` (1,418 best hits) and the GlobDB r226 archaea (331 best hits), reflecting external reef MAGs that GlobDB
+r226 already gathered (including the 137,573 exact contigs `GRARE1..3` hold, §3.1), while 11,743 of 13,549 genomes
+(86.7 %, *derived*) have no 96 % ANI match across the 13 reference sets.
 
 ## 4. Staged files
 
@@ -160,6 +210,17 @@ of `RMD1`.
 | `shared_records.tsv` | same | 60 | `45d2b7bc910a65fe91a4e3623653345589dae4ffa7a7a4499641e13d5cea1b06` |
 | `later_records.tsv` | same | 55 | `ba2f1dbd71ed4260b0ec24d03d968ba0c6251afbeeb9efb134735ed1064d05f4` |
 | `left_out.tsv` | same | 33 | `4ad9c0ef6fa328dd54a1a79b7720ec0e031daaa22c48567e1490df6d84a07efc` |
+| `rmd1_reef_genomes.fna.gz` | `/stor/scratch/Wilke/if2453/bio-box-staging/RMD1/` | 12,476,056,908 | `285a634959f2f4d60ba5cbd0e60669274021d73edfca12db86efa13619024255` |
+| `records.tsv` | same (over 64 MB; copied from `/tmp`, sha256 verified, renamed with `mv -n`) | 526,920,864 | `f4224577dc097f39c3b3d419daba178eff28f61342c67afcc1a47eb291882c1f` |
+| `genomes.json` | `/tmp/if2453/c83/meta/RMD1/` | 176,061,464 | `e50dcbe3710d03c4021bf7c6de82aa97146f25827df149d29ec66ba5bbf05628` |
+| `objects.json` | same | 583 | `344e5474b767395bfac8a7671d8b4691988957496086bd92f41d879e8d917cd2` |
+| `objects_staging.json` | same | 604 | `8754ccfaf7979dc4dda7751befbb367c190ddd28c5c8e851d657ebee46af5eb0` |
+| `genetic_codes.tsv` | same | 2,671,287 | `42d809fbf914764eee27cda955b09ae7f798ff474bec15e3504c7038d13d1ef6` |
+| `r232_status.tsv` | same | 3,251,178 | `301143f042173a549b66b29e75b70c2266b6bf0f71aa01e08fe9d63f0025e142` |
+| `repeated_records.tsv` | same | 39 | `d109495ee76e4643c181eae183c452c9a84560f97a79bbe22d6630780368c565` |
+| `shared_records.tsv` | same | 4,079,344 | `fdbb98c767616ae0cfed784508f98f42921e9081548b4d08597b6fe4c04077f9` |
+| `later_records.tsv` | same | 12,504,109 | `73f2745ed548cf861a35670074b306f491ed1e6a4788979b6d3c602593224af5` |
+| `left_out.tsv` | same | 33 | `4ad9c0ef6fa328dd54a1a79b7720ec0e031daaa22c48567e1490df6d84a07efc` |
 
 All *measured* (`ids.sha256_file`, the stage reports). `objects.json` names `/tmp/if2453/s2/inputs/<STAGE>/<FASTA>`
 (card A-29 copies there); `objects_staging.json` the file on `/stor`. The templates' `SUM` lines are the rows for
@@ -168,14 +229,17 @@ All *measured* (`ids.sha256_file`, the stage reports). `objects.json` names `/tm
 **Mirror to `tower`** (`scripts/orchestrator/relay_to_tower.sh`, card C-49, from the laptop, one stream, *measured*,
 the script's log, 2026-11-27): `GBRMGD`: the FASTA, 3,189,105,489 B in 131 s (24.34 MB/s), `DONE: 1 verified`, then
 the ten metadata files, `DONE: 10 verified, 0 in place and skipped, 0 failed`, `SHA256SUMS` on `tower` 11 lines; to
-`tower:/mnt/user/research-bulk/bio-box/sources/GBRMGD/`.
+`tower:/mnt/user/research-bulk/bio-box/sources/GBRMGD/`. `RMD1`: the nine metadata files on `/tmp`, 198,568,641 B in
+14 s, `DONE: 9 verified, 0 in place and skipped, 0 failed`, then the FASTA (`rmd1_reef_genomes.fna.gz`, 12,476,056,908
+B in 517 s, 24.13 MB/s) and `records.tsv` (526,920,864 B in 21 s, 25.09 MB/s) on `/stor`, `DONE: 2 verified, 0 in
+place and skipped, 0 failed`, `SHA256SUMS` on `tower` 11 lines; to `tower:/mnt/user/research-bulk/bio-box/sources/RMD1/`.
 
 ## 5. Pod compute used
 
 Detached `systemd-run --user` units at `nice -n 19`, `MemorySwapMax=0`, inside
 `/stor/home/if2453/bio-box/images/bio-box_faec1f4.sif`, each started after a look at the active units (one unit of
 this card at a time while two of cards A-29 and B-75 were active; never more than two of this card's), with no
-`STOP` file in the root and no build unit of `MV1` or `V3` calling genes (the wave was in `PL3`'s Pfam scan):
+`STOP` file in the root and no build unit of `MV1` or `V3` calling genes (the wave was in `PL3`'s Pfam scan, then `CG1`'s build):
 
 | Unit | What | Cap | Wall (*measured*, unit and file times) | CPU |
 |---|---|---|---|---|
@@ -186,9 +250,11 @@ this card at a time while two of cards A-29 and B-75 were active; never more tha
 | `c83-rmd1-census` | `census` of `RMD1` | `CPUQuota=100%`, 8G | 09:03:19, 7 min 56 s | 7.8 CPU-minutes, 337 MB peak RSS (*measured*, `/usr/bin/time -v`) |
 | `c83-gbr-ani` | `ani` of `GBRMGD`, 13 skani processes of 8 threads | `CPUQuota=800%`, 32G | 49 min 38 s | 62.7 CPU-minutes (*measured*, `/usr/bin/time -v`), largest skani process 4.9 |
 | `c83-rmd1-plan` | `rmd1-plan` | `CPUQuota=100%`, 16G | under 10 minutes | at most 10 CPU-minutes (*derived*) |
-| `c83-rmd1-stage` | `rmd1-stage` (3 recycled code-screen workers, DuckDB 2 threads); **running at this commit** | `CPUQuota=400%`, 32G | from 09:17:19 | 241 CPU-minutes in all processes at the handover (*measured*, `CPUUsageNSec`) |
+| `c83-rmd1-stage` | `rmd1-stage` (3 recycled code-screen workers, `max_tasks_per_child=500`, DuckDB 2 threads) | `CPUQuota=400%`, 32G | 09:17:19, 3 h 06 min 13 s (`3:06:13`) | 313.2 CPU-minutes in all (`18,615.36` s user + `177.52` s sys, *measured*, `/usr/bin/time -v`, *derived* ÷ 60) over the parent and 28 worker processes, 3.04 GB peak RSS (`3,040,188` kB, *measured*) |
+| `c83-rmd1-ani` | `rmd1_ani.sh`: `ani` of `RMD1` (`1:46:57` wall, 142.0 CPU-min over 13 skani processes of 8 threads) then `ani` of `GBRMGD` against `RMD1` (`24:39.42` wall, 26.2 CPU-min, 1 skani process of 8 threads) | `CPUQuota=800%`, 32G | 12:39:51, 2 h 11 min 36 s (`2:11:36`) | 168.2 CPU-minutes in all (`8,951.07` s user + `1,142.35` s sys, *measured*, `/usr/bin/time -v`, *derived* ÷ 60; largest single skani process 629.4 CPU-s = 10.5 CPU-min), 9.31 GB peak RSS (`9,307,680` kB, *measured*) |
 
-No process came near 300 CPU-minutes.
+Plus `overlap` (`GBRMGD` against `RMD1`, DuckDB 2 threads, under 10 s) and `c83_est.sh RMD1 GBRMGD` (`stage_est.py conf`
+on both templates, exit 0, under 3 s). No single process came near 300 CPU-minutes; no `c83-*` unit remains active.
 
 ## 6. Tests
 
@@ -203,13 +269,16 @@ prefixed, the FASTA in archive order, `s2_check_inputs.py` exit 0; a stage refus
 the census read, leaving nothing; `genomes_where`, the r226 archaea split, the overlap count, and skani itself on 60 kb
 fixtures (skipped without skani); the RMD1 table and stage (an isolate found in GTDB R232 by its BioSample, one not
 found, a MAG not visible with the count of R232 genomes of its BioSample, a *Mycoplasma* MAG screened to code 4);
-and the templates through `stage_est.read_conf` with their `SUM`s found in this note. Every test runs with the
-normal `PATH` and with `PATH=/usr/bin:/bin`.
+and both templates (`GBRMGD.conf`, `RMD1.conf`) through `stage_est.read_conf` with their `SUM`s found in this note.
+Every test runs with the normal `PATH` and with `PATH=/usr/bin:/bin`.
 
 Seen failing first on the pod (*measured*, `wilkcomp02`, 2026-11-27, `env BIOBOX_TREE=/tmp/biobox-wt/C-83 sh
 scripts/pod_pytest.sh C-83 tests/r1/test_c83_coral_inputs.py tests/r1/test_r232_index.py tests/r0`, with the script
 not yet in the tree): **8 failed, 244 passed** (`FileNotFoundError: ... c83_coral_inputs.py`), the census tests; the
-template test, written before the template held its values: **4 failed** (`not KEY=VALUE: '@SUMS@'`, `no template
-RMD1.conf`). The staging, block-reader and ANI tests were written after the code they test (a deviation from AGENTS
-§5.1, reported). With `GBRMGD` staged (same command, one process): **283 passed, 1 skipped in 27.33 s** (the skip: the
-skani test under the tools-hidden `PATH`).
+template test, written before the templates held their values: **4 failed** (`not KEY=VALUE: '@SUMS@'`, `no template
+RMD1.conf`), and again for `RMD1.conf` alone before writing it (`pod_pytest.sh C-83 tests/r1/test_c83_coral_inputs.py
+-k template`: **2 failed, 2 passed**, `Failed: no template RMD1.conf`). The staging, block-reader and ANI tests were
+written after the code they test (a deviation from AGENTS §5.1, reported). With both `GBRMGD` and `RMD1` staged and
+templatted (`env BIOBOX_TREE=/private/tmp/biobox-wt/C-83 sh /private/tmp/biobox-wt/C-83/scripts/pod_pytest.sh C-83
+tests/r1/test_c83_coral_inputs.py tests/r1/test_r232_index.py tests/r0`, one process): **287 passed, 1 skipped in
+35.62 s** (the skip: the skani test under the tools-hidden `PATH`).

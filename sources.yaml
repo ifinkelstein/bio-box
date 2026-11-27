@@ -3096,7 +3096,7 @@ sources:
     staged: >-
       card C-83, 2026-11-27: all 5,283 bins of prokaryote_bins/ (467,187 records, 466,872 distinct contigs,
       10,238,417,378 bp distinct; all code 11; no accession, so every bin is not visible to the r232 test; no contig
-      held by the root, the r26.11.4 stages or the r26.11.5 stages staged before it) as stage GBRMGD in
+      held by the root, the r26.11.4 stages or the r26.11.5 stages before it, RMD1 included) as stage GBRMGD in
       /tmp/if2453/c83/meta/GBRMGD/ and /stor/scratch/Wilke/if2453/bio-box-staging/GBRMGD/gbrmgd_bins.fna.gz on
       wilkcomp02, then to tower:/mnt/user/research-bulk/bio-box/sources/GBRMGD/;
       planning/measurements/2026-11-27_coral_inputs.md
@@ -4356,13 +4356,26 @@ sources:
     checksum: the provider's md5 for every file (in the job list; the fetcher compares it before the file is kept)
     license: cc-by-4.0   # as the job list states it
     fetched: >-
-      nothing yet: 16 files named in _batch6.tsv (written 2026-11-25 20:54 CST) on tower, none landed at 2026-11-26
-      07:33 CST; listed here after the list was written and before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_symbionts/RMD1/
+      14 of 14 files of 02_r26.11.6_batch6_rmd1.tsv (card R-12 left out _batch6.tsv's 2 annotation tables, the
+      antiSMASH summary and biosynthetic-gene table; 15,133,291 bytes total) by fetch_to_tower.sh on tower, UTC
+      2026-11-26T19:06:13Z to 2026-11-26T19:06:53Z, each md5 equal to Zenodo's: genomes-aggregated-summary.tsv
+      (4,864,682 bytes, sha256 8af9e1806be793d2d83a4277ef4357425f8e7ebb87b8feaab2ceabfcc8c44dd6),
+      RMD-motus-membership.tsv (456,690 bytes, sha256
+      3fbf4d8b49493b087f447fbea226ad1136864e7f36f902833da9b46e7c601456), and supplementary-table-1.xlsx to
+      supplementary-table-12.xlsx (bytes and sha256 measured on tower, SOURCE_URLS.tsv read 2026-11-27, card C-83)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_symbionts/RMD1/ (SOURCE_URLS.tsv and SHA256SUMS there)
+    fetched_pod: >-
+      14 of 14 files copied from tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_symbionts/RMD1/ to
+      /tmp/if2453/c83/dl/RMD1/ on wilkcomp02 by scripts/orchestrator/relay_to_pod.sh (card C-73), 2026-11-27, ending
+      07:35 CST, each sha256 equal to tower's SHA256SUMS (the provider was not asked again; 15,133,291 bytes; card C-83)
+    staged: >-
+      card C-83, 2026-11-27 (DEC-85): genomes-aggregated-summary.tsv (13,549 prokaryote rows: 1,524 TPAC-CORAL-MAGS,
+      11,922 EXTERNAL-MAGS, 103 EXTERNAL-ISOG) describes the genomes staged as stage RMD1 (see entry
+      tower_batch6b_coral_rmd1); planning/measurements/2026-11-27_coral_inputs.md
     note: >-
       the zenodo record 17844029 (read by the batch-6 worker on 2026-11-25, batch6_probe.json) states the licence
       cc-by-4.0; tables only (the job list says so); the genomes are _batch6b.tsv's RMDv1-genomes.tar.gz (entry
-      tower_batch6b_coral_rmd1)
+      tower_batch6b_coral_rmd1). DEC-85 moved RMD1 into r26.11.5 after WET1
     approved: "by the PI, 2026-11-25 19:47 CST, in general words only: \"make sure to download everything per the plan above\" (the plan of 19:47 was batches 4 and 5). No PI message names batch 6 or a source in it: the orchestrator wrote _batch6.tsv at 20:54 CST from its scouts, after the PI asked at 20:05 (\"run even more diversity scouts ... really want to go deep on high quality data, no matter where you can find it\") and at 20:26 (\"... add those to the wish list as well\") for scouts and a wish list, not for a fetch (the Antigravity transcript, steps 7345 to 7461). Held for the PI by card R-11"
   - name: tower_oilv1
     what: >-
@@ -5484,14 +5497,38 @@ sources:
       Tara Pacific Reef Microbiomics Database v1.0 bulk genome tarball (4,224 coral genomes, sunagawalab.ethz.ch,
       11.572 GB)
     url: https://sunagawalab.ethz.ch/share/microbiomics/reef/suppl_data/RMDv1-genomes.tar.gz
+    files:
+      - {file: "RMDv1-genomes.tar.gz", bytes: 11571956924, sha256: aa4b6631e5c6de2bf8e0cd8828170bcb3d0138d545f749700396ebad8a6fa21a}
     checksum: no provider md5 in the job list (field -); our sha256 only, and the archive test of the fetcher
     license: open-academic   # as the job list states it
     fetched: >-
-      nothing yet: 1 files named in _batch6b.tsv (written 2026-11-25 21:26 CST) on tower, none landed at 2026-11-26
-      07:33 CST; listed here after the list was written and before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6b_coral/RMD1/
+      1 of 1 files by fetch_to_tower.sh on tower, UTC 2026-11-27T06:14:12Z (20_later_licence_released.tsv; landed 00:02
+      CST): RMDv1-genomes.tar.gz, 11,571,956,924 bytes, sha256
+      aa4b6631e5c6de2bf8e0cd8828170bcb3d0138d545f749700396ebad8a6fa21a (measured on tower, SOURCE_URLS.tsv read
+      2026-11-27, card C-83). Correction of what was fetched: the archive holds 13,549 plain-FASTA prokaryote genomes
+      (4,850,322 records, 40,388,129,994 bp: 1,524 Tara Pacific coral MAGs TPAC-CORAL-MAGS, 11,922 reef MAGs of other
+      studies EXTERNAL-MAGS, 103 isolate genomes EXTERNAL-ISOG, matching every row of tower_rmd1's
+      genomes-aggregated-summary.tsv) and no eukaryote, virus, protein or table file, not the 4,224 genomes stated in
+      what above
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6b_coral/RMD1/ (SOURCE_URLS.tsv and SHA256SUMS there)
+    fetched_pod: >-
+      1 of 1 files copied from tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6b_coral/RMD1/ to wilkcomp02
+      by scripts/orchestrator/relay_to_pod.sh (card C-73), 2026-11-27, ending 07:43 CST (466 s), sha256 equal to tower's
+      SHA256SUMS (the provider was not asked again): RMDv1-genomes.tar.gz (11,571,956,924 bytes) to
+      /stor/scratch/Wilke/if2453/bio-box-staging/RMD1/dl/ (card C-83)
+    staged: >-
+      card C-83, 2026-11-27 (DEC-85): all 13,549 prokaryote genomes of RMDv1-genomes/ (4,850,322 records, 4,846,326
+      distinct contigs, 40,327,579,088 bp distinct; 13,471 code 11, 77 code 4, 1 code 25; all 103 isolates found in
+      GTDB R232 by BioSample, 52 also in GlobDB r232, 13,446 MAGs not visible to the accession test, none removed on
+      r232 status; 46,396 contigs held by the root and r26.11.4 stages, 137,573 more by GRARE1..3, 4,662,357 contigs /
+      38,301,644,358 bp new after both) as stage RMD1 in /tmp/if2453/c83/meta/RMD1/ and
+      /stor/scratch/Wilke/if2453/bio-box-staging/RMD1/ (rmd1_reef_genomes.fna.gz and the 527 MB records.tsv) on
+      wilkcomp02, then to tower:/mnt/user/research-bulk/bio-box/sources/RMD1/;
+      planning/measurements/2026-11-27_coral_inputs.md. redistributable: false (DEC-80 (3): no recorded licence covers
+      the tarball)
     note: >-
-      open-academic is the worker's label, not a licence; no provider record of the licence was kept
+      open-academic is the worker's label, not a licence; no provider record of the licence was kept. DEC-80 ended the
+      licence hold and DEC-85 put RMD1 in r26.11.5 after WET1; redistributable: false (DEC-80 (3))
     approved: "by the PI, 2026-11-25 21:01 CST: \"1. y, 2. decide based on novelty, maybe coral\", in answer to the orchestrator's question of 20:58 CST \"Queue a small detached Batch 6b on tower? Fixes the / filename crash caught on Batch 3's RNA_VIROID, pulls the rescued CANDI1 bulk DB (gandi-classifier-db.tar.gz), and pulls the newly found open NCBI/ENA BioProjects (O4-PROT/O4-WEIRD organelles ..., MARSUPIAL1, TERMITE1, NHP-GUT1, AMD-CPRV1, CAVE-AERO1, GBAT-RNA, RMD1 coral genomes)\" (the Antigravity transcript, steps 7461 and 7462)"
   - name: tower_batch6b_rescue_candi1
     what: >-
