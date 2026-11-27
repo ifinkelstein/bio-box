@@ -5,7 +5,121 @@ The running record of the cards in [`TASKS.md`](TASKS.md). Updated at every merg
 by an agent on its own branch `task/<ID>`, audited by the orchestrating session, and merged after its
 tests passed on the merged tree.
 
-## Orchestrator active, from 2026-11-26 07:25 CST (the auditing session, Claude; current, supersedes the sections below where they differ)
+## Handoff, 2026-11-27 07:30 CST (read this first; written by the orchestrating session at the PI's word "update all docs and handoff too in case i switch to diff orchestrator"; it supersedes the sections below where they differ)
+
+Whoever takes over needs this section, AGENTS.md, rows DEC-77 to DEC-84 of `planning/DECISIONS.md`, and
+`STAGING_WORKER_RULES.md` beside this file. Everything that is running runs without a session.
+
+**H0. What is running, and how to read it.**
+
+- **The pod (`if2453@wilkcomp02.ccbb.utexas.edu`): wave-6, the stage builds of `r26.11.4`.** Unit
+  `r26-11-4-wave-6.service`, launched 2026-11-26 19:25:15 CST (W11) from the frozen mirror `/tmp/if2453/ci/rel1126c`
+  (the checkout at `9a74ac0`), with `SCAN_JOBS=10`: stages `PL2 PL3 CG1 MGE1 SAT1 ECE1 O1 O2 LPL1 SYM1 LRV1 LGRT1 MGE2
+  MV1 V3 LR1 GART1 GART2`, after `V2` (wave-5). Built: `V2` (backup 2026-11-26 18:43) and `PL2` (23:03). Building:
+  `PL3`, in its Pfam scan at 07:11 (*measured*, `tail -c 700 /tmp/if2453/stages/pl3/driver.log`: shards 50 to 59 live,
+  65 step records, the largest 233.76 CPU-minutes against the 280 guard; ten shards at about 395% each, `ps`). Expected
+  end of the wave: late Sunday 2026-11-29 (*estimate*). Read it with
+  `ssh if2453@wilkcomp02.ccbb.utexas.edu "tail -n 3 /tmp/if2453/stages/r26-11-4-wave-6.log"`, then the running stage's
+  `/tmp/if2453/stages/<stage>/driver.log` (use `tail -c`, its lines are long) and `run/` (`FAILED`, `guard.jsonl`).
+- **If the wave stops.** A guard stop (a step over 280 CPU-minutes, a rate over 1.50) goes to the PI and is resumed only
+  on his explicit word. A failure of the code is handled as W10 and W11 record: a card, a test seen failing, the fix on
+  its branch, the diff read, the merged tree run on the pod, a green `ci`, a new frozen mirror (one `rsync` of the
+  clean checkout, never synced again), then
+  `stage_wave.sh --resume-at <STAGE> --from-mode <MODE> <log> <STAGE> <the stages after it>` in a new unit with
+  `--setenv=SCAN_JOBS=10` (the launch line is in W11 and in RUNBOOK "A wave of stages"). Nothing under
+  `/tmp/if2453/stages/<stage>/` or the root is edited by hand. The inputs of the 16 stages after `PL3` were scanned
+  clean on 2026-11-27 (card R-19).
+- **`tower` (`root@tower`): the fetches.** A chain started 2026-11-27 06:31 CST by this session runs detached
+  (`fetch_logs/chain_r22.sh`, log `fetch_logs/2026-11-27_chain_r22.log`) from `tree_bd95dd0` (the script of card R-22):
+  list 18 again for `DSV70_mag.tar.gz` (one connection; running at 07:15), list 19 again for
+  `SMAGs_contigs_individual.fna.tar.gz`, which its provider cut 6.2 GB short (one connection), then list 22, `EEMC1`,
+  75,085 files, with `--jobs 4 --pause 0`. Before it: the 20-list run ended `ok=12152 skip=0 fail=2` (those two files);
+  list 21 (`GPB_PHAGE`) landed 104 of 104; the serial run of list 22 was stopped at 06:29 with a signal after several
+  hundred files (it logged "stopped by a signal" and released its lock; files in place are skipped by the new run).
+  The serial rate was 325 files in 124 minutes (*measured*), about 20 days for the list (*derived*), which is why card
+  R-22 was written; at four connections about 5 days (*estimate*, not yet measured: measure it when list 22 starts).
+  None of the Antigravity sessions' batch runners is alive (`pgrep -a -f '_run_batch|_fetch_batch'`, empty at 07:20).
+- **The two-hour reports** were a schedule of this session and end with it.
+
+**H1. In flight in the tree.**
+
+- `task/R-21` (`4f4f701`; `s2_check_inputs.py` reads the bytes of every object) and `task/R-23` (`ea98aac`; every
+  built stage scanned clean, `GV1` re-staged) are pushed and green on Actions (runs `45994560438`, `45997121878`).
+  They are being merged as this is written: if the Merged table below has their rows, it is done; if not, merge each
+  with `--no-ff`, run the merged tree on the pod (`sh scripts/pod_pytest.sh <name> tests/r1/test_r21_check_inputs_bytes.py
+  tests/r1/test_r23_gv1_trailing_gaps.py tests/r1/test_r19_fasta_scan.py tests/r1/test_c76_lr2_sag1_nx1_r232.py tests/r0`),
+  push, read the `ci` run, add the rows, remove `/tmp/biobox-wt/R-21` and `R-23` and the pod's `ci/<ID>` and
+  `ci-tmp/<ID>-0`. Both add a section to a note under `planning/measurements/`; a conflict there keeps both.
+- Cards written and not started: **B-75** (ingest refuses a byte that is not a base; the PI's yes is DEC-84 (1); tier
+  M, changes `src/`, the orchestrator reads its whole diff), **A-29** (the chain of `r26.11.5`; see H2), **C-82**
+  (`ASG1` for `r26.11.6`). Parked by the PI: A-28 (outside compute), W-38 (protein language models; needs a GPU venue).
+- Everything else of 2026-11-26 and 27 is merged with a row below (240 rows before R-21 and R-23).
+
+**H2. Next, in order.**
+
+1. Merge R-21 and R-23 (above).
+2. Card B-75, an Opus worker; then the diff read in full, the whole suite, a green `ci`, the merge.
+3. Card A-29, part 1: the chain of `r26.11.5`. What its brief must carry, beyond the card and the staging plan:
+   members and order are DEC-79 (1) less `ASG1` (no genome sequence in what was fetched) and `MGE4` (not mobile
+   elements); three stages were re-staged on 2026-11-27 and their first files are gone or superseded: `LR2`
+   (`/tmp/if2453/r19/LR2/`, `lr2_compendia_r19.fna.gz`), `NX1` (`/tmp/if2453/r20/NX1/`, `nx1_compendia_r20.fna.gz`),
+   `GV1` (`/tmp/if2453/r23/GV1/`, `gvmags_v2_all_18kgenomes_r23.fna`; its conf `stages/GV1.conf`, which
+   `tests/r1/test_stage_driver.py` pins, still names the first files under `/tmp/if2453/s2/inputs/GV1/` and must be
+   swapped for the template, a migration the card must describe); `DPN1`'s FASTA is the `_rev2` one; 1,100 cells of
+   `SAG3` are cells `SAG1` holds (stored once, counted in both); `MIR2`'s 28 MB object is on `/stor` against the 64 MB
+   rule and is deleted there only after its copy is in the stage input area (DEC-84 (3)); `sources.yaml` and the
+   templates of `LR2`, `NX1` and `DPN1` still say that their first files are kept on `/stor`, which DEC-84 (3) ended
+   (correct the wording there); `ECE2`'s corrected
+   `objects.json` on `tower` is in `sources/ECE2/c70_rev2/`; one file on `/stor` is of unknown use and is to be
+   explained before the chain is fixed: `NX1/nx1_compendia_r232.fna.gz` (373 MB, 2026-11-26 14:28, probably card
+   C-76's first pass, which removed genomes on r232 membership and was sent back). Part 2 of A-29 waits for
+   `r26.11.4` to be verified.
+4. When the wave has ended with every one of the 19 stages holding `backup/DONE`: the release train of `r26.11.4`,
+   as RUNBOOK "Cutting the next release" now has it (card R-16) and DEC-82 requires: the rehearsal is done (W11;
+   run it again only if `release_train.sh` or the clustering code changed since `a2831ec`), a fresh `WORK`, the dry
+   run read, `df -B1G /tmp`, `r26.11.2` retired with `bio-box release retire` if the space is short (DEC-83), the
+   launch without `--parts` and with the defaults, from a new frozen mirror of a commit whose `ci` is green. The
+   hybrid estimate exists only once the run has started: read `estimate/before.json`, the first `.cut` records and
+   `scratch_peak` in the first hours. Clustering is planned at 15 to 19 h (*derived*, DEC-82 (5)).
+5. Before `r26.11.4` is announced: the worked examples as release checks (AGENTS §5.7).
+6. `tower`: when list 22 runs, measure its rate at four connections and write it in card R-22's row.
+
+**H3. Decided since 2026-11-26 07:25 (the rows are the record).** DEC-79 (members of `r26.11.5`), DEC-80 (no licence
+hold; personal use), DEC-81 (ftp allowed; names roll by date; wave checks shared), DEC-82 (the hybrid clustering
+signed, with its conditions), DEC-83 (retire releases as `/tmp` needs), DEC-84 (ingest refuses bytes that are not
+bases; closed genomes kept; three superseded files deleted on `/stor`). Decided by the orchestrating session, told to
+the PI and not objected to: no genome in hand is removed because GTDB R232 or GlobDB r232 lists or dropped it (its
+status is recorded); `GRARE1` keeps the unclassified-domain genomes that r232 dropped; `MIR1` keeps the Bellas
+endogenous-virus loci (class `plv_eve`), 0.82 Gbp new against an estimate of 0.4 to 0.55; `Hoko` of `GV1` is a DEC-27
+repeat; `relay_to_pod.sh` carries a name with a space only under `--space-as-underscore`.
+
+**H4. How this session worked, for whoever takes over.**
+
+- The PI asked (2026-11-26) that agents do the work and the orchestrator decide and check: Opus workers for cards,
+  Sonnet "stewards" for merges and bookkeeping with exact briefs (the merge, the merged-tree test, the push, the row,
+  the cleanup), at most four agents at once. The orchestrator keeps the decisions, the launches on the pod and on
+  `tower`, and reads in full any diff that changes a guard, a check or `src/`. A script that writes the only copy of
+  data (`fetch_to_tower.sh`) got a second, independent Opus reader who was given the diff and not the worker's
+  reasoning; it found three defects (the R-22 row).
+- Every staging worker was pointed at `STAGING_WORKER_RULES.md` (now in the tree beside this file; it was a file of
+  the session's scratch directory until 2026-11-27) and told the card's particulars only.
+- A worker's 20% stop, or its stop on a contradiction in a card, comes to the orchestrator; the orchestrator decides,
+  says so in the worker's note as its own decision and not the PI's, and adds a dated line to the card.
+- Two stewards re-sent their report in a loop after finishing; they were stopped, their work being already pushed.
+  Tell a steward to report once.
+- The account's usage limit stopped this session several times. Detached units on the pod and `setsid` chains on
+  `tower` are why nothing was lost: launch nothing that needs the session to stay.
+- Known intermittent failure on Actions: `test_c16_an_oom_killed_search_records_a_peak_within_20_percent_of_its_cap`
+  (card A-10). It failed once on 2026-11-26 (`task/C-75`); the failed job was rerun once and passed, and the row says
+  so. A `ci` run takes 50 to 65 minutes.
+- Chain scripts on `tower` are under `fetch_logs/` there and are not in the tree (`after_lists_batch7.sh`,
+  `after_chain_retry19.sh`, both ended; `chain_r22.sh`, running): each is a loop of `fetch_to_tower.sh` calls, one
+  list a call.
+
+**H5. With the PI.** Nothing waits on him at 07:30. Kept for a later word: the 28 MB `MIR2` file on `/stor` (after
+A-29, under DEC-84 (3)); A-28; the GPU venue for W-38; the nine older audit items of "R2. For the PI" below.
+
+## Orchestrator active, from 2026-11-26 07:25 CST (the auditing session, Claude; superseded by the handoff of 2026-11-27 above where they differ)
 
 The Antigravity orchestrator closed with the handoff below. The PI gave the restart to this session: "coordinate this
 restart using your judgement. since its holidays night limits apply during day today" (2026-11-26, about 07:25 CST, in
@@ -152,7 +266,7 @@ holiday; ftp is fine, use it if needed; omd2: fetch away; bbsag20 fetch last, ys
   13:08; card C-79 is done on its branch (`MV2` 98,920 UViGs and 3.909 Gbp; `MVEUKV` 105,902 vOTUs and 1.257 Gbp;
   both mirrored to `tower`), pushed for `ci`, not merged.
 
-**W12. State at 2026-11-27 00:15 CST: two of 19 stages built, staging for `r26.11.5` nearly done, `tower` chained (current).**
+**W12. State at 2026-11-27 00:15 CST: two of 19 stages built, staging for `r26.11.5` nearly done, `tower` chained (superseded by the handoff of 2026-11-27 07:30 at the top; its facts stand).**
 - The wave (*measured*, `wilkcomp02`, `tail -n 3 /tmp/if2453/stages/r26-11-4-wave-6.log`): `PL2` ended 2026-11-26 23:03:17,
   exit 0, backup marker present, 3 h 38 min after its start (rehearsal 38 min, the full one the wave shares; `before`
   31 min; `run` about 2 h 8 min; `after`, `check`, `backup`); `PL3` started at 23:03:17. The wave is a detached unit and
