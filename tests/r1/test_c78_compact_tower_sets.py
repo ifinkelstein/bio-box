@@ -228,7 +228,9 @@ def test_lrp1_stages_every_dna_record_as_a_plasmid_with_dec65_and_is_determinist
     rep = run_lrp1(mod, lrp1_world, "a")
     rep_b = run_lrp1(mod, lrp1_world, "b")
     t = lrp1_world["tmp"]
-    meta, fa = t / "meta_a" / "LRP1", t / "fasta_a" / "LRP1" / "lrp1_urban_water_plasmidome.fna"
+    # a FASTA under 64 MiB stays beside the metadata (AGENTS §7.3: nothing that small goes onto /stor)
+    meta, fa = t / "meta_a" / "LRP1", t / "meta_a" / "LRP1" / "lrp1_urban_water_plasmidome.fna"
+    assert not (t / "fasta_a" / "LRP1").exists()
     genomes = json.loads((meta / "genomes.json").read_text())
     trimmed = seq_of(11, 3000)
     want = [cuid(trimmed), cuid(LRP1_RECS[1][1]), cuid(LRP1_RECS[2][1]), cuid(LRP1_RECS[3][1]),
@@ -268,6 +270,19 @@ def test_lrp1_stages_every_dna_record_as_a_plasmid_with_dec65_and_is_determinist
         k: v for k, v in rep_b["sha256"].items() if k != skip}
     doc = check_inputs("LRP1", meta)
     assert doc["kinds"] == ["plasmid"] and doc["circular_rows"] == 2
+
+
+def test_a_fasta_of_64_mib_and_more_goes_to_the_stor_directory_and_objects_staging_names_it(lrp1_world,
+                                                                                           monkeypatch):
+    mod = _mod()
+    monkeypatch.setattr(mod, "STOR_MIN_BYTES", 1)
+    run_lrp1(mod, lrp1_world, "s")
+    t = lrp1_world["tmp"]
+    fa = t / "fasta_s" / "LRP1" / "lrp1_urban_water_plasmidome.fna"
+    assert fa.is_file() and not (t / "meta_s" / "LRP1" / fa.name).exists()
+    assert [p.name for p in fa.parent.iterdir()] == [fa.name]  # no .partial left
+    assert json.loads((t / "meta_s" / "LRP1" / "objects_staging.json").read_text())[0]["path"] == str(fa)
+    assert not (t / "meta_s" / "LRP1.fasta.tmp").exists() and not (t / "meta_s" / "LRP1.tmp").exists()
 
 
 def test_lrp1_refuses_an_existing_stage_and_leaves_nothing_when_it_refuses(lrp1_world, tmp_path):
@@ -323,9 +338,8 @@ def test_mir2_stages_the_plv_and_virophage_genomes_of_both_archives_as_viruses(m
     assert [g["contig_uids"] for g in genomes] == [[cuid(PLV1)], [cuid(VIRO[:-40])], [cuid(PLV2)], [cuid(PLV3)]]
     assert {g["kind"] for g in genomes} == {"virus"}
     assert [g["circular"] for g in genomes] == [[], [cuid(VIRO[:-40])], [], []]
-    fa_dir = t / "fasta_a" / "MIR2"
-    assert sorted(p.name for p in fa_dir.iterdir()) == ["mir2_bellas_2026_plv_framework.fna",
-                                                         "mir2_bulzu_2025_plv_virophage.fna"]
+    assert (meta / "mir2_bellas_2026_plv_framework.fna").is_file()
+    assert (meta / "mir2_bulzu_2025_plv_virophage.fna").is_file()
     members = {r["member"]: r for r in tsv_rows(meta / "skipped_members.tsv")}
     assert members["./fasta_unsorted_PLV/Austrian_lake_PLV_MCP_unsorted.faa"]["reason"] == "protein"
     assert members["./Virus_cluster_MCP_profiles/VC_MCP_fasta_align/VC_1.fasta"]["reason"] == "alignment"
@@ -423,6 +437,8 @@ def test_sym2_stages_the_bins_as_prokaryotes_and_the_viral_contigs_as_viruses(sy
 # stage: (depth, library, AFTER, the staged FASTA names)
 STAGED = {
     "LRP1": ("annotated", ("pfam", "38.2", "gathering"), ("SYM2",), {"lrp1_urban_water_plasmidome.fna"}),
+    "MIR2": ("annotated", ("pfam", "38.2", "gathering"), ("LRP1",),
+             {"mir2_bulzu_2025_plv_virophage.fna", "mir2_bellas_2026_plv_framework.fna"}),
 }
 
 

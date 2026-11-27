@@ -99,3 +99,71 @@ new Gbp, × 0.2406): about **525 to 692 CPU-minutes**, inside the plan's "at mos
 runs to `tower:/mnt/user/research-bulk/bio-box/sources/LRP1/`: the FASTA (248,738,773 B in 9 s, 27.64 MB/s) and the nine
 metadata files of the table; every sha256 on `tower` equal to the table's, `DONE: 1 verified` and `DONE: 9 verified, 0
 failed`; `SHA256SUMS` there has 10 lines.
+
+## 4. `MIR2`
+
+**Bytes** (*measured*, the relay's log, 19:08 to 19:09 CST): `genomes_polinton_virophages.zip` (8,293,636 B) and
+`README.txt` to `/tmp/if2453/c78/dl/MIR2/`, `PLV_framework_supplementary_data.tar.gz` (265,729,817 B, 9.16 MB/s) to
+`/stor/scratch/Wilke/if2453/bio-box-staging/MIR2/dl/`; each sha256 equal to `tower`'s `SHA256SUMS`.
+`protist_genomes_assembled.tar.gz` (the eleven protist assemblies) and `EVE_annotations_table.zip` (a table) were
+listed on `tower` and not relayed.
+
+**Rule** (`mir2`): every member of the two archives is read in archive order; a FASTA member whose first record is DNA
+is staged, one `kind="virus"` genome per record (header as deposited; DEC-65 (1) as for `LRP1`, no source flag); every
+other member is listed in `skipped_members.tsv` with its kind (alignment 294, protein 9, not FASTA 626, directories
+18). A record whose sequence an earlier one already has is listed in `skipped_records.tsv` (DEC-27); most such are the
+`annotated_PLVs/` copies of UViGs the unsorted file already holds.
+
+| | Value (*measured*, `mir2`, report `/tmp/if2453/c78/work/mir2_report.json`) |
+|---|---:|
+| Bulzu 2025 (`genomes_polinton_virophages.fasta`) | 1,193 genomes, 27,836,543 bp |
+| Bellas 2026 framework | 54,899 genomes, 558,072,697 bp, from 59,078 DNA records (4,179 exact repeats skipped) |
+| of which `IMGVR_PLV_all.fasta` | 51,461 genomes, 530,519,848 bp (IMG/VR UViGs that carry a PLV-type major capsid protein, the authors' unsorted search) |
+| of which `Austrian_lake_metavirome_PLVs.fasta` | 3,321 genomes, 25,178,268 bp |
+| of which `annotated_PLVs/*.fasta` (17 files) | 117 genomes, 2,374,581 bp not in the unsorted files |
+| All | 56,092 genomes, 585,909,240 bp; 1,335 exact terminal repeats trimmed (152,007 bp) and staged circular |
+| Held by the root (exact `contig_uid`) | `G1` 1 (11,479 bp) |
+| Held by the `r26.11.4` stages | `MV1` 3,792 (61,462,988 bp), `V2` 1,522 (35,565,939 bp) |
+| Held only by an `r26.11.5` stage before it | `GV1` 95 (1,156,898 bp); `MIR1` (card C-70) was not on the pod: card A-29's |
+| New | 50,777 contigs, 488,868,834 bp (0.489 Gbp; 487,711,936 bp after `GV1`) |
+| `s2_check_inputs.py` | exit 0, `problems: []`, 56,092 genomes, kind `virus` (`gv-meta`), code 11 |
+
+Against the plan: 0.489 new Gbp against "under 0.5 with `MGE4`" (*estimate*; `MGE4` adds nothing). Most of the bases
+(530.5 of 585.9 Mbp, 90.5 %, *derived*) are IMG/VR UViGs; 5,314 of MIR2's contigs are already held by `MV1` or `V2`
+by exact `contig_uid` (which file each came from is in `shared_records.tsv` and `record_sources.tsv`), and the other
+UViGs are ones `V2` (one high-quality representative per vOTU) did not take; the UViGs' provider's
+terms are JGI's (as entry `jgi_img_vr`), the framework's record states CC BY 4.0; both stay `redistributable: false`.
+
+**A breach of AGENTS §7.3, reported:** the Bulzu FASTA (`mir2_bulzu_2025_plv_virophage.fna`, 28,333,081 B) was written
+to `/stor/scratch/Wilke/if2453/bio-box-staging/MIR2/` with the framework FASTA, although it is under 64 MiB. It is left
+where it is (nothing under `/stor` is deleted) and named there by `objects_staging.json`; the script was then changed
+(§9) so that a FASTA under 64 MiB is written beside the metadata on `/tmp`, as `SYM2` and `DPN1` were.
+
+| File | Where | Bytes | sha256 |
+|---|---|---:|---|
+| `mir2_bellas_2026_plv_framework.fna` | `/stor/scratch/Wilke/if2453/bio-box-staging/MIR2/` | 561,748,052 | `88ea664a7de971be13b927811a371585467634dd1353383b3fd9a1ec23d566db` |
+| `mir2_bulzu_2025_plv_virophage.fna` | same | 28,333,081 | `382c77a48fa82d8cdffd2ff73204b6ce5895425bde570c15df075325d523f0b0` |
+| `genomes.json` | `/tmp/if2453/c78/meta/MIR2/` | 7,788,756 | `10639d1bc059d555f84670b7be37e74240527836d08c588b24a1f697c64bdcff` |
+| `objects.json` | same | 1,251 | `a89224942974e7181a7328166eeb1ff79c73864b72aac28b1e7af1a1cb9b1101` |
+| `objects_staging.json` | same | 1,293 | `4f2ac996696a9d2031f0c3bd5151200c9eb5f32a35e506aa9db90a72e3ab1e01` |
+| `records.tsv` | same | 13,025,188 | `a8809546681f43c7f3f0a35f675f0240bfa7ae6b9d2021c075b03c82129fb951` |
+| `record_sources.tsv` | same | 7,138,391 | `0015e61b0ea437436bfd5154dc17e4562ee872e951a14077b9b35505f5acf3da` |
+| `trims.tsv` | same | 274,079 | `ea8b6bd81d176ed0136d3f30d8cd1ebcee5859fc29bb7679c186e0bd9ad8bb23` |
+| `shared_records.tsv` | same | 535,250 | `32d961115b8843c9e6f92788ca9c47cb3837e1fce6f072e1df9e6f76de7bad7f` |
+| `later_records.tsv` | same | 9,652 | `45aab991ac0bae07620e853c6cbc902a9dc0a4ec9a2b60192f0681e86cfad85d` |
+| `skipped_records.tsv` | same | 781,529 | `5dd336f7f0552525bafe62374b895bab15d1ffb3c5ab1b6ad71b3093e4c487af` |
+| `skipped_members.tsv` | same | 81,510 | `05b5530c70e4536612b1bec356eb56b51c2dc037fed67b548cb42771966cbe20` |
+| `repeated_records.tsv` (header only) | same | 39 | `d109495ee76e4643c181eae183c452c9a84560f97a79bbe22d6630780368c565` |
+
+All *measured*. Template: `DEPTH=annotated`, `GENECALL_MODE=gv-meta`, `LIBRARY=pfam 38.2 gathering`, `CRISPR=yes`,
+`AFTER=LRP1`, `EXPECT=held_by` `G1` 1, `V2` 1,522, `MV1` 3,792. Build cost (*derived*, plan §3 R2 93.5 to 135.3 plus R3
+2,090 to 2,740 CPU-minutes per new Gbp, × 0.4889): about **1,067 to 1,406 CPU-minutes**, the plan's "at most about
+1,400" at its upper end. `stage_est.py conf`: exit 0 (*measured*, unit `c78-est-mir2`).
+
+**Mirror** (*measured*, the relay's log, 19:33 CST): two runs of `relay_to_tower.sh` to
+`tower:/mnt/user/research-bulk/bio-box/sources/MIR2/`: the two FASTA and the eleven metadata files of the table;
+`DONE: 2 verified` and `DONE: 11 verified, 0 failed`; `SHA256SUMS` there has 13 lines.
+
+**Left on `tower`** (`CATALOG_GOAL.md` §4.1): `protist_genomes_assembled.tar.gz` (eleven cryptophyte and chrysophyte
+assemblies of at least 1 kb, including their bacterial and viral contigs, as `README.txt` says) for card C-60;
+`EVE_annotations_table.zip` (a table). Inside the framework archive, the non-DNA members (`skipped_members.tsv`).

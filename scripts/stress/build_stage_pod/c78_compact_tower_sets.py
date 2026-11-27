@@ -204,11 +204,18 @@ def dec65(seq: bytes, *, flagged: bool) -> tuple[bytes, int, str, bool]:
 
 # --- the stage writer ----------------------------------------------------------------------------------------------
 
+STOR_MIN_BYTES = 64 * 1024 * 1024  # AGENTS §7.3: no file under 64 MiB goes onto /stor
+
+
 class StageFiles:
-    """One FASTA per category under FASTA_OUT/<STAGE>/ (written as .partial), metadata in META_OUT/<STAGE>.tmp;
-    `commit` renames everything into place, `abort` leaves nothing behind."""
+    """One FASTA per category, written first under META_OUT/<STAGE>.fasta.tmp/ (BGZF when its name ends `.gz`),
+    metadata in META_OUT/<STAGE>.tmp. `commit` puts a FASTA of STOR_MIN_BYTES and more in FASTA_OUT/<STAGE>/ (copied
+    as .partial, then renamed) and a smaller one beside the metadata in META_OUT/<STAGE>/, then renames the metadata
+    into place; `abort` leaves nothing behind."""
 
     def __init__(self, stage: str, meta_out: Path, fasta_out: Path, fasta_names: dict[str, str], work: Path | None):
+        import c77_sag2_inputs as c77
+
         self.stage = stage
         self.meta_dir, self.fasta_dir = Path(meta_out) / stage, Path(fasta_out) / stage
         self.fasta_names = fasta_names
@@ -218,15 +225,24 @@ class StageFiles:
             if (self.fasta_dir / n).exists():
                 raise Refused(f"{self.fasta_dir / n} exists")
         self.tmp = Path(meta_out) / f"{stage}.tmp"
-        shutil.rmtree(self.tmp, ignore_errors=True)
-        self.tmp.mkdir(parents=True)
-        self.fasta_dir.mkdir(parents=True, exist_ok=True)
+        self.ftmp = Path(meta_out) / f"{stage}.fasta.tmp"
+        for d in (self.tmp, self.ftmp):
+            shutil.rmtree(d, ignore_errors=True)
+            d.mkdir(parents=True)
         self.work = Path(work) if work is not None else self.tmp / "_work"
         self.own_work = work is None
         self.work.mkdir(parents=True, exist_ok=True)
-        self.partial = {k: self.fasta_dir / f".{n}.partial" for k, n in fasta_names.items()}
-        self.fh = {k: open(p, "wb", buffering=1 << 22) for k, p in self.partial.items()}
+        self.partial = {k: self.ftmp / n for k, n in fasta_names.items()}
+        self.fh = {k: (c77.BgzfWriter(p) if p.name.endswith(".gz") else open(p, "wb", buffering=1 << 22))
+                   for k, p in self.partial.items()}
         self.names: set[str] = set()
+        self.closed = False
+
+    def final_path(self, category: str) -> Path:
+        """Where a written FASTA goes (call after `close`)."""
+        p = self.partial[category]
+        big = p.stat().st_size >= STOR_MIN_BYTES
+        return (self.fasta_dir if big else self.meta_dir) / self.fasta_names[category]
 
     def write(self, category: str, header: str, seq: bytes, width: int, prefix: str | None = None) -> str:
         """Write one record; a first token already used in the stage is given PREFIX (default: the category)."""
@@ -241,30 +257,43 @@ class StageFiles:
         return first
 
     def close(self) -> None:
-        for f in self.fh.values():
-            f.close()
+        if not self.closed:
+            for f in self.fh.values():
+                f.close()
+            self.closed = True
 
     def abort(self) -> None:
         self.close()
         shutil.rmtree(self.tmp, ignore_errors=True)
-        for p in self.partial.values():
-            p.unlink(missing_ok=True)
-        if self.fasta_dir.is_dir() and not any(self.fasta_dir.iterdir()):
-            self.fasta_dir.rmdir()
+        shutil.rmtree(self.ftmp, ignore_errors=True)
+        for n in self.fasta_names.values():
+            (self.fasta_dir / f".{n}.partial").unlink(missing_ok=True)
 
     def commit(self, used: list[str]) -> tuple[dict, dict]:
         self.close()
         if self.own_work:
             shutil.rmtree(self.work, ignore_errors=True)
         parts = c80._meta_parts(self.tmp, self.meta_dir)
-        for k, p in self.partial.items():
-            if k in used:
-                parts[self.fasta_dir / self.fasta_names[k]] = p
-            else:
-                p.unlink(missing_ok=True)
+        to_stor: dict[Path, Path] = {}
+        for k in used:
+            final = self.final_path(k)
+            (to_stor if final.parent == self.fasta_dir else parts)[final] = self.partial[k]
+        for final in [*parts, *to_stor]:
+            if final.exists():
+                raise Refused(f"{final} exists")
+        for final, src in to_stor.items():
+            final.parent.mkdir(parents=True, exist_ok=True)
+            part = final.with_name(f".{final.name}.partial")
+            shutil.copyfile(src, part)
+            if ids.sha256_file(part) != ids.sha256_file(src):
+                part.unlink()
+                raise Refused(f"{final}: the copy to /stor differs from the written file")
+        for final in to_stor:
+            os.replace(final.with_name(f".{final.name}.partial"), final)
         c80._commit(parts)
         shutil.rmtree(self.tmp, ignore_errors=True)
-        return c80._hashes([*parts])
+        shutil.rmtree(self.ftmp, ignore_errors=True)
+        return c80._hashes([*parts, *to_stor])
 
 
 SKIP_HEAD = ["category", "member", "name", "length", "reason"]
@@ -284,6 +313,12 @@ def _finish(sf: StageFiles, genomes: list[dict], trims: list[tuple], skipped: li
     used = [k for k in sf.fasta_names if any(g["category"] == k for g in genomes)]
     rep = c80._write_stage_meta(sf.stage, genomes, trims, owners, later, sf.tmp, Path(inputs_home), sf.fasta_dir,
                                 retrieved_at, source, {k: sf.fasta_names[k] for k in used}, source_label)
+    # objects_staging.json names each FASTA where commit puts it (/stor for 64 MiB and more, else beside the metadata)
+    where = {sf.fasta_names[k]: str(sf.final_path(k)) for k in used}
+    objs = json.loads((sf.tmp / "objects_staging.json").read_text())
+    for o in objs:
+        o["path"] = where[Path(o["path"]).name]
+    (sf.tmp / "objects_staging.json").write_text(json.dumps(objs, indent=1))
     rep["skipped_records"] = dict(sorted(Counter(s[4].split(" ", 1)[0] for s in skipped).items()))
     rep.update(extra or {})
     rep["sha256"], rep["bytes"] = sf.commit(used)
