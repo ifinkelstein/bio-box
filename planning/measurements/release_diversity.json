@@ -548,13 +548,14 @@
       "stage": "PL3",
       "class": "plasmid",
       "release": "r26.11.4",
-      "state": "staged",
-      "what": "PlasmidScope IMG-PR and mMGE plasmids (building)",
+      "state": "built",
+      "what": "PlasmidScope IMG-PR and mMGE plasmids",
       "bases": {
         "value": 16282680966,
         "label": "measured",
-        "source": "card A-26, exact prefix ownership over the chain",
-        "path": "planning/measurements/2026-11-24_a26_r26_11_4_confs.md",
+        "host": "wilkcomp02",
+        "source": "contig_index default variants of the built stage (audit, unit a32-root); equals card A-26's new bases",
+        "path": "planning/measurements/2026-11-27_release_diversity.md",
         "quote": "16,282,680,966"
       }
     },
@@ -562,13 +563,14 @@
       "stage": "CG1",
       "class": "virus",
       "release": "r26.11.4",
-      "state": "staged",
+      "state": "built",
       "what": "Chinese Gut Viral Reference",
       "bases": {
         "value": 10727099394,
         "label": "measured",
-        "source": "card A-26",
-        "path": "planning/measurements/2026-11-24_a26_r26_11_4_confs.md",
+        "host": "wilkcomp02",
+        "source": "contig_index default variants of the built stage (audit, unit a32-root); equals card A-26's new bases",
+        "path": "planning/measurements/2026-11-27_release_diversity.md",
         "quote": "10,727,099,394"
       }
     },
@@ -576,13 +578,14 @@
       "stage": "MGE1",
       "class": "plasmid",
       "release": "r26.11.4",
-      "state": "staged",
+      "state": "built",
       "what": "curated integrative MGEs, transposons, IS elements, integrons",
       "bases": {
         "value": 148953649,
         "label": "measured",
-        "source": "card A-26",
-        "path": "planning/measurements/2026-11-24_a26_r26_11_4_confs.md",
+        "host": "wilkcomp02",
+        "source": "contig_index default variants of the built stage (audit, unit a32-root); equals card A-26's new bases",
+        "path": "planning/measurements/2026-11-27_release_diversity.md",
         "quote": "148,953,649"
       }
     },
@@ -1138,72 +1141,28 @@
       "stage": "RMD1",
       "class": "uncultured",
       "release": "r26.11.5",
-      "state": "planned",
-      "what": "Tara Pacific Reef Microbiomics Database genomes (card C-83 staging today)",
+      "state": "staged",
+      "what": "Tara Pacific Reef Microbiomics Database genomes",
       "bases": {
-        "value": 35000000000,
-        "low": 30000000000,
-        "high": 40000000000,
-        "label": "estimate",
-        "source": "card C-83: 30 to 40 Gbp, the orchestrating session's estimate from the archive's size (11,571,956,924 bytes)",
-        "path": "planning/tasks/TASKS.md"
+        "value": 38301644358,
+        "label": "measured",
+        "source": "card C-83, new against the root, r26.11.4 and the 22 r26.11.5 stages before it",
+        "path": "planning/measurements/2026-11-27_coral_inputs.md",
+        "quote": "38,301,644,358"
       }
     },
     {
       "stage": "GBRMGD",
       "class": "uncultured",
       "release": "r26.11.5",
-      "state": "planned",
-      "what": "Great Barrier Reef prokaryote MAGs (card C-83 staging today)",
+      "state": "staged",
+      "what": "Great Barrier Reef prokaryote MAGs",
       "bases": {
-        "value": 9365445745,
-        "low": 7693415412,
-        "high": 11037476077,
-        "label": "estimate",
-        "round": 0,
-        "source": "the archive's bytes times bases per byte: from RMD1's estimate (30 Gbp in its archive's bytes) to GART1's measured gzip ratio; the bzip2 archive's real ratio is not known",
-        "formula": "b * (g / gb + r / rb) / 2",
-        "low_formula": "b * r / rb",
-        "high_formula": "b * g / gb",
-        "inputs": {
-          "b": {
-            "value": 2967595725,
-            "label": "measured",
-            "source": "tower, prokaryote_bins_5283.tar.bz2 (card R-11)",
-            "path": "sources.yaml",
-            "quote": "bytes: 2967595725"
-          },
-          "g": {
-            "value": 39413000000,
-            "label": "derived",
-            "source": "GART1's bases (staging plan section 7)",
-            "path": "planning/measurements/2026-11-26_r26_11_5_staging_plan.md",
-            "quote": "39.413 Gbp in 10,596,793,098 B",
-            "quote_scale": 1000000000
-          },
-          "gb": {
-            "value": 10596793098,
-            "label": "measured",
-            "source": "GART1's gzip FASTA bytes",
-            "path": "planning/measurements/2026-11-24_a26_r26_11_4_confs.md",
-            "quote": "10,596,793,098"
-          },
-          "r": {
-            "value": 30000000000,
-            "label": "estimate",
-            "source": "card C-83's low estimate for RMD1",
-            "path": "planning/tasks/TASKS.md",
-            "quote": "30 to 40 Gbp for `RMD1`",
-            "quote_scale": 1000000000
-          },
-          "rb": {
-            "value": 11571956924,
-            "label": "measured",
-            "source": "RMD1's archive bytes (card C-83)",
-            "path": "planning/tasks/TASKS.md",
-            "quote": "11,571,956,924 bytes"
-          }
-        }
+        "value": 10238417378,
+        "label": "measured",
+        "source": "card C-83, new against the root, r26.11.4 and the 23 r26.11.5 stages before it (RMD1 included)",
+        "path": "planning/measurements/2026-11-27_coral_inputs.md",
+        "quote": "10,238,417,378"
       }
     },
     {
@@ -1313,8 +1272,8 @@
     }
   ],
   "ownership_release": "r26.11.5",
-  "r26_11_5_ownership": null,
-  "r26_11_5_upper_bound": true,
+  "r26_11_5_ownership": "planning/measurements/2026-11-27_release_diversity/r26_11_5_ownership.json",
+  "r26_11_5_upper_bound": false,
   "r26_11_5_bound_text": {
     "upper": "the r26.11.5 total is an upper bound until card A-29's exact ownership over its chain replaces the staging notes' new bases",
     "exact": "r26.11.5's new bases are card A-29's exact ownership over its chain"
@@ -1375,25 +1334,35 @@
       },
       {
         "id": "uniref100",
-        "value": 227.09,
+        "value": 227.086028,
         "label": "measured",
-        "citation": "UniProt release 2026_04, UniRef100",
-        "date": "2026_04",
-        "re_verified": false,
+        "host": "tower",
+        "path": "planning/measurements/2026-11-27_release_diversity.md",
+        "quote": "227,086,028",
+        "quote_scale": 1e-06,
+        "date": "2026_04 (2026-11-04)",
+        "re_verified": true,
+        "sha256": "f3ddf0e7fdc51c5d526cfb7fc412164344883792bb61300628eb95fce4dca12b",
+        "relnotes_sha256": "764d77997cab2d053555fe859aabeb946bef4a93359c30681f560b84ed436e86",
         "color": "#3A7CA5",
-        "source": "the figure's earlier data file; not re-verified",
-        "figure_label": "UniRef100, 227.1M (UniProt 2026_04)"
+        "source": "UniProt Release 2026_04 (04-Nov-2026), uniref100.release_note and relnotes.txt fetched on tower (sources.yaml uniprot_relnotes, DEC-87)",
+        "figure_label": "UniRef100, 227.1M (2026_04, verified)"
       },
       {
         "id": "uniref50",
-        "value": 41.24,
+        "value": 41.243524,
         "label": "measured",
-        "citation": "UniProt release 2026_04, UniRef50 (41,243,524 clusters, 50% identity, 80% coverage)",
-        "date": "2026_04",
-        "re_verified": false,
+        "host": "tower",
+        "path": "planning/measurements/2026-11-27_release_diversity.md",
+        "quote": "41,243,524",
+        "quote_scale": 1e-06,
+        "date": "2026_04 (2026-11-04)",
+        "re_verified": true,
+        "sha256": "9ff782280c206c85067aeeb3f005eca659f887b153c1f282b41e725d9199c97c",
+        "relnotes_sha256": "764d77997cab2d053555fe859aabeb946bef4a93359c30681f560b84ed436e86",
         "color": "#B85000",
-        "source": "the figure's earlier data file; not re-verified",
-        "figure_label": "UniRef50, 41.2M (UniProt 2026_04)"
+        "source": "UniProt Release 2026_04 (04-Nov-2026), uniref50.release_note and relnotes.txt fetched on tower (sources.yaml uniprot_relnotes, DEC-87)",
+        "figure_label": "UniRef50, 41.2M (2026_04, verified)"
       }
     ],
     "counterfactual": {
@@ -1488,7 +1457,7 @@
     },
     {
       "stage": "SPX1",
-      "figure_label": "SPX1, SPIRE contigs of 5 kb and more\n(r26.11.3)",
+      "figure_label": "SPX1, SPIRE contigs\nof 5 kb+ (r26.11.3)",
       "per_gbp": {
         "value": 267394,
         "label": "derived",
@@ -1627,11 +1596,11 @@
       }
     }
   ],
-  "footnote": "Measured: stored bases of every built stage (contig_index default variants, read-only on wilkcomp02, 2026-11-27); proteins and NR50 families of the released releases (cluster tables, c35_check.py).\nStaged: new bases from each stage's staging note, r26.11.4's from card A-26's exact ownership; {bound}.\nPlanned: estimates from the cards and the catalog plan, drawn at the middle of their range, with the range as a whisker.\nProtein projection of r26.11.4: r26.11.3's proteins plus 0.90 to 1.10 M new proteins per new Gbp (the hybrid clustering design); no NR50 family projection is drawn.\nBenchmarks are the values and dates their sources state, not re-verified. D = exp(H) of the class shares of stored Gbp. Release dates: the day each release's manifest was written.",
+  "footnote": "Measured: stored bases of every built stage (contig_index default variants, read-only on wilkcomp02, 2026-11-27); proteins and NR50 families of the released releases (cluster tables, c35_check.py).\nStaged: new bases from each stage's staging note, r26.11.4's from card A-26's exact ownership; {bound}.\nPlanned: estimates from the cards and the catalog plan, drawn at the middle of their range, with the range as a whisker.\nProtein projection of r26.11.4: r26.11.3's proteins plus 0.90 to 1.10 M new proteins per new Gbp (the hybrid clustering design); no NR50 family projection is drawn.\nUniRef50 and UniRef100 verified from UniProt 2026_04 release notes (DEC-87); OpenGenome 1 and ClusteredNR are the values their sources state, not re-verified. D = exp(H) of the class shares of stored Gbp. Release dates: the day each release's manifest was written.",
   "audit": {
     "host": "wilkcomp02",
     "date": "2026-11-27",
-    "command": "plot_release_diversity.py root --root /tmp/if2453/r10/root --built V2,PL2 --threads 2 --memory 4GB (unit a31-root, test image bio-box-test_faec1f4.sif, root bound read-only; 16 s)",
+    "command": "plot_release_diversity.py root --root /tmp/if2453/r10/root --built V2,PL2,PL3,CG1,MGE1 --threads 2 --memory 4GB (unit a32-root, test image bio-box-test_faec1f4.sif, root bound read-only; 19.9 s)",
     "releases": {
       "rN.3": {
         "stages": [
@@ -1802,6 +1771,21 @@
         "default_bases": 1974983002,
         "default_contigs": 112562,
         "rows": 112562
+      },
+      "PL3": {
+        "default_bases": 16282680966,
+        "default_contigs": 745873,
+        "rows": 746483
+      },
+      "CG1": {
+        "default_bases": 10727099394,
+        "default_contigs": 120428,
+        "rows": 120428
+      },
+      "MGE1": {
+        "default_bases": 148953649,
+        "default_contigs": 13847,
+        "rows": 13994
       }
     }
   }

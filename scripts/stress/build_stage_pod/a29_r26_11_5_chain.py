@@ -64,6 +64,7 @@ R26_11_5_CHAIN: tuple[str, ...] = (
     "MV2", "MVEUKV",
     "KAVHIFI", "INPH2604",
     "GWV1", "SAG3", "WET1",
+    "RMD1", "GBRMGD",
 )
 OUT_OF_R26_11_5: tuple[str, ...] = ("ASG1", "MGE4")
 # Where each stage's staged metadata is on the pod (its genomes.json, objects.json, objects_staging.json); the notes
@@ -91,17 +92,12 @@ STAGING_DIRS: dict[str, str] = {
     "GWV1": "/tmp/if2453/c81/meta/GWV1",
     "SAG3": "/tmp/if2453/c81/meta/SAG3",
     "WET1": "/tmp/if2453/c81/meta/WET1",
+    "RMD1": "/tmp/if2453/c83/meta/RMD1",
+    "GBRMGD": "/tmp/if2453/c83/meta/GBRMGD",
 }
 # Comment corrections made in the promoted confs (old text found exactly once in the template, new text).
+# LR2, NX1 and DPN1 templates carry the DEC-84 (3) deletion wording directly since card A-32.
 COMMENT_FIXES: dict[str, tuple[tuple[str, str], ...]] = {
-    "LR2": (("lr2_compendia.fna.gz holds compressed bytes as sequence (superseded; kept on /stor, not an input).",
-             "lr2_compendia.fna.gz holds compressed bytes as sequence (superseded, not an input; deleted on /stor on\n"
-             "# the PI's word, DEC-84 (3))."),),
-    "NX1": (("nx1_compendia.fna.gz is superseded (kept on\n# /stor, not an input).",
-             "nx1_compendia.fna.gz is superseded (not an input;\n# deleted on /stor on the PI's word, DEC-84 (3))."),),
-    "DPN1": (("the first pass's dpn1_dpann_genomes.fna.gz on /stor\n# is superseded (left in place, not used).",
-              "the first pass's dpn1_dpann_genomes.fna.gz on /stor\n# is superseded and was deleted on the PI's word "
-              "(DEC-84 (3))."),),
     "SAG2": (("# Build order (plan §5): after ASG1.",
               "# Build order (plan §5, card A-29): after MIR1; ASG1 is out of r26.11.5 (no genome sequence in what was\n"
               "# fetched; card C-82)."),),
@@ -112,6 +108,11 @@ COMMENT_FIXES: dict[str, tuple[tuple[str, str], ...]] = {
     "GV1": (("# Build order (DEC-71, DEC-72, cards A-24 and A-26): after the r26.11.4 chain, as stages/GV1.conf.",
              "# Build order (DEC-71, DEC-72, plan 2026-11-26_r26_11_5_staging_plan.md §5, card A-29): in the r26.11.5\n"
              "# chain, after NX1."),),
+}
+STAGE_MEASURED: dict[str, str] = {
+    **{s: "measured, wilkcomp02, 2026-11-27, unit a29-own" for s in R26_11_5_CHAIN[:22]},
+    "RMD1": "measured, wilkcomp02, 2026-11-27, unit a32-own",
+    "GBRMGD": "measured, wilkcomp02, 2026-11-27, unit a32-own",
 }
 FLUSH = 200_000
 
@@ -377,8 +378,9 @@ def write_confs(tree: Path, ownership: dict | None, *, measured: str = "",
         tpl = stages / "templates" / f"{st}.conf"
         conf = stage_est.read_conf(tpl, st)
         exp = None if ownership is None else added_expect(ownership, st, conf.expect)
+        m_label = measured if measured else STAGE_MEASURED.get(st, "")
         text = promote(tpl.read_text(encoding="utf-8"), st, after=chain_after(st, chain), expect_lines=exp,
-                       measured=measured, fixes=COMMENT_FIXES.get(st, ()))
+                       measured=m_label, fixes=COMMENT_FIXES.get(st, ()))
         dst = stages / f"{st}.conf"
         tmp = dst.with_name(f".{dst.name}.tmp")
         tmp.write_text(text, encoding="utf-8")

@@ -635,6 +635,8 @@ A29_PLAN_S4 = {
     "KAVHIFI": ("called", None, "default", None, True), "INPH2604": ("annotated", _PF, "default", None, True),
     "GWV1": ("called", None, "default", None, True), "SAG3": ("called", None, "default", None, True),
     "WET1": ("called", None, "default", None, True),
+    "RMD1": ("called", None, "default", None, True),  # DEC-85 (1), card C-83: 38.302 Gbp new, after WET1
+    "GBRMGD": ("called", None, "default", None, True),  # DEC-85 (1), card C-83: 10.238 Gbp new, after RMD1
 }
 
 
@@ -649,40 +651,43 @@ def a29_path(request, monkeypatch):
     return request.param
 
 
-@pytest.mark.covers("A-29")
+@pytest.mark.covers("A-29", "A-32")
 def test_a29_r26_11_5_is_one_strict_linear_chain_after_gart2():
     est, mod = _module("stage_est"), _a29()
     chain = mod.R26_11_5_CHAIN
-    assert chain[0] == "GRARE1" and len(set(chain)) == len(chain)
+    assert len(chain) == 24 and chain[0] == "GRARE1" and len(set(chain)) == len(chain)
+    assert chain[-3:] == ("WET1", "RMD1", "GBRMGD")
     assert not set(chain) & {"ASG1", "MGE4"}, "DEC-79 (1) members reported out of r26.11.5"
     assert not set(chain) & set(mod.R26_11_4_CHAIN)
     pos = {s: i for i, s in enumerate(chain)}
     assert pos["GV1"] == pos["NX1"] + 1
     for holder, cut in (("GV1", "MIR1"), ("GV1", "MVEUKV"), ("MV2", "GWV1"), ("SAG1", "SAG3"), ("SAG2", "SAG3"),
-                        ("MV2", "MVEUKV")):
-        assert pos[holder] < pos[cut], f"plan §5: {holder} before {cut}"
+                        ("MV2", "MVEUKV"), ("WET1", "RMD1"), ("RMD1", "GBRMGD")):
+        assert pos[holder] < pos[cut], f"plan §5 / DEC-85: {holder} before {cut}"
     confs = {s: est.read_conf(STAGES / f"{s}.conf", s, tree=REPO) for s in chain}
     assert confs["GRARE1"].after == ("GART2",)
     for prev, cur in zip(chain, chain[1:]):
         assert confs[cur].after == (prev,), f"{cur}.conf must strictly follow {prev}"
     assert confs["GV1"].after == ("NX1",) and confs["SAG2"].after == ("MIR1",) and confs["MV2"].after == ("MIR2",)
-    assert len(_repo_confs()) == 27 + len(set(chain) - {"GV1"})  # GV1 was of the 27
+    assert confs["RMD1"].after == ("WET1",) and confs["GBRMGD"].after == ("RMD1",)
+    assert len(_repo_confs()) == 50 and len(_repo_confs()) == 27 + len(set(chain) - {"GV1"})  # GV1 was of the 27
 
 
-@pytest.mark.covers("A-29")
+@pytest.mark.covers("A-29", "A-32")
 def test_a29_each_promoted_conf_has_the_plans_depth_library_mode_length_and_crispr():
     est, mod = _module("stage_est"), _a29()
-    assert set(mod.R26_11_5_CHAIN) <= set(A29_PLAN_S4), "a stage of the chain without its plan §4 values"
+    assert set(mod.R26_11_5_CHAIN) == set(A29_PLAN_S4), "the chain and A29_PLAN_S4 must hold the same 24 stages"
     for s in mod.R26_11_5_CHAIN:
         c = est.read_conf(STAGES / f"{s}.conf", s, tree=REPO)
         assert (c.depth, c.library, c.genecall_mode, c.min_contig_len, c.crispr) == A29_PLAN_S4[s], s
 
 
-@pytest.mark.covers("A-29")
+@pytest.mark.covers("A-29", "A-32")
 def test_a29_each_promoted_conf_keeps_its_templates_files_values_and_expect_lines():
     est, mod = _module("stage_est"), _a29()
     for s in mod.R26_11_5_CHAIN:
-        t = est.read_conf(STAGES / "templates" / f"{s}.conf", s, tree=REPO)
+        tpl_path = STAGES / "templates" / f"{s}.conf"
+        t = est.read_conf(tpl_path, s, tree=REPO)
         c = est.read_conf(STAGES / f"{s}.conf", s, tree=REPO)
         assert c.sums == t.sums and c.inputs == t.inputs == Path(f"/tmp/if2453/s2/inputs/{s}"), s
         assert c.judge == t.judge and c.accepted == t.accepted, s
@@ -694,9 +699,18 @@ def test_a29_each_promoted_conf_keeps_its_templates_files_values_and_expect_line
             if o not in t.expect:
                 assert o in before and n > 0 and src == A29_NOTE, f"{s}: added EXPECT {o} {n} {src}"
         text = (STAGES / f"{s}.conf").read_text()
+        tpl_text = tpl_path.read_text()
         assert text.startswith(f"# Promoted by card A-29 from stages/templates/{s}.conf")
         for stale in ("kept on /stor", "(kept on\n# /stor", "left in place, not used"):
-            assert stale not in text, f"{s}: DEC-84 (3) deleted the first files on /stor"
+            assert stale not in text, f"{s}.conf: DEC-84 (3) deleted the first files on /stor"
+            assert stale not in tpl_text, f"templates/{s}.conf: DEC-84 (3) deleted the first files on /stor"
+    src_yaml = REPO.joinpath("sources.yaml")
+    if src_yaml.is_file():
+        stext = src_yaml.read_text(encoding="utf-8")
+        for needle in ("/LR2/lr2_compendia.fna.gz", "/NX1/nx1_compendia.fna.gz", "dpn1_dpann_genomes.fna.gz"):
+            pos = stext.index(needle)
+            window = stext[max(0, pos - 250):pos + 350]
+            assert "DEC-84 (3)" in window, f"sources.yaml around {needle} does not record DEC-84 (3) deletion"
 
 
 def _a29_world(tmp_path, *, bb_expect="S1 1\nAA1 1", fasta_extra=b"", listed_extra=None):

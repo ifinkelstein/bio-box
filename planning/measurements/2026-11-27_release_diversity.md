@@ -211,3 +211,64 @@ Four panels and the Wilke / Okabe-Ito style are kept. Changes, and why:
 Rendered on the pod in the image at one thread (section 0); the `.svg` has no date (`metadata={"Date": None}`) and a
 fixed hash salt, so it is the same on every run (the test renders twice and compares). The test does not compare the
 committed image.
+
+## 10. 2026-11-27 update (card A-32, DEC-85, DEC-87): exact 24-stage `r26.11.5`, verified UniRef benchmarks, and built wave-6 stages
+
+- **Date and hosts:** 2026-11-27, `wilkcomp02` (root audit, 24-stage ownership, checks, 1-thread figure render) and
+  `tower` (UniProt plain-text release notes). Branch `task/A-32`.
+
+### 10.1 Wave-6 stages newly built in the root (`a32-root`)
+
+*Measured*, `wilkcomp02`, 2026-11-27 16:39 CST, unit `a32-root` (`systemd-run --user --unit=a32-root --wait --collect
+-p MemoryMax=8G -p MemorySwapMax=0 -p CPUQuota=200% -p IOSchedulingClass=idle`, `nice -n 19`, test image
+`bio-box-test_faec1f4.sif`, root bound read-only, `19.9 s` wall, `38.2 s` CPU):
+`plot_release_diversity.py root --root /tmp/if2453/r10/root --built V2,PL2,PL3,CG1,MGE1 --threads 2 --memory 4GB`.
+Since §1 (`a31-root`), wave 6 completed `PL3`, `CG1` and `MGE1` (`after`, `check`, and `backup` complete; `SAT1` was
+actively building in `sat1-1.service` and stays `staged` in the figure):
+
+| Stage | Default-variant contigs | Rows | Default-variant bases | Against card A-26's exact ownership |
+|---|---:|---:|---:|---|
+| `PL3` | 745,873 | 746,483 | 16,282,680,966 | equal (`16,282,680,966` bp; `610` non-default variant rows) |
+| `CG1` | 120,428 | 120,428 | 10,727,099,394 | equal (`10,727,099,394` bp) |
+| `MGE1` | 13,847 | 13,994 | 148,953,649 | equal (`148,953,649` bp; `147` non-default variant rows) |
+
+In `r26.11.4` (`287.034 Gbp` cumulative), the built portion rises from `10.174 Gbp` (`V2, PL2`) to **`37.333 Gbp`**
+(`37,332,806,084` bp, *derived* sum of `V2, PL2, PL3, CG1, MGE1`) and the staged portion moves from `156.964 Gbp` to
+**`129.805 Gbp`** (`129,804,807,455` bp, *derived* difference from `167,137,613,539` bp); class totals and `D = 4.89`
+are unchanged.
+
+### 10.2 UniProt Release `2026_04` verification of `UniRef50` and `UniRef100` (`DEC-87`)
+
+Following `DEC-87` (`"i approve adding uniprot url to sources.yaml"`), entry `uniprot_relnotes` was appended to
+`sources.yaml` first (`AGENTS.md` §8) and the three plain-text release notes were fetched gently one at a time on
+`tower` (`curl -fsSL -A curl --proto =https --proto-redir =https`, UTC `2026-11-27T22:38:21Z` to `2026-11-27T22:42:10Z`)
+into `/mnt/user/research-bulk/bio-box/sources_incoming/UNIPROT_RELNOTES/` alongside `SHA256SUMS` and `SOURCE_URLS.tsv`:
+
+| File | Bytes (*measured*, `tower`, `wc -c`) | sha256 (*measured*, `tower`, `sha256sum`) | Published contents (UniProt Release `2026_04`, `04-Nov-2026`, `CC BY 4.0`) |
+|---|---:|---|---|
+| `relnotes.txt` | 1,125 | `764d77997cab2d053555fe859aabeb946bef4a93359c30681f560b84ed436e86` | `UniProtKB` `154,222,205` entries (`Swiss-Prot` `576,073`, `TrEMBL` `153,646,132`); `UniRef100` `227,086,028` entries; `UniRef90` `125,724,408` entries; `UniRef50` `41,243,524` entries |
+| `uniref50.release_note` | 311 | `9ff782280c206c85067aeeb3f005eca659f887b153c1f282b41e725d9199c97c` | `Release: 2026_04, 04-Nov-2026`; `Number of clusters: 41,243,524` (`41.243524 M`, *derived* `÷ 10^6`) |
+| `uniref100.release_note` | 312 | `f3ddf0e7fdc51c5d526cfb7fc412164344883792bb61300628eb95fce4dca12b` | `Release: 2026_04, 04-Nov-2026`; `Number of clusters: 227,086,028` (`227.086028 M`, *derived* `÷ 10^6`) |
+
+This resolves both flags of §6: `227,086,028` (`227.1 M`) for `UniRef100` and `41,243,524` (`41.2 M`) for `UniRef50`
+are the exact UniProt `2026_04` (`04-Nov-2026`) counts (smaller than 2023-2024 releases because UniProt pruned redundant
+proteomes, leaving `154,222,205` `UniProtKB` entries). Both benchmarks in `release_diversity.json` now carry
+`re_verified: true`, exact million-scaled values (`227.086028` and `41.243524`), and their `sha256` digests.
+
+### 10.3 Exact 24-stage `r26.11.5` ownership (`a32-own`) and redrawn totals
+
+With card C-83's staged `RMD1` (`38,301,644,358` new bp, *measured*) and `GBRMGD` (`10,238,417,378` new bp, *measured*)
+appended to `R26_11_5_CHAIN` and exact 24-stage prefix ownership committed at
+[`planning/measurements/2026-11-27_release_diversity/r26_11_5_ownership.json`](2026-11-27_release_diversity/r26_11_5_ownership.json)
+(`a32-own`, `0` problems, `0` discrepancies, `151,204,587,185` new bp across all 24 stages; see
+`2026-11-27_a29_r26_11_5_confs.md` §8), `r26_11_5_ownership` in `release_diversity.json` points to the committed
+ownership JSON, `r26_11_5_upper_bound` is `false`, and all 24 stages of `r26.11.5` are drawn as `staged` (*measured*
+exact new bases, `0` planned Gbp in `r26.11.5`). Updated cumulative columns (*derived* by `plot_release_diversity.py
+check`):
+
+| Column | Released | Built | Staged | Planned | Total | Range of the total | Isolate | Uncultured | Virus | Plasmid | Metagenome | Organelle | D |
+|---|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|
+| `r26.11.4` | 119.896 | 37.333 | 129.805 | 0 | 287.034 | | 59.578 | 60.891 | 83.200 | 24.417 | 56.295 | 2.653 | 4.89 |
+| `r26.11.5` | 119.896 | 37.333 | 281.009 | 0 | 438.238 | | 59.578 | 200.167 | 94.871 | 24.675 | 56.295 | 2.653 | 4.12 |
+| `r26.11.6` | 119.896 | 37.333 | 281.009 | 148.012 | 586.250 | 575.750 to 596.750 | 85.390 | 273.367 | 94.871 | 24.675 | 104.295 | 3.653 | 4.07 |
+

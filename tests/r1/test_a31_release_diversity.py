@@ -124,6 +124,7 @@ def _dec85_members() -> list[str]:
     return " ".join(re.findall(r"`([^`]+)`", part)).split()
 
 
+@pytest.mark.covers("A-31", "A-32")
 def test_the_planned_releases_hold_their_members_and_states():
     data = _data()
     by_rel: dict[str, list[dict]] = {}
@@ -132,17 +133,67 @@ def test_the_planned_releases_hold_their_members_and_states():
     r4 = by_rel["r26.11.4"]
     assert [s["stage"] for s in r4] == _a26_chain()
     assert len(r4) == 19
-    assert {s["stage"] for s in r4 if s["state"] == "built"} == {"V2", "PL2"}
-    assert all(s["state"] == "staged" for s in r4 if s["stage"] not in ("V2", "PL2"))
+    built_r4 = [s["stage"] for s in r4 if s["state"] == "built"]
+    assert {"V2", "PL2", "PL3", "CG1", "MGE1"} <= set(built_r4)
+    assert [s["stage"] for s in r4[:len(built_r4)]] == built_r4  # wave-6 builds in strict chain prefix order
+    assert all(s["state"] == "staged" for s in r4[len(built_r4):])
     r5 = by_rel["r26.11.5"]
-    assert sorted(s["stage"] for s in r5) == sorted(_dec85_members())
+    assert [s["stage"] for s in r5] == _dec85_members()
     assert len(r5) == 24
-    assert {s["stage"] for s in r5 if s["state"] == "planned"} == {"RMD1", "GBRMGD"}
-    assert all(s["bases"]["label"] == "estimate" for s in r5 if s["state"] == "planned")
+    assert all(s["state"] == "staged" for s in r5)  # RMD1 and GBRMGD staged by C-83 and promoted by A-32
+    assert all(s["bases"]["label"] in ("measured", "derived") for s in r5)
     assert all(s["state"] == "planned" and s["bases"]["label"] == "estimate" for s in by_rel["r26.11.6"])
-    assert data["r26_11_5_upper_bound"] is True and data["r26_11_5_ownership"] is None
+    assert data["r26_11_5_ownership"] == "planning/measurements/2026-11-27_release_diversity/r26_11_5_ownership.json"
+    assert data["r26_11_5_upper_bound"] is False
     # the old r26.11.4 projection of NR50 families has no stated formula and is not drawn
     assert all("nr50" not in r for r in data["releases"] if r["status"] != "released")
+
+
+@pytest.mark.covers("A-31", "A-32")
+def test_a32_uniref_benchmarks_and_24_stage_ownership_are_verified():
+    m = _mod()
+    data = _data()
+    own_rel = data["r26_11_5_ownership"]
+    assert own_rel == "planning/measurements/2026-11-27_release_diversity/r26_11_5_ownership.json"
+    own_path = REPO / own_rel
+    assert own_path.is_file(), f"missing committed ownership JSON: {own_path}"
+    own = json.loads(own_path.read_text(encoding="utf-8"))
+    assert own["problems"] == [] and own["discrepancies"] == []
+    assert own["chain"] == _dec85_members() and len(own["chain"]) == 24
+
+    class Args:
+        data = DATA
+        ownership = None
+
+    overlay = m._data_with_overlay(Args)
+    assert m.data_problems(overlay) == []
+    assert overlay["r26_11_5_upper_bound"] is False
+    by_stage = {s["stage"]: s for s in overlay["stages"]}
+    for st in ("RMD1", "GBRMGD"):
+        assert by_stage[st]["state"] == "staged"
+        assert by_stage[st]["bases"]["label"] == "measured"
+        assert by_stage[st]["bases"]["value"] == own["stages"][st]["new_bases"]
+
+    prefs = {r["id"]: r for r in data["benchmarks"]["protein_refs"]}
+    for bid in ("uniref50", "uniref100"):
+        ref = prefs[bid]
+        assert ref.get("re_verified") is True, f"{bid} must be re-verified from UniProt release notes (DEC-87)"
+        assert "citation" not in ref
+        assert re.fullmatch(r"[0-9a-f]{64}", str(ref.get("sha256", ""))), bid
+        assert re.fullmatch(r"[0-9a-f]{64}", str(ref.get("relnotes_sha256", ""))), bid
+
+    if REPO.joinpath("sources.yaml").is_file():
+        import yaml
+
+        sdoc = yaml.safe_load(real_sources().read_text(encoding="utf-8"))
+        entries = {e["name"]: e for e in sdoc["sources"] if isinstance(e, dict) and "name" in e}
+        assert "uniprot_relnotes" in entries
+        files = {f["file"]: f for f in entries["uniprot_relnotes"].get("files", [])}
+        assert set(files) == {"relnotes.txt", "uniref50.release_note", "uniref100.release_note"}
+        assert prefs["uniref50"]["sha256"] == files["uniref50.release_note"]["sha256"]
+        assert prefs["uniref100"]["sha256"] == files["uniref100.release_note"]["sha256"]
+        assert prefs["uniref50"]["relnotes_sha256"] == files["relnotes.txt"]["sha256"]
+        assert prefs["uniref100"]["relnotes_sha256"] == files["relnotes.txt"]["sha256"]
 
 
 def test_card_a29s_ownership_replaces_the_r26_11_5_new_bases(tmp_path):
