@@ -213,16 +213,21 @@ class StageFiles:
     as .partial, then renamed) and a smaller one beside the metadata in META_OUT/<STAGE>/, then renames the metadata
     into place; `abort` leaves nothing behind."""
 
-    def __init__(self, stage: str, meta_out: Path, fasta_out: Path, fasta_names: dict[str, str], work: Path | None):
+    def __init__(self, stage: str, meta_out: Path, fasta_out: Path, fasta_names: dict[str, str], work: Path | None,
+                 reuse_fasta: bool = False):
+        """REUSE_FASTA: a FASTA already at its place on /stor is kept, never overwritten, when the newly written one has
+        the same bytes (a rerun that changes only the metadata); different bytes are refused."""
         import c77_sag2_inputs as c77
 
         self.stage = stage
         self.meta_dir, self.fasta_dir = Path(meta_out) / stage, Path(fasta_out) / stage
         self.fasta_names = fasta_names
+        self.reuse_fasta = reuse_fasta
+        self.reused: list[str] = []
         if self.meta_dir.exists():
             raise Refused(f"{self.meta_dir} exists")
         for n in fasta_names.values():
-            if (self.fasta_dir / n).exists():
+            if (self.fasta_dir / n).exists() and not reuse_fasta:
                 raise Refused(f"{self.fasta_dir / n} exists")
         self.tmp = Path(meta_out) / f"{stage}.tmp"
         self.ftmp = Path(meta_out) / f"{stage}.fasta.tmp"
@@ -278,9 +283,17 @@ class StageFiles:
         for k in used:
             final = self.final_path(k)
             (to_stor if final.parent == self.fasta_dir else parts)[final] = self.partial[k]
-        for final in [*parts, *to_stor]:
+        for final in parts:
             if final.exists():
                 raise Refused(f"{final} exists")
+        for final, src in list(to_stor.items()):
+            if not final.exists():
+                continue
+            if not self.reuse_fasta or ids.sha256_file(final) != ids.sha256_file(src):
+                raise Refused(f"{final} exists and differs from the newly written FASTA")
+            self.reused.append(final)
+            del to_stor[final]
+            parts.pop(final, None)
         for final, src in to_stor.items():
             final.parent.mkdir(parents=True, exist_ok=True)
             part = final.with_name(f".{final.name}.partial")
@@ -293,7 +306,7 @@ class StageFiles:
         c80._commit(parts)
         shutil.rmtree(self.tmp, ignore_errors=True)
         shutil.rmtree(self.ftmp, ignore_errors=True)
-        return c80._hashes([*parts, *to_stor])
+        return c80._hashes([*parts, *to_stor, *self.reused])
 
 
 SKIP_HEAD = ["category", "member", "name", "length", "reason"]
@@ -322,6 +335,8 @@ def _finish(sf: StageFiles, genomes: list[dict], trims: list[tuple], skipped: li
     rep["skipped_records"] = dict(sorted(Counter(s[4].split(" ", 1)[0] for s in skipped).items()))
     rep.update(extra or {})
     rep["sha256"], rep["bytes"] = sf.commit(used)
+    if sf.reuse_fasta:
+        rep["fasta_reused"] = sorted(p.name for p in sf.reused)
     return rep
 
 
@@ -527,6 +542,7 @@ SYM2_SOURCE = {
     "redistributable": False,  # DEC-80 (3): no recorded licence
 }
 QUALITY_OF_MIMAG = {"HQ": "mag_hq", "MQ": "mag_mq"}
+GIANT_VIRUS_CLASSES = {"nucleocytoviricota"}  # the authors' symbclass of a giant-virus bin (metadata_mags.tab)
 BIN_HEAD = ["genome", "member", "contigs", "bp", "in_metadata", "mimag", "completeness_checkm2",
             "contamination_checkm2", "classification", "symbclass", "host", "genetic_code", "reason"]
 VIRUS_HEAD = ["genome", "length", "staged_length", "circular", "in_final_set", "topology", "checkv_quality",
@@ -561,9 +577,11 @@ def _screen_job(args):
 
 def stage_sym2(bins_tgz: Path, viruses_tgz: Path, tables: Path, meta_out: Path, fasta_out: Path, *, root,
                root_stages, owner_inputs, later_inputs, inputs_home, retrieved_at: str = "2026-11-25T22:26:57Z",
-               work=None, threads: int = 2, memory_limit: str = "4GB", screen=None, workers: int = 2) -> dict:
+               work=None, threads: int = 2, memory_limit: str = "4GB", screen=None, workers: int = 2,
+               reuse_fasta: bool = False) -> dict:
     """SYM2: each bin of `bins_fna/` is one `kind="prokaryote"` genome, its code screened (11, 25, 4) as SYM1's with
-    the authors' GTDB classification as the hint, quality from MIMAG (HQ, MQ; else `contig`); each record of
+    the authors' GTDB classification as the hint, quality from MIMAG (HQ, MQ; else `contig`) — except a bin the
+    authors' `symbclass` calls Nucleocytoviricota, a giant-virus genome: `kind="virus"`, not screened; each record of
     `viruses.fna` is one `kind="virus"` genome under DEC-65 (1) (the authors' `topology` DTR is the source's circular
     flag), except a contig a bin already holds (kinds must agree, `s2_check_inputs.py`). The bins carry no INSDC
     accession: every one is `not_visible` to the r232 accession test."""
@@ -571,7 +589,7 @@ def stage_sym2(bins_tgz: Path, viruses_tgz: Path, tables: Path, meta_out: Path, 
 
     meta = _read_tsv(Path(tables) / "metadata_mags.tab", "MAGid")
     final = _read_tsv(Path(tables) / "final_virus_df.tsv", "contig_id")
-    sf = StageFiles("SYM2", meta_out, fasta_out, SYM2_FASTA, work)
+    sf = StageFiles("SYM2", meta_out, fasta_out, SYM2_FASTA, work, reuse_fasta=reuse_fasta)
     screen_fn = screen or _screen_default
     pool = concurrent.futures.ProcessPoolExecutor(max_workers=workers) if workers > 0 and screen is None else None
     try:
@@ -611,14 +629,17 @@ def stage_sym2(bins_tgz: Path, viruses_tgz: Path, tables: Path, meta_out: Path, 
                 bin_of.setdefault(cu, gid)
                 contigs.append((cu, len(r.seq), len(r.seq), written, "", cu, 0))
             m = meta.get(gid, {})
-            g = {"name": gid, "category": "bin", "kind": "prokaryote",
-                 "quality": QUALITY_OF_MIMAG.get(m.get("MIMAG", ""), "contig"), "circular": [], "contigs": contigs,
-                 "code": 11, "reason": ""}
+            giant_virus = m.get("symbclass", "").lower() in GIANT_VIRUS_CLASSES
+            g = {"name": gid, "category": "bin", "kind": "virus" if giant_virus else "prokaryote",
+                 "quality": "contig" if giant_virus else QUALITY_OF_MIMAG.get(m.get("MIMAG", ""), "contig"),
+                 "circular": [], "contigs": contigs, "code": 11, "reason": "gv-meta decides" if giant_virus else ""}
             genomes.append(g)
             bin_rows.append([gid, name, len(contigs), sum(c[1] for c in contigs), "yes" if m else "no",
                              m.get("MIMAG", ""), m.get("Completeness_CheckM2", ""), m.get("Contamination_CheckM2", ""),
                              m.get("classification", ""), m.get("symbclass", ""), m.get("Host", "")])
             seqs, org = [r.seq for r in recs], m.get("classification", "")
+            if giant_virus:
+                continue  # a virus genome: no code screen (pyrodigal-gv calls it by its kind)
             if pool is not None:
                 pending.append((g, pool.submit(_screen_job, (gid, seqs, org))))
                 while len(pending) > 2 * workers:
@@ -657,6 +678,7 @@ def stage_sym2(bins_tgz: Path, viruses_tgz: Path, tables: Path, meta_out: Path, 
                                    (f or {}).get("topology", ""), (f or {}).get("checkv_quality", ""),
                                    (f or {}).get("taxonomy", ""), (f or {}).get("host", "")))
         bin_names = {g["name"] for g in genomes if g["category"] == "bin"}
+        prok = {g["name"] for g in genomes if g["category"] == "bin" and g["kind"] == "prokaryote"}
         make_inputs._write_tsv(sf.tmp / "sym2_bins.tsv", BIN_HEAD, [tuple(r) for r in sorted(bin_rows)])
         make_inputs._write_tsv(sf.tmp / "sym2_viruses.tsv", VIRUS_HEAD, virus_rows)
         make_inputs._write_tsv(sf.tmp / "genetic_codes.tsv",
@@ -665,7 +687,7 @@ def stage_sym2(bins_tgz: Path, viruses_tgz: Path, tables: Path, meta_out: Path, 
         make_inputs._write_tsv(sf.tmp / "skipped_members.tsv", MEMBER_HEAD, skipped_members)
         make_inputs._write_tsv(sf.tmp / "r232_status.tsv", STATUS_HEAD, [
             (g["name"], "", "not_visible", "", "", "", "", "", len(g["contigs"]), sum(c[1] for c in g["contigs"]))
-            for g in sorted(genomes, key=lambda x: x["name"]) if g["category"] == "bin"])
+            for g in sorted(genomes, key=lambda x: x["name"]) if g["name"] in prok and g["category"] == "bin"])
         genomes.sort(key=lambda g: (g["category"], g["name"]))
         in_final = sum(1 for r in virus_rows if r[4] == "yes")
         rep = _finish(sf, genomes, trims, skipped, root=root, root_stages=root_stages, owner_inputs=owner_inputs,
@@ -673,12 +695,15 @@ def stage_sym2(bins_tgz: Path, viruses_tgz: Path, tables: Path, meta_out: Path, 
                       source=SYM2_SOURCE, source_label="tower_sym2", threads=threads, memory_limit=memory_limit,
                       extra={"bins": len(bin_names), "bins_in_metadata": sum(1 for r in bin_rows if r[4] == "yes"),
                              "bins_by_mimag": dict(sorted(Counter(r[5] or "none" for r in bin_rows).items())),
+                             "bins_by_kind": dict(sorted(Counter(g["kind"] for g in genomes
+                                                                 if g["category"] == "bin").items())),
                              "genetic_codes": dict(sorted(Counter(str(g["code"]) for g in genomes
-                                                                  if g["category"] == "bin").items())),
+                                                                  if g["name"] in prok
+                                                                  and g["category"] == "bin").items())),
                              "virus_records_read": n_vir, "viruses_staged": len(virus_rows),
                              "viruses_in_final_set": in_final, "final_set_rows": len(final),
                              "dtr_classes": dict(sorted(classes.items())),
-                             "r232_status": {"not_visible": len(bin_names)}})
+                             "r232_status": {"not_visible": len(prok)}})
     except BaseException:
         sf.abort()
         raise
@@ -686,6 +711,470 @@ def stage_sym2(bins_tgz: Path, viruses_tgz: Path, tables: Path, meta_out: Path, 
         if pool is not None:
             pool.shutdown(wait=True, cancel_futures=True)
     return rep
+
+
+# --- DPN1 ----------------------------------------------------------------------------------------------------------
+#
+# Four steps, so that skani's run is its own unit:
+#   dpn1-extract  the genome FASTA of the two archives, one plain file per genome under WORK/genomes/<category>/, and
+#                 WORK/genomes.tsv (name, category, file, member, records, bp, accession, CheckM2, taxonomy)
+#   dpn1-refs     card C-75's r226 archaea split one genome at a time (in batches, sketched by `skani sketch
+#                 --separate-sketches` and deleted), WORK/ref_records.tsv (each record's contig_uid) and
+#                 WORK/ref_holders.tsv: the stage that holds each reference (exact contig_uid over the root, the
+#                 r26.11.4 stages and the r26.11.5 stages before DPN1); a reference is held when one stage holds at
+#                 least half its bases
+#   dpn1-skani    `skani dist` of every DPN1 genome against the reference sketches, `skani triangle -E` among them
+#   dpn1          the decisions and the stage: a genome whose best hit at ANI >= 96 % and aligned fraction (the larger
+#                 of the two) >= 50 % is a HELD reference is removed (the card: deduplicated against C-75's r226
+#                 archaea); a hit on a reference no stage holds is recorded and the genome kept; then within the stage,
+#                 greedily in rank order (the closed Nanobdellota genomes first, then CheckM2 completeness - 5 x
+#                 contamination, then length, then name), a genome within 96 % / 50 % of one kept before it is
+#                 removed. The 26 MGE contigs are `kind="virus"`: their metadata table has no class column.
+
+DPN1_FASTA = {"dpann": "dpn1_dpann_genomes.fna.gz", "mge": "dpn1_dpann_mges.fna"}
+DPN1_SOURCE = {
+    "source_name": "tower_dpn1",
+    "source_release": "Nanobdellota genomes of Zenodo 20174424 (Nanobdellota_Zen.zip: genomes/complete_208, "
+                      "genomes/noncircular_51, ncbi_all/hq_genomes) and the 3,662 DPANN archaeal genomes and DPANN "
+                      "viruses and unclassified MGEs of Zenodo 11215303; DPN1 staging by c78_compact_tower_sets.py "
+                      "(skani 96 % ANI against card C-75's r226 archaea and within the stage; DEC-65 (1); DEC-79)",
+    "license": "CC BY 4.0 as the job list states it (sources.yaml tower_dpn1); no provider record was read",
+    "redistributable": False,  # DEC-80 (3)
+}
+DPN1_ZIP_PARTS = {"Nanobdellota_Zen/genomes/complete_208/": "nanobdellota_closed",
+                  "Nanobdellota_Zen/genomes/noncircular_51/": "nanobdellota_open",
+                  "Nanobdellota_Zen/ncbi_all/hq_genomes/": "ncbi_hq"}
+DPN1_TAR_PART = ("3662.DPANN.genomes/", "dpann3662")
+MANIFEST_HEAD = ["name", "category", "file", "member", "records", "bp", "accession", "completeness",
+                 "contamination", "taxonomy"]
+ACC_RE = re.compile(r"(GC[AF]_\d{9}(?:\.\d+)?)")
+ANI_MIN, AF_MIN = 96.0, 50.0
+
+
+def _gid(member: str) -> str:
+    base = os.path.basename(member)
+    for ext in (".fna", ".fasta", ".fa"):
+        if base.endswith(ext):
+            return base[: -len(ext)]
+    return base
+
+
+def dpn1_extract(nano_zip: Path, dpann_tgz: Path, dpann_meta: Path, work: Path) -> dict:
+    """One plain FASTA per genome under WORK/genomes/<category>/ and WORK/genomes.tsv; nothing else of the zip."""
+    import csv
+
+    work = Path(work)
+    out_dir = work / "genomes"
+    if out_dir.exists() or (work / "genomes.tsv").exists():
+        raise Refused(f"{out_dir} exists")
+    meta: dict[str, dict] = {}
+    with open(dpann_meta, encoding="utf-8", newline="") as fh:
+        for r in csv.DictReader(fh, delimiter="\t"):
+            meta[r["Genome"]] = r
+    tmp = work / "genomes.partial"
+    shutil.rmtree(tmp, ignore_errors=True)
+    rows: list[tuple] = []
+    skipped: Counter = Counter()
+
+    def put(category: str, member: str, fobj) -> None:
+        gid = _gid(member)
+        dst = tmp / category / f"{gid}.fna"
+        if dst.exists():
+            raise Refused(f"two members give genome {category}/{gid}")
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        n = bp = 0
+        with open(dst, "wb") as w:
+            for r in v2.iter_fasta_stream(fobj):
+                if not r.seq or not VALID_DNA_RE.match(r.seq):
+                    raise Refused(f"{member}: record {r.accession} is not DNA")
+                w.write(b"\n".join(fasta.format_record(r.header, r.seq, r.line_width or 60)) + b"\n")
+                n += 1
+                bp += len(r.seq)
+        if not n:
+            raise Refused(f"{member}: no record")
+        m = meta.get(gid, {})
+        acc = ACC_RE.search(gid)
+        rows.append((gid, category, str(out_dir / category / f"{gid}.fna"), member, n, bp,
+                     acc.group(1) if acc else "", m.get("Completeness (Checkm2)", ""),
+                     m.get("Contamination (Checkm2)", ""), m.get("Taxonomy (GTDB r207)", "")))
+
+    try:
+        with zipfile.ZipFile(nano_zip) as zf:
+            for i in zf.infolist():
+                part = next((c for p, c in DPN1_ZIP_PARTS.items() if i.filename.startswith(p)), None)
+                if part is None or i.is_dir() or not _looks_fasta(i.filename):
+                    skipped["zip_member_not_genome_fasta"] += 0 if i.is_dir() else 1
+                    continue
+                with zf.open(i) as raw:
+                    put(part, i.filename, raw)
+        with tarfile.open(dpann_tgz, "r|*") as tf:
+            for m in tf:
+                if not m.isfile():
+                    continue
+                if not (m.name.startswith(DPN1_TAR_PART[0]) and _looks_fasta(m.name)):
+                    skipped["tar_member_not_genome_fasta"] += 1
+                    continue
+                put(DPN1_TAR_PART[1], m.name, tf.extractfile(m))
+    except BaseException:
+        shutil.rmtree(tmp, ignore_errors=True)
+        raise
+    rows.sort(key=lambda r: (r[1], r[0]))
+    os.replace(tmp, out_dir)
+    make_inputs._write_tsv(work / "genomes.tsv", MANIFEST_HEAD, rows)
+    (work / "queries.txt").write_text("".join(r[2] + "\n" for r in rows))
+    by = Counter(r[1] for r in rows)
+    return {"genomes": len(rows), "by_category": dict(sorted(by.items())),
+            "bases_by_category": {c: sum(r[5] for r in rows if r[1] == c) for c in sorted(by)},
+            "dpann3662_in_metadata": sum(1 for r in rows if r[1] == "dpann3662" and r[7] != ""),
+            "metadata_rows": len(meta), "members_skipped": dict(skipped)}
+
+
+def _run(cmd: list, log: list) -> None:
+    import time
+
+    t0 = time.time()
+    p = subprocess.run([str(c) for c in cmd], capture_output=True, text=True, check=False)
+    log.append({"cmd": [str(c) for c in cmd[:2]], "wall_s": round(time.time() - t0, 1), "rc": p.returncode})
+    if p.returncode != 0:
+        raise Refused(f"{cmd[0]} {cmd[1]} failed (rc={p.returncode}): {p.stderr[-500:]}")
+
+
+def dpn1_refs(archaea_fna: Path, archaea_list: Path, work: Path, *, root, root_stages, owner_inputs, later_inputs,
+              skani: str | None = "skani", threads: int = 8, batch: int = 1000, memory_limit: str = "8GB") -> dict:
+    """Split the reference FASTA by its list (records in list order, each genome contiguous), sketch each batch, and
+    find the stage that holds each reference (module notes above)."""
+    import csv
+
+    import c62_metavr_inputs as c62
+
+    work = Path(work)
+    refs = work / "refs"
+    if refs.exists():
+        raise Refused(f"{refs} exists")
+    with open(archaea_list, encoding="utf-8", newline="") as fh:
+        lst = sorted(csv.DictReader(fh, delimiter="\t"), key=lambda r: int(r["first_record"]))
+    refs.mkdir(parents=True)
+    log: list[dict] = []
+    sketches: list[str] = []
+    rec_path = work / "ref_records.tsv"
+    per_genome: dict[str, dict] = {}
+    with open(rec_path, "w", encoding="utf-8") as rec_out, gzip.open(archaea_fna, "rb") as fh:
+        rec_out.write("genome\tcontig_uid\tlength\n")
+        it = v2.iter_fasta_stream(fh)
+        for k in range(0, len(lst), batch):
+            bdir = refs / f"batch_{k // batch:03d}"
+            bdir.mkdir()
+            files = []
+            for row in lst[k:k + batch]:
+                g, n_rec = row["genome"], int(row["records"])
+                p = bdir / f"{g}.fna"
+                bp = 0
+                with open(p, "wb") as w:
+                    for _ in range(n_rec):
+                        r = next(it)
+                        if not r.header.startswith(g):
+                            raise Refused(f"reference record {r.accession} is not genome {g}'s")
+                        w.write(b"\n".join(fasta.format_record(r.header, r.seq, r.line_width or 60)) + b"\n")
+                        rec_out.write(f"{g}\t{ids.contig_uid(r.seq).hex()}\t{len(r.seq)}\n")
+                        bp += len(r.seq)
+                if bp != int(row["bp"]):
+                    raise Refused(f"reference {g}: {bp} bp, the list says {row['bp']}")
+                per_genome[g] = {"gtdb": row["gtdb"], "records": n_rec, "bp": bp, "taxonomy": row.get("taxonomy", "")}
+                files.append(p)
+            if skani:
+                (bdir.parent / f"batch_{k // batch:03d}.txt").write_text("".join(f"{p}\n" for p in files))
+                sk = refs / f"sk_{k // batch:03d}"
+                _run([skani, "sketch", "--separate-sketches", "-t", threads, "-l",
+                      bdir.parent / f"batch_{k // batch:03d}.txt", "-o", sk], log)
+                for p in files:
+                    s = sk / f"{p.name}.sketch"
+                    if not s.is_file():
+                        raise Refused(f"no sketch {s}")
+                    sketches.append(str(s))
+                shutil.rmtree(bdir)
+        try:
+            next(it)
+            raise Refused("the reference FASTA has records the list does not name")
+        except StopIteration:
+            pass
+    (work / "ref_sketches.txt").write_text("".join(s + "\n" for s in sketches))
+    owners = c62._owners_from_records(rec_path, root, list(root_stages), owner_inputs, work=work / "_own",
+                                      threads=2, memory_limit=memory_limit)
+    later = c62._owners_from_records(rec_path, None, [], later_inputs, work=work / "_own_later", threads=2,
+                                     memory_limit=memory_limit) if later_inputs else {}
+    held: dict[str, Counter] = {g: Counter() for g in per_genome}
+    with open(rec_path, encoding="utf-8") as fh:
+        next(fh)
+        for ln in fh:
+            g, cu, n = ln.rstrip("\n").split("\t")
+            b = bytes.fromhex(cu)
+            s = owners.get(b) or later.get(b)
+            if s:
+                held[g][s] += int(n)
+    rows = []
+    for g in sorted(per_genome):
+        d, h = per_genome[g], held[g]
+        holder, hb = (h.most_common(1)[0] if h else ("", 0))
+        rows.append((g, d["gtdb"], d["records"], d["bp"], holder, hb, f"{hb / d['bp']:.4f}" if d["bp"] else "0",
+                     "yes" if d["bp"] and hb / d["bp"] >= 0.5 else "no", d["taxonomy"]))
+    make_inputs._write_tsv(work / "ref_holders.tsv", ["genome", "gtdb", "records", "bp", "holder", "held_bp",
+                                                      "held_fraction", "held", "taxonomy"], rows)
+    return {"references": len(rows), "held": sum(1 for r in rows if r[7] == "yes"),
+            "held_by": dict(sorted(Counter(r[4] for r in rows if r[7] == "yes").items())),
+            "held_gtdb": sum(1 for r in rows if r[7] == "yes" and r[1] == "true"),
+            "gtdb": sum(1 for r in rows if r[1] == "true"), "sketches": len(sketches), "log": log}
+
+
+def dpn1_skani(work: Path, *, skani: str = "skani", threads: int = 8) -> dict:
+    work = Path(work)
+    log: list[dict] = []
+    _run([skani, "dist", "-t", threads, "--ql", work / "queries.txt", "--rl", work / "ref_sketches.txt",
+          "-o", work / "skani_dist.tsv"], log)
+    _run([skani, "triangle", "-E", "-t", threads, "-l", work / "queries.txt", "-o", work / "skani_triangle.tsv"], log)
+    return {"log": log}
+
+
+def parse_skani_pairs(path: Path) -> list[tuple[str, str, float, float]]:
+    """(query file, reference file, ANI, the larger aligned fraction) of a skani dist / triangle -E table, the file
+    columns as skani printed them (the FASTA path each sketch was made from)."""
+    import csv
+
+    out = []
+    with open(path, encoding="utf-8", newline="") as fh:
+        rd = csv.DictReader(fh, delimiter="\t")
+        need = ["Ref_file", "Query_file", "ANI", "Align_fraction_ref", "Align_fraction_query"]
+        miss = [c for c in need if c not in (rd.fieldnames or [])]
+        if miss:
+            raise Refused(f"{path}: not skani output (no column {miss[0]})")
+        for r in rd:
+            out.append((r["Query_file"], r["Ref_file"], float(r["ANI"]),
+                        max(float(r["Align_fraction_ref"]), float(r["Align_fraction_query"]))))
+    return out
+
+
+def _score(row: dict) -> tuple:
+    """Rank for the within-stage pass: the closed genomes first, then CheckM2 completeness - 5 x contamination
+    (unknown last), then length, then name."""
+    try:
+        q = float(row["completeness"]) - 5 * float(row["contamination"])
+        known = 0
+    except (TypeError, ValueError):
+        q, known = 0.0, 1
+    return (0 if row["category"] == "nanobdellota_closed" else 1, known, -q, -int(row["bp"]), row["name"],
+            row["category"])
+
+
+def dpn1_decide(manifest: list[dict], dist: list[tuple], tri: list[tuple], holders: dict[str, dict]) -> dict:
+    """Which genomes stay (module notes above). Returns {"kept": [names in rank order], "removed": {name: row},
+    "ref_best": {name: (ani, af, ref, holder, held)}}. A genome is keyed by `<category>:<name>` (a name of
+    noncircular_51 can also be one of complete_208); skani's rows are matched by file path."""
+    by_name: dict[str, dict] = {}
+    key_of_file: dict[str, str] = {}
+    for r in manifest:
+        key = f"{r['category']}:{r['name']}"
+        if key in by_name:
+            raise Refused(f"genome {key} listed twice")
+        by_name[key] = r
+        key_of_file[str(r["file"])] = key
+        key_of_file.setdefault(str(Path(r["file"]).resolve()), key)
+    best: dict[str, tuple] = {}
+    best_held: dict[str, tuple] = {}
+    for qf, rf, ani, af in dist:
+        k = key_of_file.get(qf)
+        if k is None:
+            raise Refused(f"skani query {qf} is not a DPN1 genome file")
+        if ani < ANI_MIN or af < AF_MIN:
+            continue
+        ref = _gid(rf)
+        h = holders.get(ref)
+        if h is None:
+            raise Refused(f"skani reference {rf} is not in ref_holders.tsv")
+        cand = (ani, af, ref)
+        if k not in best or cand > best[k][:3]:
+            best[k] = (*cand, h.get("holder", ""), h.get("held") == "yes")
+        if h.get("held") == "yes" and (k not in best_held or cand > best_held[k][:3]):
+            best_held[k] = (*cand, h.get("holder", ""))
+    removed: dict[str, dict] = {}
+    for k, (ani, af, ref, holder) in sorted(best_held.items()):
+        removed[k] = {"reason": "ani_to_held_reference", "match": ref, "ani": ani, "af": af, "holder": holder}
+    adj: dict[str, dict[str, tuple]] = {}
+    for qf, rf, ani, af in tri:
+        a, b = key_of_file.get(qf), key_of_file.get(rf)
+        if a is None or b is None:
+            raise Refused(f"skani triangle row {qf} / {rf} is not a pair of DPN1 genome files")
+        if ani < ANI_MIN or af < AF_MIN or a == b:
+            continue
+        adj.setdefault(a, {})[b] = (ani, af)
+        adj.setdefault(b, {})[a] = (ani, af)
+    order = sorted((k for k in by_name if k not in removed), key=lambda k: _score(by_name[k]))
+    kept: list[str] = []
+    gone: set[str] = set()
+    for k in order:
+        if k in gone:
+            continue
+        kept.append(k)
+        for nb, (ani, af) in sorted(adj.get(k, {}).items()):
+            if nb not in gone and nb not in removed and nb not in kept:
+                gone.add(nb)
+                removed[nb] = {"reason": "ani_within_stage", "match": by_name[k]["name"], "ani": ani, "af": af,
+                               "holder": "DPN1"}
+    return {"kept": kept, "removed": removed, "ref_best": best, "by_name": by_name}
+
+
+DECISION_HEAD = ["genome", "category", "accession", "bp", "decision", "match", "ani", "af", "match_holder",
+                 "best_reference", "best_reference_ani", "best_reference_af", "best_reference_holder",
+                 "best_reference_held"]
+
+
+def stage_dpn1(work: Path, mge_fna: Path, index_dir: Path | None, meta_out: Path, fasta_out: Path, *, root,
+               root_stages, owner_inputs, later_inputs, inputs_home, retrieved_at: str = "2026-11-25T23:06:42Z",
+               threads: int = 2, memory_limit: str = "4GB", screen=None, workers: int = 2,
+               stage_work: Path | None = None) -> dict:
+    import concurrent.futures
+    import csv
+
+    import r232_index
+
+    work = Path(work)
+    with open(work / "genomes.tsv", encoding="utf-8", newline="") as fh:
+        manifest = list(csv.DictReader(fh, delimiter="\t"))
+    with open(work / "ref_holders.tsv", encoding="utf-8", newline="") as fh:
+        holders = {r["genome"]: r for r in csv.DictReader(fh, delimiter="\t")}
+    dist = parse_skani_pairs(work / "skani_dist.tsv")
+    tri = parse_skani_pairs(work / "skani_triangle.tsv")
+    dec = dpn1_decide(manifest, dist, tri, holders)
+    by_name, kept, removed, best = dec["by_name"], dec["kept"], dec["removed"], dec["ref_best"]
+
+    sf = StageFiles("DPN1", meta_out, fasta_out, DPN1_FASTA, stage_work)
+    screen_fn = screen or _screen_default
+    pool = concurrent.futures.ProcessPoolExecutor(max_workers=workers) if workers > 0 and screen is None else None
+    try:
+        genomes, trims, skipped, code_rows, pending = [], [], [], [], []
+        classes: Counter = Counter()
+
+        def settle(g, res):
+            g["code"], g["reason"] = int(res["genetic_code"]), res.get("reason", "")
+            code_rows.append((g["name"], g["code"], g["reason"], res.get("cd_11"), res.get("mean_orf_11"),
+                              res.get("cd_25"), res.get("cd_4")))
+
+        for k in sorted(kept, key=lambda x: (by_name[x]["category"], by_name[x]["name"])):
+            row = by_name[k]
+            closed = row["category"] == "nanobdellota_closed"
+            contigs, circ, seqs = [], [], []
+            with open(row["file"], "rb") as fh:
+                for r in v2.iter_fasta_stream(fh):
+                    src_cu = ids.contig_uid(r.seq)
+                    out, kk, cls, is_c = dec65(r.seq, flagged=closed) if closed else (r.seq, 0, "", False)
+                    if closed:
+                        classes[cls] += 1
+                    cu = ids.contig_uid(out) if kk else src_cu
+                    written = sf.write("dpann", r.header, out, r.line_width, prefix=row["name"])
+                    if kk:
+                        trims.append((row["category"], row["name"], written, src_cu.hex(), cu.hex(), len(r.seq), kk,
+                                      kk, len(out)))
+                    if is_c:
+                        circ.append(cu)
+                    contigs.append((cu, len(out), len(r.seq), written, cls, src_cu, kk))
+                    seqs.append(out)
+            quality = "complete" if closed and len(circ) == len(contigs) else "contig"
+            g = {"name": row["name"], "category": "dpann", "kind": "prokaryote", "quality": quality,
+                 "circular": circ, "contigs": contigs, "code": 11, "reason": "", "source": row["category"]}
+            genomes.append(g)
+            org = row.get("taxonomy", "")
+            if pool is not None:
+                pending.append((g, pool.submit(_screen_job, (row["name"], seqs, org))))
+                while len(pending) > 2 * workers:
+                    gg, fut = pending.pop(0)
+                    settle(gg, fut.result()[1])
+            else:
+                settle(g, screen_fn(seqs, org))
+        while pending:
+            gg, fut = pending.pop(0)
+            settle(gg, fut.result()[1])
+
+        seen: dict[bytes, str] = {}
+        n_mge = 0
+        with open(mge_fna, "rb") as fh:
+            for r in v2.iter_fasta_stream(fh):
+                n_mge += 1
+                g = _single_record_genome(sf, "mge", Path(mge_fna).name, r.header, r.seq, r.line_width,
+                                          kind="virus", flagged=False, seen=seen, trims=trims, skipped=skipped,
+                                          dtr_classes=classes)
+                if g is not None:
+                    genomes.append(g)
+
+        dec_rows = []
+        for k in sorted(by_name, key=lambda x: (by_name[x]["category"], by_name[x]["name"])):
+            row, rm, b = by_name[k], removed.get(k), best.get(k)
+            dec_rows.append((row["name"], row["category"], row["accession"], row["bp"],
+                             rm["reason"] if rm else "kept", rm["match"] if rm else "",
+                             rm["ani"] if rm else "", rm["af"] if rm else "", rm["holder"] if rm else "",
+                             b[2] if b else "", b[0] if b else "", b[1] if b else "", b[3] if b else "",
+                             ("yes" if b[4] else "no") if b else ""))
+        make_inputs._write_tsv(sf.tmp / "dpn1_decisions.tsv", DECISION_HEAD, dec_rows)
+
+        staged = [g for g in genomes if g["category"] == "dpann"]
+        accs = [by_name[k]["accession"] for k in kept if by_name[k]["accession"]]
+        look = {x["accession"]: x for x in r232_index.lookup(index_dir, accs)} if index_dir and accs else {}
+        status_rows, status_count = [], Counter()
+        acc_of = {by_name[k]["name"]: by_name[k]["accession"] for k in kept}
+        for g in sorted(staged, key=lambda x: x["name"]):
+            a = acc_of.get(g["name"], "")
+            x = look.get(a)
+            st = r232_status_of(x) if a else "not_visible"
+            status_count[st] += 1
+            status_rows.append((g["name"], a, st, _yn(x["in_gtdb_r232"]) if x else "",
+                                str(x["is_representative"]) if x and x["in_gtdb_r232"] else "",
+                                (x["species"] or "") if x else "", _yn(x["in_globdb_r232"]) if x else "",
+                                (x["globdb_r232_id"] or "") if x else "", len(g["contigs"]),
+                                sum(c[1] for c in g["contigs"])))
+        make_inputs._write_tsv(sf.tmp / "r232_status.tsv", STATUS_HEAD, status_rows)
+        make_inputs._write_tsv(sf.tmp / "genetic_codes.tsv",
+                               ["genome", "genetic_code", "reason", "cd_11", "mean_orf_11", "cd_25", "cd_4"],
+                               sorted(tuple("" if v is None else v for v in r) for r in code_rows))
+        genomes.sort(key=lambda g: (g["category"], g["name"]))
+        rm_count = Counter(r["reason"] for r in removed.values())
+        rm_bp = Counter()
+        for k, r in removed.items():
+            rm_bp[r["reason"]] += int(by_name[k]["bp"])
+        rep = _finish(sf, genomes, trims, skipped, root=root, root_stages=root_stages, owner_inputs=owner_inputs,
+                      later_inputs=later_inputs, inputs_home=inputs_home, retrieved_at=retrieved_at,
+                      source=DPN1_SOURCE, source_label="tower_dpn1", threads=threads, memory_limit=memory_limit,
+                      extra={"candidates": len(by_name),
+                             "candidates_by_category": dict(sorted(Counter(r["category"]
+                                                                           for r in by_name.values()).items())),
+                             "removed": dict(sorted(rm_count.items())), "removed_bp": dict(sorted(rm_bp.items())),
+                             "removed_to_held_by": dict(sorted(Counter(r["holder"] for r in removed.values()
+                                                                       if r["reason"] == "ani_to_held_reference"
+                                                                       ).items())),
+                             "kept": len(kept),
+                             "kept_by_category": dict(sorted(Counter(by_name[k]["category"] for k in kept).items())),
+                             "kept_bp": sum(int(by_name[k]["bp"]) for k in kept),
+                             "best_hit_unheld_kept": sum(1 for k in kept if k in best and not best[k][4]),
+                             "mge_records": n_mge, "dtr_classes_closed_and_mge": dict(sorted(classes.items())),
+                             "genetic_codes": dict(sorted(Counter(str(g["code"]) for g in staged).items())),
+                             "r232_status": dict(sorted(status_count.items()))})
+    except BaseException:
+        sf.abort()
+        raise
+    finally:
+        if pool is not None:
+            pool.shutdown(wait=True, cancel_futures=True)
+    return rep
+
+
+def r232_status_of(x: dict | None) -> str:
+    if x is None:
+        return "not_visible"
+    if x["in_gtdb_r232"] and x["in_globdb_r232"]:
+        return "in_gtdb_and_globdb_r232"
+    if x["in_gtdb_r232"]:
+        return "in_gtdb_r232"
+    return "in_globdb_r232" if x["in_globdb_r232"] else "not_in_r232"
+
+
+def _yn(v) -> str:
+    return "yes" if v else "no"
 
 
 # --- command line --------------------------------------------------------------------------------------------------
@@ -741,6 +1230,32 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("tables", type=Path)
     _common(p)
     p.add_argument("--workers", type=int, default=2)
+    p.add_argument("--reuse-fasta", action="store_true",
+                   help="keep a FASTA already on /stor when the new one has the same bytes (refuse if not)")
+    p = sub.add_parser("dpn1-extract")
+    for n in ("nano_zip", "dpann_tgz", "dpann_meta", "work"):
+        p.add_argument(n, type=Path)
+    p = sub.add_parser("dpn1-refs")
+    for n in ("archaea_fna", "archaea_list", "work"):
+        p.add_argument(n, type=Path)
+    p.add_argument("--root", type=Path, default=None)
+    p.add_argument("--root-stages", default=",".join(ROOT_STAGES))
+    p.add_argument("--chain-home", type=Path, default=None)
+    p.add_argument("--later", action="append", default=[])
+    p.add_argument("--threads", type=int, default=8)
+    p.add_argument("--batch", type=int, default=1000)
+    p.add_argument("--skani", default="skani")
+    p.add_argument("--memory-limit", default="8GB")
+    p = sub.add_parser("dpn1-skani")
+    p.add_argument("work", type=Path)
+    p.add_argument("--threads", type=int, default=8)
+    p.add_argument("--skani", default="skani")
+    p = sub.add_parser("dpn1")
+    p.add_argument("dpn1_work", type=Path)
+    p.add_argument("mge_fna", type=Path)
+    p.add_argument("index", type=Path)
+    _common(p)
+    p.add_argument("--workers", type=int, default=2)
     a = ap.parse_args(argv)
     try:
         if a.cmd == "census":
@@ -753,7 +1268,23 @@ def main(argv: list[str] | None = None) -> int:
         if a.cmd == "extract":
             print(json.dumps(extract(a.archive, a.out_dir, a.members), indent=1, sort_keys=True))
             return 0
+        if a.cmd in ("dpn1-extract", "dpn1-skani"):
+            rep = (dpn1_extract(a.nano_zip, a.dpann_tgz, a.dpann_meta, a.work) if a.cmd == "dpn1-extract"
+                   else dpn1_skani(a.work, skani=a.skani, threads=a.threads))
+            txt = json.dumps(rep, indent=1, sort_keys=True)
+            (a.work / f"{a.cmd}.json").write_text(txt + "\n")
+            print(txt)
+            return 0
         owners = {s: a.chain_home / s for s, _ in a26.R26_11_4_CHAIN} if a.chain_home is not None else {}
+        if a.cmd == "dpn1-refs":
+            rep = dpn1_refs(a.archaea_fna, a.archaea_list, a.work,
+                            root=a.root, root_stages=[s for s in a.root_stages.split(",") if s] if a.root else [],
+                            owner_inputs=owners, later_inputs=_kv(a.later), skani=a.skani, threads=a.threads,
+                            batch=a.batch, memory_limit=a.memory_limit)
+            txt = json.dumps(rep, indent=1, sort_keys=True)
+            (a.work / "dpn1-refs.json").write_text(txt + "\n")
+            print(txt)
+            return 0
         for s, d in owners.items():
             if not (d / "genomes.json").is_file():
                 raise Refused(f"--chain-home: no genomes.json for {s} in {d}")
@@ -770,7 +1301,13 @@ def main(argv: list[str] | None = None) -> int:
             rep = stage_mir2(a.genomes_zip, a.framework_tgz, a.meta_out, a.fasta_out, **kw)
         elif a.cmd == "sym2":
             stage_name = "SYM2"
-            rep = stage_sym2(a.bins_tgz, a.viruses_tgz, a.tables, a.meta_out, a.fasta_out, workers=a.workers, **kw)
+            rep = stage_sym2(a.bins_tgz, a.viruses_tgz, a.tables, a.meta_out, a.fasta_out, workers=a.workers,
+                             reuse_fasta=a.reuse_fasta, **kw)
+        elif a.cmd == "dpn1":
+            stage_name = "DPN1"
+            stage_work = kw.pop("work")
+            rep = stage_dpn1(a.dpn1_work, a.mge_fna, a.index, a.meta_out, a.fasta_out, workers=a.workers,
+                             stage_work=stage_work, **kw)
     except Refused as exc:
         print(f"refused: {exc}", file=sys.stderr)
         return 2

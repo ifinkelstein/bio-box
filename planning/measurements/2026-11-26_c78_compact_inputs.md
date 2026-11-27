@@ -167,3 +167,84 @@ All *measured*. Template: `DEPTH=annotated`, `GENECALL_MODE=gv-meta`, `LIBRARY=p
 **Left on `tower`** (`CATALOG_GOAL.md` §4.1): `protist_genomes_assembled.tar.gz` (eleven cryptophyte and chrysophyte
 assemblies of at least 1 kb, including their bacterial and viral contigs, as `README.txt` says) for card C-60;
 `EVE_annotations_table.zip` (a table). Inside the framework archive, the non-DNA members (`skipped_members.tsv`).
+
+## 5. `SYM2`
+
+**Licence.** DEC-80 lifted the hold: no record states a licence ("open-public-NERSC" is the job list's access label,
+R-11); the objects say so and carry `redistributable: false`.
+
+**Bytes** (*measured*, the relay's log, 19:09 to 19:10 CST): `bins_fna.tar.gz`, `viruses.fna.tar.gz` and
+`source_data.tar.gz` (the paper's tables, for the bins' metadata and the viruses' final list) to
+`/stor/scratch/Wilke/if2453/bio-box-staging/SYM2/dl/`, each sha256 equal to `tower`'s `SHA256SUMS`;
+`assemblies_fna.tar.gz` (the host assemblies) was listed on `tower` and not relayed. Twelve tables were copied out of
+`source_data.tar.gz` byte for byte to `/tmp/if2453/c78/dl/SYM2/tables/` (`extract`); two are read: `metadata_mags.tab`
+(999 MAGs) and `viruses/final_virus_df.tsv` (the authors' 7,392 complete and high-quality viruses, 44,382,967 bp).
+
+**Rule** (`sym2`): each bin is one genome, its records whole, quality from the table's MIMAG (`HQ` `mag_hq`, `MQ`
+`mag_mq`, else `contig`); a bin whose `symbclass` is *Nucleocytoviricota* is a giant-virus genome, `kind="virus"`;
+every other bin is `kind="prokaryote"` with its code screened as `SYM1`'s (card C-58's `screen_genetic_code`, the
+whole genome, the authors' GTDB classification as the hint); each record of `viruses.fna` is one `kind="virus"`
+genome under DEC-65 (1) (the authors' `topology` `DTR` as the source's circular flag), except a contig that a bin
+already holds (a contig must have one kind, `s2_check_inputs.py`) and an exact repeat (DEC-27).
+
+**A correction in the run.** The first run (unit `c78-sym2`) staged all 625 bins as prokaryotes; reading its
+`sym2_bins.tsv` showed 74 bins with `symbclass` *Nucleocytoviricota* (22,908,692 bp, classified "Unclassified" by
+GTDB-Tk). The script was changed (a test first, seen failing), the first run's metadata moved aside on `/tmp`
+(`/tmp/if2453/c78/meta/SYM2.run1/`), and the stage run again (`c78-sym2b`) with `--reuse-fasta`: the two FASTA
+already on `/stor` had the same bytes as the new ones and were kept as they were, never rewritten (`fasta_reused` in
+the report). Only `genomes.json`, `genetic_codes.tsv`, `r232_status.tsv` and `sym2_bins.tsv` changed.
+
+| | Value (*measured*, `sym2`, report `/tmp/if2453/c78/work/sym2b_report.json`) |
+|---|---:|
+| Bins | 625, 27,816 records, 515,578,694 bp (576 in `metadata_mags.tab`; 49 not, all small "Unclassified" bins, 19,687,698 bp) |
+| of which prokaryote | 551, 492,670,002 bp (*derived*): Patescibacteria 215, free-living 201, Chlamydiae 38, alpha-symbionts 22, gamma-symbionts 15, TM6 10, *Amoebophilus* 1, no class 49 (the table's `symbclass`); MIMAG HQ 68, MQ 155, LQ 353 (all 625) |
+| of which giant viruses (`kind="virus"`) | 74, 22,908,692 bp |
+| Codes of the 551 prokaryote bins | 11: 546; 25: 5; 4: 0 |
+| Viral contigs read | 64,460 |
+| Viral contigs staged | 61,959, 352,787,865 bp: 7,183 of the authors' final set (5,430 complete, 27,800,417 bp; 1,753 high-quality, 14,337,452 bp) and 54,776 others (310,649,996 bp) |
+| Viral contigs not staged | 2,296 held by a bin (`contig_in_bin`), 205 exact repeats (`skipped_records.tsv`) |
+| DEC-65 (1) | 8,303 exact terminal repeats trimmed (972,295 bp), staged circular |
+| Genomes | 62,584 (625 bins and 61,959 viral contigs); 89,775 `genome_input` rows; 31 contigs listed by two bins (DEC-27) |
+| Held by the root, the `r26.11.4` stages (`SYM1` included) | **0** |
+| Held only by an `r26.11.5` stage before it | `GV1` 1,050 viral contigs, 20,968,682 bp |
+| New | 89,741 contigs, 867,530,342 bp (0.868 Gbp; 846,561,660 after `GV1`) |
+| r232 status | all 551 prokaryote bins `not_visible` (no INSDC accession) |
+| `s2_check_inputs.py` | exit 0, `problems: []`, kinds `prokaryote`, `virus`, codes 11, 25 |
+
+Against the plan: 0.847 to 0.868 new Gbp against 0.5 to 0.8 (*estimate*, survey 1d), 6 to 9 % over its upper end
+(*derived*), inside the 20 % of AGENTS §6. The card names `viruses.fna`; it holds every viral contig the authors
+called, of which their final set is 7,392: all are staged, and `sym2_viruses.tsv` marks which are in the final set
+(`in_final_set`), so a later card can narrow it. Build cost (*derived*, plan §3: R1 24.6 to 24.8 × 0.4927 plus R2
+93.5 to 135.3 × 0.3757 plus R3 2,090 to 2,740 × 0.8675): about **1,860 to 2,440 CPU-minutes**, the plan's 1,000 to
+2,200 at and over its upper end.
+
+| File | Where | Bytes | sha256 |
+|---|---|---:|---|
+| `sym2_protist_symbiont_bins.fna` | `/stor/scratch/Wilke/if2453/bio-box-staging/SYM2/` | 525,681,148 | `9b26ace425ff5f2fa9b9748490bbb44aa377c51b8e8885d20db3c5bd0a3ff9ba` |
+| `sym2_protist_viruses.fna` | same | 356,338,487 | `103f6ca82ea23ef8c7243cdb07c213e48a4d0f8262570a88fe70b6ead2e3622a` |
+| `genomes.json` | `/tmp/if2453/c78/meta/SYM2/` | 9,917,131 | `0a0ce08bd55413796ec631c532875a227777df1b06d9392d12fc8332565aaca4` |
+| `objects.json` | same | 1,126 | `2fdfcd03d2a93459f35ffb00cafdb7693ac6b8cdb6d92785fe62fc99127f44f0` |
+| `objects_staging.json` | same | 1,168 | `c57ea6124aa241f4bc33060a671f4d6d19a2bb90c10f675c99d85e9bd0b2149a` |
+| `records.tsv` | same | 19,182,535 | `0808c8336cbe1c84876accff4684d2e72f0872965c2286a87130eb32f54d39c3` |
+| `sym2_bins.tsv` | same | 123,897 | `68010d5d8bb284543831a921f9798dcaaeaf0b76ef4cad3bf3ffa9cdf268bfea` |
+| `sym2_viruses.tsv` | same | 5,610,101 | `75deb3fc0914f09d3b0dc42717bf9b2aa796d35e8965247c7ce6158d3b39a335` |
+| `genetic_codes.tsv` | same | 31,850 | `3aae03aaefd75af4e711dd46a760e960676603fb83dbbb76bfc3b78f52074539` |
+| `r232_status.tsv` | same | 25,279 | `3545a597ae8f62546807fe20790d63b1c64fb5198206d9f23e5cb7d00fe4f6a5` |
+| `trims.tsv` | same | 1,665,861 | `91b4992c6b80ce34f66404f5336dfdc06b186dda5b4f50d50bb17ada5bae03a6` |
+| `later_records.tsv` | same | 66,017 | `ac05f1aeb8a59048a8bd6d7007dfef81d272811f6a9eff003c817cd15e060457` |
+| `skipped_records.tsv` | same | 287,993 | `5884e9eb5e4176daefdba884571d431ffa886bed1b871fc8c14bc848500545ed` |
+| `skipped_members.tsv` | same | 54 | `a95f28ca51520a9655e223a73649ab327c2f4ad8045ccfdf04edd56be0623de7` |
+| `shared_records.tsv` (header only) | same | 38 | `2f9af65a096679c5376b81c7ecf6f62bb2ef3b99b972693d68c9dbb7586534df` |
+| `repeated_records.tsv` (header only) | same | 39 | `d109495ee76e4643c181eae183c452c9a84560f97a79bbe22d6630780368c565` |
+
+All *measured*. Template: `DEPTH=annotated`, `LIBRARY=pfam 38.2 gathering`, `CRISPR=yes`, `AFTER=DPN1`, no `EXPECT`
+line (nothing held by the root or `r26.11.4`).
+
+**Mirror** (*measured*, the relay's log, 20:21 CST): two runs of `relay_to_tower.sh` to
+`tower:/mnt/user/research-bulk/bio-box/sources/SYM2/`: the two FASTA and the fourteen metadata files of the table;
+`DONE: 2 verified` and `DONE: 14 verified, 0 failed`; `SHA256SUMS` there has 16 lines. The first run's metadata
+(`SYM2.run1/`) was not mirrored.
+
+**Left on `tower`** (`CATALOG_GOAL.md` §4.1): `assemblies_fna.tar.gz`, the 453 single-protist library assemblies
+(9.64 GB uncompressed), host and symbiont DNA together, for card C-60 (its non-eukaryote part is what the bins and
+viruses already took); `source_data.tar.gz`'s notebooks, trees and figures (not sequence).

@@ -366,13 +366,15 @@ BIN_B = [seq_of(33, 22000)]
 VIR1 = dtr(seq_of(34, 5000), 33)       # a complete circular virus of the authors' final set
 VIR2 = seq_of(35, 1200)                 # a fragment outside the final set
 VIR_IN_BIN = BIN_B[0]                   # a viral contig the authors also binned into a MAG
+GV_BIN = [seq_of(36, 40000), seq_of(37, 30000)]  # a bin the authors call Nucleocytoviricota: a giant virus
 
 
 @pytest.fixture()
 def sym2_world(tmp_path: Path) -> dict:
     bins = tmp_path / "bins_fna.tar.gz"
     write_tgz(bins, {"bins_fna/LKH041_P01_Ci-25.fna": fa_text([("NODE_1", BIN_A[0]), ("NODE_2", BIN_A[1])]).encode(),
-                     "bins_fna/LKH050_P02_Am-3.fna": fa_text([("NODE_9", BIN_B[0])]).encode()})
+                     "bins_fna/LKH050_P02_Am-3.fna": fa_text([("NODE_9", BIN_B[0])]).encode(),
+                     "bins_fna/LKH060_P02_Am-7.fna": fa_text([("NODE_3", GV_BIN[0]), ("NODE_4", GV_BIN[1])]).encode()})
     vir = tmp_path / "viruses.fna.tar.gz"
     write_tgz(vir, {"viruses.fna": fa_text([("LKH041_P01_Ci_virus|NODE_57_length_5033_cov_23.7", VIR1),
                                             ("LKH041_P01_Ci_virus|NODE_88_length_1200_cov_2.0", VIR2),
@@ -383,7 +385,8 @@ def sym2_world(tmp_path: Path) -> dict:
     (tables / "metadata_mags.tab").write_text(
         "MAGid\tLibrary\tHost\tMIMAG\tCompleteness_CheckM2\tContamination_CheckM2\tclassification\tsymbclass\n"
         "LKH041_P01_Ci-25\tLKH041\tGeleia sp.\tMQ\t60.1\t1.2\td__Bacteria;p__Pseudomonadota;c__Gamma\tsymbiont\n"
-        "LKH050_P02_Am-3\tLKH050\tAmoeba sp.\tHQ\t95.0\t0.5\td__Bacteria;p__Bacillota;o__Mycoplasmatales\tsymbiont\n")
+        "LKH050_P02_Am-3\tLKH050\tAmoeba sp.\tHQ\t95.0\t0.5\td__Bacteria;p__Bacillota;o__Mycoplasmatales\tsymbiont\n"
+        "LKH060_P02_Am-7\tLKH060\tAmoeba sp.\tLQ\t3.0\t0\tUnclassified\tNucleocytoviricota\n")
     (tables / "final_virus_df.tsv").write_text(
         "\tseq_name\tlength\ttopology\tcontig_id\tcheckv_quality\ttaxonomy\thost\n"
         "5\tNODE_57_length_5033_cov_23.7\t5033\tDTR\tLKH041_P01_Ci_virus|NODE_57_length_5033_cov_23.7\tComplete\t"
@@ -416,7 +419,9 @@ def test_sym2_stages_the_bins_as_prokaryotes_and_the_viral_contigs_as_viruses(sy
     v1 = by_first[cuid(VIR1[:-33])]
     assert v1["kind"] == "virus" and v1["circular"] == [cuid(VIR1[:-33])]
     assert by_first[cuid(VIR2)]["kind"] == "virus"
-    assert len(genomes) == 4  # the binned viral contig is not listed a second time as a virus
+    gv = by_first[cuid(GV_BIN[0])]  # a giant-virus bin is a virus genome, not a prokaryote, and is not code-screened
+    assert gv["kind"] == "virus" and gv["contig_uids"] == [cuid(s) for s in GV_BIN] and gv["genetic_code"] == 11
+    assert len(genomes) == 5  # the binned viral contig is not listed a second time as a virus
     skipped = tsv_rows(meta / "skipped_records.tsv")
     assert [(r["name"], r["reason"]) for r in skipped] == [
         ("LKH050_P02_Am_virus|NODE_9_length_22000_cov_5.0", "contig_in_bin LKH050_P02_Am-3")]
@@ -428,8 +433,213 @@ def test_sym2_stages_the_bins_as_prokaryotes_and_the_viral_contigs_as_viruses(sy
     codes = {r["genome"]: r["genetic_code"] for r in tsv_rows(meta / "genetic_codes.tsv")}
     assert codes == {"LKH041_P01_Ci-25": "11", "LKH050_P02_Am-3": "4"}
     assert rep["owner_contigs"] == {"SYM1": 1}
+    assert rep["bins_by_kind"] == {"prokaryote": 2, "virus": 1}
     doc = check_inputs("SYM2", meta)
     assert doc["kinds"] == ["prokaryote", "virus"] and doc["codes"] == [4, 11]
+
+
+def test_a_rerun_keeps_an_identical_fasta_in_place_and_refuses_a_different_one(sym2_world, monkeypatch):
+    mod = _mod()
+    monkeypatch.setattr(mod, "STOR_MIN_BYTES", 1)
+    w, t = sym2_world, sym2_world["tmp"]
+    run = dict(screen=fake_screen, workers=0, **common(t, "r"))
+    mod.stage_sym2(w["bins"], w["vir"], w["tables"], t / "meta_1", t / "fasta_r", **run)
+    fa = t / "fasta_r" / "SYM2" / "sym2_protist_symbiont_bins.fna"
+    before = (fa.stat().st_ino, fa.stat().st_mtime_ns, fa.read_bytes())
+    # a second staging into new metadata, the FASTA already on /stor: kept as it is, never overwritten
+    rep = mod.stage_sym2(w["bins"], w["vir"], w["tables"], t / "meta_2", t / "fasta_r", reuse_fasta=True, **run)
+    assert (fa.stat().st_ino, fa.stat().st_mtime_ns, fa.read_bytes()) == before
+    assert rep["fasta_reused"] == ["sym2_protist_symbiont_bins.fna", "sym2_protist_viruses.fna"]
+    assert not list((t / "fasta_r" / "SYM2").glob(".*partial"))
+    # different bytes under the same name are refused, and the file in place is untouched
+    (t / "tables" / "metadata_mags.tab").write_text((t / "tables" / "metadata_mags.tab").read_text())
+    vir2 = t / "viruses2.fna.tar.gz"
+    write_tgz(vir2, {"viruses.fna": fa_text([("LKH041_P01_Ci_virus|NODE_1", seq_of(99, 3000))]).encode()})
+    with pytest.raises(mod.Refused, match="differs"):
+        mod.stage_sym2(w["bins"], vir2, w["tables"], t / "meta_3", t / "fasta_r", reuse_fasta=True, **run)
+    assert (fa.stat().st_ino, fa.read_bytes()) == before[::2]
+    assert not (t / "meta_3" / "SYM2").exists()
+
+
+# --- DPN1 ----------------------------------------------------------------------------------------------------------
+
+CLOSED1 = seq_of(41, 30000)              # closed, as the assembler left it: the first 60 bases again at the end
+CLOSED2 = seq_of(42, 25000)              # closed, no repeat left: circular as it stands
+OPEN_DUP = CLOSED1[:29000]               # the same genome, open, in noncircular_51 under the same name
+OPEN2 = [seq_of(43, 15000), seq_of(44, 9000)]
+NCBI = seq_of(45, 22000)                 # an NCBI genome GTDB R232 holds
+D_HELD = seq_of(46, 21000)               # a DPANN genome within 96 % of a reference a stage holds -> removed
+D_UNHELD = seq_of(47, 23000)             # within 96 % of a reference no stage holds -> kept, recorded
+D_IMG = seq_of(48, 20000)                # an IMG genome, no accession, matching nothing
+MGE1, MGE2 = seq_of(49, 8000), dtr(seq_of(50, 6000), 25)
+REF_HELD, REF_FREE = [seq_of(51, 4000), seq_of(52, 3000)], [seq_of(53, 5000)]
+
+
+@pytest.fixture()
+def dpn1_world(tmp_path: Path) -> dict:
+    z = tmp_path / "Nanobdellota_Zen.zip"
+    write_zip(z, {
+        "Nanobdellota_Zen/genomes/README.md": b"# genomes\n",
+        "Nanobdellota_Zen/genomes/complete_208/B10_u1.fna": fa_text([("B10_u1_ctg1", dtr(CLOSED1, 60))]).encode(),
+        "Nanobdellota_Zen/genomes/complete_208/B10_u2.fna": fa_text([("B10_u2_ctg1", CLOSED2)]).encode(),
+        "Nanobdellota_Zen/genomes/noncircular_51/B10_u1.fna": fa_text([("B10_u1_c1", OPEN_DUP)]).encode(),
+        "Nanobdellota_Zen/genomes/noncircular_51/B5_u9.fna": fa_text([("B5_u9_c1", OPEN2[0]),
+                                                                       ("B5_u9_c2", OPEN2[1])]).encode(),
+        "Nanobdellota_Zen/ncbi_all/hq_genomes/NCBI_GCA_900000010.1.fna": fa_text([("JAAA01000001.1", NCBI)]).encode(),
+        "Nanobdellota_Zen/genes/B10_u1.faa": fa_text([("p1", "MKLLIEPQ" * 20)]).encode(),
+        "Nanobdellota_Zen/deposit_artifacts/esmfold_db": b"\x00\x01",
+    })
+    t = tmp_path / "3662_DPANN_archaeal_genomes.tar.gz"
+    write_tgz(t, {"3662.DPANN.genomes/GCA_900000011.1_genomic.fna": fa_text([("JAAB01000001.1", D_HELD)]).encode(),
+                  "3662.DPANN.genomes/GCA_900000012.1_genomic.fna": fa_text([("JAAC01000001.1", D_UNHELD)]).encode(),
+                  "3662.DPANN.genomes/3300005964_22.fna": fa_text([("Ga0079_1001", D_IMG)]).encode()})
+    meta = tmp_path / "Metadata_for_3662_DPANN_archaeal_genomes.txt"
+    meta.write_text("Genome\tTaxonomy (GTDB r207)\tCompleteness (Checkm2)\tContamination (Checkm2)\n"
+                    "GCA_900000011.1_genomic\td__Archaea;p__Nanoarchaeota\t80\t1\n"
+                    "GCA_900000012.1_genomic\td__Archaea;p__Micrarchaeota\t90\t0.5\n"
+                    "3300005964_22\td__Archaea;p__Aenigmatarchaeota\t70\t2\n")
+    mge = tmp_path / "DPANN_viruses_and_unclassified_MGEs_assembled_from_metagenomes.fna"
+    mge.write_text(fa_text([("SRR1_contig1", MGE1), ("SRR2_contig9", MGE2)]))
+    refs = tmp_path / "globdb_r226_archaea.fna.gz"
+    refs.write_bytes(gzip.compress(fa_text([("SPIRE_1_000000000001", REF_HELD[0]), ("SPIRE_1_000000000002",
+                                            REF_HELD[1]), ("GCA_000000099_000000000001", REF_FREE[0])]).encode(),
+                                   mtime=0))
+    lst = tmp_path / "archaea_list.tsv"
+    lst.write_text("genome\tgtdb\tfirst_record\trecords\tbp\theaders_start_with_genome\ttaxonomy\n"
+                   f"SPIRE_1\tfalse\t0\t2\t7000\ttrue\td__Archaea;p__Nanoarchaeota\n"
+                   f"GCA_000000099\ttrue\t2\t1\t5000\ttrue\td__Archaea;p__Micrarchaeota\n")
+    held = tmp_path / "chain" / "G1"
+    held.mkdir(parents=True)
+    (held / "genomes.json").write_text(json.dumps([{"contig_uids": [cuid(REF_HELD[0]), cuid(REF_HELD[1])]}]))
+    idx = tmp_path / "index"
+    idx.mkdir()
+    pq.write_table(pa.table({"accession": ["GCA_900000010"], "genbank_accession": ["GCA_900000010"],
+                             "is_representative": [True], "representative": ["GCA_900000010"],
+                             "species": ["s__Nanobdella sp1"]}), idx / "gtdb_r232.parquet")
+    pq.write_table(pa.table({"globdb_id": ["GCA_900000012"], "insdc_accession": [None], "original_id": [None],
+                             "cluster_id": [None]}), idx / "globdb_r232.parquet")
+    return {"zip": z, "tgz": t, "meta": meta, "mge": mge, "refs": refs, "list": lst, "held": held, "index": idx,
+            "tmp": tmp_path}
+
+
+SKANI_HEAD = "Ref_file\tQuery_file\tANI\tAlign_fraction_ref\tAlign_fraction_query\tRef_name\tQuery_name\n"
+
+
+def _skani(path: Path, rows: list[tuple[str, str, float, float, float]]) -> None:
+    path.write_text(SKANI_HEAD + "".join(f"{r}\t{q}\t{a}\t{fr}\t{fq}\tx\ty\n" for r, q, a, fr, fq in rows))
+
+
+def test_dpn1_extract_takes_the_genome_fasta_of_both_archives_and_nothing_else(dpn1_world):
+    mod = _mod()
+    w = dpn1_world["tmp"] / "work"
+    rep = mod.dpn1_extract(dpn1_world["zip"], dpn1_world["tgz"], dpn1_world["meta"], w)
+    rows = {(r["category"], r["name"]): r for r in tsv_rows(w / "genomes.tsv")}
+    assert set(rows) == {("nanobdellota_closed", "B10_u1"), ("nanobdellota_closed", "B10_u2"),
+                         ("nanobdellota_open", "B10_u1"), ("nanobdellota_open", "B5_u9"),
+                         ("ncbi_hq", "NCBI_GCA_900000010.1"), ("dpann3662", "GCA_900000011.1_genomic"),
+                         ("dpann3662", "GCA_900000012.1_genomic"), ("dpann3662", "3300005964_22")}
+    assert rows[("dpann3662", "GCA_900000012.1_genomic")]["accession"] == "GCA_900000012.1"
+    assert rows[("dpann3662", "3300005964_22")]["accession"] == ""
+    assert rows[("dpann3662", "GCA_900000012.1_genomic")]["completeness"] == "90"
+    assert (rows[("nanobdellota_open", "B5_u9")]["records"], rows[("nanobdellota_open", "B5_u9")]["bp"]) == ("2", "24000")
+    assert rep["by_category"] == {"dpann3662": 3, "nanobdellota_closed": 2, "nanobdellota_open": 2, "ncbi_hq": 1}
+    assert Path(rows[("nanobdellota_closed", "B10_u1")]["file"]).read_text() == fa_text([("B10_u1_ctg1",
+                                                                                        dtr(CLOSED1, 60))])
+    assert len((w / "queries.txt").read_text().splitlines()) == 8
+
+
+def test_dpn1_refs_split_the_references_and_find_who_holds_each(dpn1_world):
+    mod = _mod()
+    w = dpn1_world["tmp"] / "work"
+    rep = mod.dpn1_refs(dpn1_world["refs"], dpn1_world["list"], w, root=None, root_stages=[],
+                        owner_inputs={"G1": dpn1_world["held"]}, later_inputs={}, skani=None, batch=1)
+    h = {r["genome"]: r for r in tsv_rows(w / "ref_holders.tsv")}
+    assert (h["SPIRE_1"]["holder"], h["SPIRE_1"]["held"], h["SPIRE_1"]["held_bp"]) == ("G1", "yes", "7000")
+    assert (h["GCA_000000099"]["holder"], h["GCA_000000099"]["held"]) == ("", "no")
+    rec = tsv_rows(w / "ref_records.tsv")
+    assert [(r["genome"], r["contig_uid"]) for r in rec] == [("SPIRE_1", cuid(REF_HELD[0])),
+                                                             ("SPIRE_1", cuid(REF_HELD[1])),
+                                                             ("GCA_000000099", cuid(REF_FREE[0]))]
+    assert rep["references"] == 2 and rep["held"] == 1 and rep["held_by"] == {"G1": 1}
+
+
+def test_dpn1_removes_genomes_near_a_held_reference_and_within_the_stage_and_keeps_the_rest(dpn1_world):
+    mod = _mod()
+    t = dpn1_world["tmp"]
+    w = t / "work"
+    mod.dpn1_extract(dpn1_world["zip"], dpn1_world["tgz"], dpn1_world["meta"], w)
+    mod.dpn1_refs(dpn1_world["refs"], dpn1_world["list"], w, root=None, root_stages=[],
+                  owner_inputs={"G1": dpn1_world["held"]}, later_inputs={}, skani=None)
+    f = {(r["category"], r["name"]): r["file"] for r in tsv_rows(w / "genomes.tsv")}
+    ref = {"SPIRE_1": "/x/refs/batch_000/SPIRE_1.fna", "GCA_000000099": "/x/refs/batch_000/GCA_000000099.fna"}
+    _skani(w / "skani_dist.tsv", [
+        (ref["SPIRE_1"], f[("dpann3662", "GCA_900000011.1_genomic")], 98.1, 70.0, 80.0),    # held: removed
+        (ref["GCA_000000099"], f[("dpann3662", "GCA_900000012.1_genomic")], 97.0, 60.0, 40.0),  # not held: kept
+        (ref["SPIRE_1"], f[("dpann3662", "3300005964_22")], 99.0, 20.0, 30.0),               # AF too low: kept
+        (ref["SPIRE_1"], f[("ncbi_hq", "NCBI_GCA_900000010.1")], 95.0, 90.0, 90.0),           # ANI too low: kept
+    ])
+    _skani(w / "skani_triangle.tsv", [
+        (f[("nanobdellota_closed", "B10_u1")], f[("nanobdellota_open", "B10_u1")], 99.9, 96.0, 99.0),
+        (f[("dpann3662", "GCA_900000012.1_genomic")], f[("ncbi_hq", "NCBI_GCA_900000010.1")], 96.5, 40.0, 30.0),
+    ])
+    kw = common(t, "a")
+    kw.pop("work")
+    rep = mod.stage_dpn1(w, dpn1_world["mge"], dpn1_world["index"], t / "meta_a", t / "fasta_a", screen=fake_screen,
+                         workers=0, stage_work=t / "work_a", **kw)
+    meta = t / "meta_a" / "DPN1"
+    dec = {(r["category"], r["genome"]): r for r in tsv_rows(meta / "dpn1_decisions.tsv")}
+    assert dec[("dpann3662", "GCA_900000011.1_genomic")]["decision"] == "ani_to_held_reference"
+    assert dec[("dpann3662", "GCA_900000011.1_genomic")]["match_holder"] == "G1"
+    assert dec[("nanobdellota_open", "B10_u1")]["decision"] == "ani_within_stage"
+    assert dec[("nanobdellota_open", "B10_u1")]["match"] == "B10_u1"
+    d12 = dec[("dpann3662", "GCA_900000012.1_genomic")]
+    assert (d12["decision"], d12["best_reference"], d12["best_reference_held"]) == ("kept", "GCA_000000099", "no")
+    assert {k for k, r in dec.items() if r["decision"] == "kept"} == {
+        ("nanobdellota_closed", "B10_u1"), ("nanobdellota_closed", "B10_u2"), ("nanobdellota_open", "B5_u9"),
+        ("ncbi_hq", "NCBI_GCA_900000010.1"), ("dpann3662", "GCA_900000012.1_genomic"),
+        ("dpann3662", "3300005964_22")}
+
+    genomes = json.loads((meta / "genomes.json").read_text())
+    by_first = {g["contig_uids"][0]: g for g in genomes}
+    c1 = by_first[cuid(CLOSED1)]  # the 60 bp repeat trimmed once
+    assert c1["circular"] == [cuid(CLOSED1)] and c1["assembly_quality"] == "complete" and c1["kind"] == "prokaryote"
+    c2 = by_first[cuid(CLOSED2)]
+    assert c2["circular"] == [cuid(CLOSED2)] and c2["assembly_quality"] == "complete"
+    assert by_first[cuid(OPEN2[0])]["contig_uids"] == [cuid(s) for s in OPEN2]
+    assert by_first[cuid(OPEN2[0])]["circular"] == [] and by_first[cuid(D_IMG)]["assembly_quality"] == "contig"
+    assert by_first[cuid(MGE1)]["kind"] == "virus" and by_first[cuid(MGE2[:-25])]["circular"] == [cuid(MGE2[:-25])]
+    assert cuid(D_HELD) not in by_first and cuid(OPEN_DUP) not in by_first
+    assert len(genomes) == 8
+
+    st = {r["genome"]: r["r232_status"] for r in tsv_rows(meta / "r232_status.tsv")}
+    assert st == {"B10_u1": "not_visible", "B10_u2": "not_visible", "B5_u9": "not_visible",
+                  "NCBI_GCA_900000010.1": "in_gtdb_r232", "GCA_900000012.1_genomic": "in_globdb_r232",
+                  "3300005964_22": "not_visible"}
+    assert rep["removed"] == {"ani_to_held_reference": 1, "ani_within_stage": 1}
+    assert rep["removed_to_held_by"] == {"G1": 1} and rep["kept"] == 6 and rep["best_hit_unheld_kept"] == 1
+    # the MGE FASTA is under 64 MiB, so it stays beside the metadata, as does the (small) genome FASTA here
+    assert (meta / "dpn1_dpann_mges.fna").is_file() and (meta / "dpn1_dpann_genomes.fna.gz").is_file()
+    raw = (meta / "dpn1_dpann_genomes.fna.gz").read_bytes()
+    assert raw[12:14] == b"BC" and gzip.decompress(raw).count(b">") == 7
+    doc = check_inputs("DPN1", meta)
+    assert doc["kinds"] == ["prokaryote", "virus"]
+
+
+def test_dpn1_refuses_skani_rows_it_cannot_place(dpn1_world):
+    mod = _mod()
+    t = dpn1_world["tmp"]
+    w = t / "work"
+    mod.dpn1_extract(dpn1_world["zip"], dpn1_world["tgz"], dpn1_world["meta"], w)
+    mod.dpn1_refs(dpn1_world["refs"], dpn1_world["list"], w, root=None, root_stages=[],
+                  owner_inputs={"G1": dpn1_world["held"]}, later_inputs={}, skani=None)
+    _skani(w / "skani_dist.tsv", [("/x/refs/NOPE.fna", "/elsewhere/q.fna", 99.0, 90.0, 90.0)])
+    _skani(w / "skani_triangle.tsv", [])
+    kw = common(t, "r")
+    kw.pop("work")
+    with pytest.raises(mod.Refused, match="not a DPN1 genome file"):
+        mod.stage_dpn1(w, dpn1_world["mge"], dpn1_world["index"], t / "meta_r", t / "fasta_r", screen=fake_screen,
+                       workers=0, stage_work=t / "work_r", **kw)
+    assert not (t / "meta_r" / "DPN1").exists()
 
 
 # --- the conf templates --------------------------------------------------------------------------------------------
@@ -439,6 +649,8 @@ STAGED = {
     "LRP1": ("annotated", ("pfam", "38.2", "gathering"), ("SYM2",), {"lrp1_urban_water_plasmidome.fna"}),
     "MIR2": ("annotated", ("pfam", "38.2", "gathering"), ("LRP1",),
              {"mir2_bulzu_2025_plv_virophage.fna", "mir2_bellas_2026_plv_framework.fna"}),
+    "SYM2": ("annotated", ("pfam", "38.2", "gathering"), ("DPN1",),
+             {"sym2_protist_symbiont_bins.fna", "sym2_protist_viruses.fna"}),
 }
 
 
