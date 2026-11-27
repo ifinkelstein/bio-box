@@ -34,6 +34,9 @@
 #   --dry-run    print what would be copied and the bytes; no write anywhere, no log
 #   --tries N    tries per file (default 3); --pause S seconds between tries (default 30)
 #   --log FILE   append the log here (default ${XDG_STATE_HOME:-$HOME/.local/state}/bio-box/relay_to_pod.log)
+#   --space-as-underscore  admit one space between non-space characters of a component of the tower-side path (card
+#                R-18); every pod-side name (.partial, destination, SHA256SUMS line) has each space as _, the mapping is
+#                in the --dry-run listing and at the start of the log, two lines with one pod name are refused (exit 2)
 #
 # Environment (each checked: letters, digits and . _ @ : - only):
 #   BIOBOX_POD             user@host of the pod (default if2453@wilkcomp02.ccbb.utexas.edu)
@@ -53,13 +56,14 @@ export LC_ALL=C
 usage() { sed -n '2,/^set -u/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//'; }
 die() { echo "relay_to_pod: $*" >&2; exit 2; }
 
-STREAMS=1 DRY=0 REVERIFY=0 TRIES=3 PAUSE=30
+STREAMS=1 DRY=0 REVERIFY=0 TRIES=3 PAUSE=30 SPACE=0
 LOG=${XDG_STATE_HOME:-${HOME:-/tmp}/.local/state}/bio-box/relay_to_pod.log
 while [ $# -gt 0 ]; do
   case "$1" in
     --streams) [ $# -ge 2 ] || die "--streams needs a value"; STREAMS=$2; shift 2 ;;
     --dry-run) DRY=1; shift ;;
     --reverify) REVERIFY=1; shift ;;
+    --space-as-underscore) SPACE=1; shift ;;
     --tries) [ $# -ge 2 ] || die "--tries needs a value"; TRIES=$2; shift 2 ;;
     --pause) [ $# -ge 2 ] || die "--pause needs a value"; PAUSE=$2; shift 2 ;;
     --log) [ $# -ge 2 ] || die "--log needs a value"; LOG=$2; shift 2 ;;
@@ -80,6 +84,8 @@ case "$PAUSE" in ''|*[!0-9]*) die "--pause must be a whole number of seconds" ;;
 # --- checks, all before the first remote call --------------------------------------------------------------------
 COMP='[A-Za-z0-9._=+,-]+'
 PATH_RE="^$COMP(/$COMP)*\$"
+SPCOMP="$COMP( $COMP)*"  # --space-as-underscore: a single space between non-space characters of a component
+SPPATH_RE="^$SPCOMP(/$SPCOMP)*\$"
 ABS_RE="^(/$COMP)+\$"
 HOST_RE='^[A-Za-z0-9._@:-]+$'
 SHA_RE='^[0-9a-f]{64}$'
@@ -110,7 +116,7 @@ INCLUDE=${BIOBOX_RELAY_SSH_INCLUDE-${HOME:-}/.ssh/config}
 [ -z "$INCLUDE" ] || [[ $INCLUDE =~ $ABS_RE ]] || die "BIOBOX_RELAY_SSH_INCLUDE must be an absolute path of safe characters"
 [ -f "$LIST" ] || die "no list file: $LIST"
 
-REL=() SHA=()
+REL=() PREL=() SHA=()  # REL: the name on tower; PREL: the name on the pod (REL with each space as _)
 n=0
 tab=$(printf '\t')
 while IFS= read -r line || [ -n "$line" ]; do
@@ -123,14 +129,18 @@ while IFS= read -r line || [ -n "$line" ]; do
        case "$rest" in ' '*|'*'*) rel=${rest#?} ;; *) die "list line $n: neither <path><TAB><sha256> nor <sha256>  <path>" ;; esac ;;
   esac
   [[ $sum =~ $SHA_RE ]] || die "list line $n: the checksum is not 64 lower-case hex digits"
-  [[ $rel =~ $PATH_RE ]] && safe_components "$rel" || die "list line $n: refused path (only letters, digits, . _ = + , - and /; no . or .. or leading -)"
-  case "$rel" in SHA256SUMS|.SHA256SUMS*|STOP|*.partial) die "list line $n: the name $rel is the relay's own" ;; esac
-  REL+=("$rel") SHA+=("$sum")
+  if [ "$SPACE" = 1 ]; then re=$SPPATH_RE; else re=$PATH_RE; fi
+  [[ $rel =~ $re ]] && safe_components "$rel" || die "list line $n: refused path (only letters, digits, . _ = + , - and /; no . or .. or leading -; a single space inside a component only with --space-as-underscore)"
+  prel=${rel// /_}
+  case "$prel" in SHA256SUMS|.SHA256SUMS*|STOP|*.partial) die "list line $n: the name $rel is the relay's own" ;; esac
+  REL+=("$rel") PREL+=("$prel") SHA+=("$sum")
 done < "$LIST"
 N=${#REL[@]}
 [ "$N" -gt 0 ] || die "the list names no file"
 dup=$(printf '%s\n' "${REL[@]}" | sort | uniq -d | head -n 1)
 [ -z "$dup" ] || die "the list names $dup twice"
+dup=$(printf '%s\n' "${PREL[@]}" | sort | uniq -d | head -n 1)
+[ -z "$dup" ] || die "two list lines give the pod name $dup (spaces become _)"
 
 # --- the ssh config: hosts and the identity from the environment, nothing else ------------------------------------
 TMPD=$(mktemp -d "${TMPDIR:-/tmp}/relay.XXXXXX") || die "cannot make a temporary directory"
@@ -164,6 +174,7 @@ stopped() {  # true unless the pod answers that DST_DIR holds no STOP file
 
 # --- the plan: sizes on tower, then what the pod holds, two calls ---------------------------------------------------
 printf '%s\n' "${REL[@]}" > "$TMPD/paths"
+printf '%s\n' "${PREL[@]}" > "$TMPD/paths.pod"
 ssh -F "$CFG" tower "cd '$SRC' || exit 3; while IFS= read -r p; do if [ -f \"\$p\" ] && [ -r \"\$p\" ]; then stat -c %s -- \"\$p\"; else echo missing; fi; done" < "$TMPD/paths" > "$TMPD/sizes"
 rc=$?
 [ "$rc" = 0 ] || { echo "relay_to_pod: reading sizes on tower failed (exit $rc; 3: no directory $SRC)" >&2; exit 1; }
@@ -184,7 +195,7 @@ if [ "$ON_STOR" = 1 ]; then
   done
   [ "$small" = 0 ] || die "$small file(s) under 64 MiB bound for $DST; send them under $POD_TMP/ instead"
 fi
-ssh -F "$CFG" pod "if [ -e '$DST/STOP' ]; then echo stop; else echo go; fi; if cd '$DST' 2>/dev/null; then while IFS= read -r p; do if [ -e \"\$p\" ]; then echo yes; else echo no; fi; done; else while IFS= read -r p; do echo no; done; fi" < "$TMPD/paths" > "$TMPD/has"
+ssh -F "$CFG" pod "if [ -e '$DST/STOP' ]; then echo stop; else echo go; fi; if cd '$DST' 2>/dev/null; then while IFS= read -r p; do if [ -e \"\$p\" ]; then echo yes; else echo no; fi; done; else while IFS= read -r p; do echo no; done; fi" < "$TMPD/paths.pod" > "$TMPD/has"
 rc=$?
 [ "$rc" = 0 ] || { echo "relay_to_pod: reading $DST on the pod failed (exit $rc)" >&2; exit 1; }
 HAS=()
@@ -202,9 +213,10 @@ done
 
 if [ "$DRY" = 1 ]; then
   for i in $(seq 0 $((N - 1))); do
-    if [ "${HAS[$i]}" = yes ]; then echo "in place ${REL[$i]}"
-    elif [ "${SIZE[$i]}" = missing ]; then echo "missing on tower ${REL[$i]}"
-    else echo "copy ${REL[$i]} ${SIZE[$i]}"; fi
+    as=; [ "${PREL[$i]}" = "${REL[$i]}" ] || as=" (pod name ${PREL[$i]})"
+    if [ "${HAS[$i]}" = yes ]; then echo "in place ${REL[$i]}$as"
+    elif [ "${SIZE[$i]}" = missing ]; then echo "missing on tower ${REL[$i]}$as"
+    else echo "copy ${REL[$i]} ${SIZE[$i]}$as"; fi
   done
   took=$(awk -v b="$todo_bytes" 'BEGIN { s = b / 9.70e6; if (s < 120) printf "%.0f s", s; else printf "%.1f minutes", s / 60 }')
   echo "dry run: $todo files to copy, $todo_bytes bytes, about $took at 9.70 MB/s (estimate: one stream pod to tower, measured 2026-11-20, card C-49; this direction not measured); $inplace in place; $missing missing on tower"
@@ -214,6 +226,9 @@ if [ "$DRY" = 1 ]; then
 fi
 
 say "start (pid $$): $N files, $todo to copy ($todo_bytes bytes), $inplace in place, $missing missing on tower; $STREAMS stream(s); tower:$SRC -> pod:$DST${JUMP:+ (pod through $JUMP)}"
+for i in $(seq 0 $((N - 1))); do
+  [ "${PREL[$i]}" = "${REL[$i]}" ] || say "name map: tower '${REL[$i]}' -> pod '${PREL[$i]}'"
+done
 if [ "$STOP_AT_START" != go ]; then
   say "STOP file in $DST on the pod: nothing copied (remove it and run again)"
   tail -n 2 "$LOG"
@@ -225,23 +240,23 @@ done
 
 # --- one file -----------------------------------------------------------------------------------------------------
 one() {  # one <index> <result file>
-  local i=$1 out=$2 rel=${REL[$1]} want=${SHA[$1]} size=${SIZE[$1]} dir base part dest try got got2 t0 t1 st psize
-  dest="$DST/$rel"
-  case "$rel" in */*) dir="$DST/${rel%/*}"; base=${rel##*/} ;; *) dir=$DST; base=$rel ;; esac
+  local i=$1 out=$2 rel=${REL[$1]} prel=${PREL[$1]} want=${SHA[$1]} size=${SIZE[$1]} dir base part dest try got got2 t0 t1 st psize
+  dest="$DST/$prel"
+  case "$prel" in */*) dir="$DST/${prel%/*}"; base=${prel##*/} ;; *) dir=$DST; base=$prel ;; esac
   part="$dir/.$base.partial"
   if [ "${HAS[$i]}" = yes ]; then
     if [ "$REVERIFY" = 1 ]; then
       got=$(pod "sha256sum -- '$dest'"); got=${got%% *}
       if [ "$got" = "$want" ]; then
         say "$rel: already in place; read back, sha256 $got equal to the record"
-        printf 'ok\t%s\t%s\n' "$want" "$rel" >> "$out"
+        printf 'ok\t%s\t%s\n' "$want" "$prel" >> "$out"
       else
         say "$rel: FAILED: already in place, and read back its sha256 ${got:-?} differs from the record $want (left as it is)"
-        printf 'fail\t\t%s\n' "$rel" >> "$out"
+        printf 'fail\t\t%s\n' "$prel" >> "$out"
       fi
     else
       say "$rel: already in place on the pod; skipped, not read"
-      printf 'inplace\t\t%s\n' "$rel" >> "$out"
+      printf 'inplace\t\t%s\n' "$prel" >> "$out"
     fi
     return
   fi
@@ -270,12 +285,12 @@ one() {  # one <index> <result file>
             say "$rel: try $try: read back on the pod, sha256 $got2 differs from the record $want"
           elif pod "mv -n -- '$part' '$dest' && [ ! -e '$part' ] && [ -f '$dest' ]"; then
             say "$rel: OK: $size bytes in $((t1 - t0)) s ($(mbs "$size" $((t1 - t0))) MB/s), sha256 $want equal to the record$([ "$REVERIFY" = 1 ] && echo ', read back again')"
-            printf 'ok\t%s\t%s\n' "$want" "$rel" >> "$out"
+            printf 'ok\t%s\t%s\n' "$want" "$prel" >> "$out"
             return
           else
             pod "rm -f -- '$part'"
             say "$rel: FAILED: $dest appeared on the pod during the copy; not overwritten, the copy removed"
-            printf 'fail\t\t%s\n' "$rel" >> "$out"
+            printf 'fail\t\t%s\n' "$prel" >> "$out"
             return
           fi
         fi
@@ -285,7 +300,7 @@ one() {  # one <index> <result file>
     [ "$try" = "$TRIES" ] || sleep "$PAUSE"
   done
   say "$rel: FAILED after $TRIES tries"
-  printf 'fail\t\t%s\n' "$rel" >> "$out"
+  printf 'fail\t\t%s\n' "$prel" >> "$out"
 }
 
 # --- queues: largest first, each file to the stream with the fewest bytes -----------------------------------------
@@ -299,8 +314,8 @@ for k in $(seq 0 $((STREAMS - 1))); do
   ( while IFS= read -r i; do
       if [ "${HAS[$i]}" != yes ] && stopped; then  # AGENTS §7.4: a STOP file ends the run before the next copy
         say "STOP file in $DST on the pod (or the check failed): this stream stops before ${REL[$i]}"
-        printf 'stop\t\t%s\n' "${REL[$i]}" >> "$TMPD/result.$k"
-        while IFS= read -r j; do printf 'stop\t\t%s\n' "${REL[$j]}" >> "$TMPD/result.$k"; done
+        printf 'stop\t\t%s\n' "${PREL[$i]}" >> "$TMPD/result.$k"
+        while IFS= read -r j; do printf 'stop\t\t%s\n' "${PREL[$j]}" >> "$TMPD/result.$k"; done
         break
       fi
       one "$i" "$TMPD/result.$k"
