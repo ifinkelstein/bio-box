@@ -15,9 +15,12 @@ import io
 import json
 import os
 import re
+import shutil
+import signal
 import subprocess
 import sys
 import tarfile
+import time
 from pathlib import Path
 
 import pytest
@@ -651,3 +654,576 @@ def test_no_url_form_of_the_tree_leaves_a_figshare_file_id_open():
                 if re.match(r"https?://ndownloader\.figshare\.com/files/(\{[^}]*\}|[^0-9/]*)$", str(v)):
                     bad.append((e["name"], k, v))
     assert not bad, bad
+
+
+# --- card R-22: --jobs N, several files at a time ------------------------------------------------------------------------
+# A second stub `curl` records its pid and its parent's (a worker's, with --jobs above 1). When STUB_GATE names a
+# directory it marks itself running there (`run.<pid>`, holding its parent's pid), counts the running stubs, writes a few
+# bytes to its .partial and polls (60 s at most) for `<gate>/open` before it serves the file: the tests see N transfers
+# open at once and can stop a run while every worker is inside one. No test sleeps to wait for state; they poll.
+
+GATED_CURL = """#!{python}
+import glob, json, os, signal, sys, time
+args = sys.argv[1:]
+out, url = args[args.index("-o") + 1], args[-1]
+gate = os.environ.get("STUB_GATE")
+if gate and os.environ.get("STUB_IGNORE_TERM") == url:  # a transfer that a TERM does not end
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    with open(os.path.join(gate, "ignoring.%d" % os.getpid()), "w") as f:
+        f.write(str(os.getppid()))
+running = 0
+if gate:
+    mark = os.path.join(gate, "run.%d" % os.getpid())
+    with open(mark, "w") as f:
+        f.write(str(os.getppid()))
+    running = len(glob.glob(os.path.join(gate, "run.*")))
+with open(os.environ["STUB_LOG"], "a") as f:
+    f.write(json.dumps({{"args": args, "pid": os.getpid(), "ppid": os.getppid(), "running": running}}) + "\\n")
+spec = json.load(open(os.environ["STUB_MAP"])).get(url)
+if gate:
+    with open(out, "wb") as f:
+        f.write(b"half")
+    end = time.monotonic() + 60
+    while not os.path.exists(os.path.join(gate, "open")):
+        if time.monotonic() > end:
+            sys.exit(28)
+        time.sleep(0.01)
+code = 22 if spec in (None, "FAIL") else 0
+if code == 0:
+    with open(out, "wb") as f:
+        if spec != "EMPTY":
+            f.write(open(spec, "rb").read())
+if gate:
+    os.remove(mark)
+sys.exit(code)
+"""
+
+SLEEP = """#!{python}
+import json, os, sys, time
+with open(os.environ["SLEEP_LOG"], "a") as f:
+    f.write(json.dumps({{"args": sys.argv[1:], "ppid": os.getppid()}}) + "\\n")
+time.sleep(min(float(sys.argv[1]), 0.05))
+"""
+
+# A stub `mv` (the script's move into place, done under the write lock): it marks itself in STUB_MV_GATE
+# (`mv.<pid>`: its parent, its directory and its target) and polls (60 s at most) for `<gate>/open`; it then runs the
+# real mv, or with STUB_MV_AFTER runs it first and then waits (the file is in place, its record lines not yet written).
+MV = """#!{python}
+import json, os, subprocess, sys, time
+args, gate, real = sys.argv[1:], os.environ.get("STUB_MV_GATE"), os.environ["REAL_MV"]
+code = None
+if gate and os.environ.get("STUB_MV_AFTER"):
+    code = subprocess.run([real, *args]).returncode
+if gate:
+    tmp = os.path.join(gate, "tmp.mv.%d" % os.getpid())
+    with open(tmp, "w") as f:
+        json.dump({{"ppid": os.getppid(), "dir": os.getcwd(), "file": args[-1]}}, f)
+    os.replace(tmp, os.path.join(gate, "mv.%d" % os.getpid()))
+    end = time.monotonic() + 60
+    while not os.path.exists(os.path.join(gate, "open")):
+        if time.monotonic() > end:
+            sys.exit(28)
+        time.sleep(0.01)
+sys.exit(code if code is not None else subprocess.run([real, *args]).returncode)
+"""
+
+DATE = r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ"
+
+
+@pytest.fixture
+def pworld(world: dict) -> dict:
+    w = world
+    (w["tmp"] / "bin" / "curl").write_text(GATED_CURL.format(python=sys.executable))
+    w["gate"] = w["tmp"] / "gate"
+    w["gate"].mkdir()
+    w["genv"] = dict(w["env"], STUB_GATE=str(w["gate"]))
+    return w
+
+
+def gdata(i: int) -> bytes:
+    return f">g{i}\nACGT{i}\n".encode()
+
+
+def many(w: dict, n: int, dirs: int = 3) -> list[tuple]:
+    """n distinct FASTA jobs spread over `dirs` directories, each served and with its md5."""
+    rows = []
+    for i in range(n):
+        f = f"g{i:03d}.fasta"
+        serve(w, ZEN.format(f), gdata(i))
+        rows.append((f"P{i % dirs}", f, ZEN.format(f), md5(gdata(i)), "CC BY 4.0"))
+    return rows
+
+
+def run_to(w: dict, dest: Path, *lists: Path, args: tuple = (), env: dict | None = None) -> subprocess.CompletedProcess:
+    cmd = ["bash", str(SCRIPT), "--dest", str(dest), "--sources", str(w["src"]), "--pause", "0", *args,
+           *map(str, lists)]
+    return subprocess.run(cmd, env=env or w["env"], capture_output=True, text=True, timeout=120)
+
+
+def start(w: dict, *lists: Path, args: tuple = (), env: dict | None = None, tag: str = "bg",
+          new_session: bool = False) -> subprocess.Popen:
+    """The run in the background, its stdout and stderr to files (the workers write to them too)."""
+    cmd = ["bash", str(SCRIPT), "--dest", str(w["dest"]), "--sources", str(w["src"]), "--pause", "0", *args,
+           *map(str, lists)]
+    with open(w["tmp"] / f"{tag}.out", "w") as out, open(w["tmp"] / f"{tag}.err", "w") as err:
+        return subprocess.Popen(cmd, env=env or w["genv"], stdout=out, stderr=err, start_new_session=new_session)
+
+
+def said(w: dict, tag: str = "bg") -> str:
+    return (w["tmp"] / f"{tag}.out").read_text() + (w["tmp"] / f"{tag}.err").read_text()
+
+
+def poll(cond, proc: subprocess.Popen | None = None, w: dict | None = None, what: str = "", timeout: float = 60.0):
+    end = time.monotonic() + timeout
+    while time.monotonic() < end:
+        if cond():
+            return
+        if proc is not None and proc.poll() is not None:
+            raise AssertionError(f"the run ended (exit {proc.returncode}) before {what}:\n" + (said(w) if w else ""))
+        time.sleep(0.02)
+    raise AssertionError(f"timed out after {timeout} s waiting for {what}")
+
+
+def running(w: dict) -> list[Path]:
+    return sorted(w["gate"].glob("run.*"))
+
+
+def alive(pid: int) -> bool:
+    """True while the process exists and is not a zombie (a worker whose run was killed is reaped by another)."""
+    try:
+        state = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[0]
+        return state != "Z"
+    except FileNotFoundError:
+        return False
+    except OSError:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        return True
+
+
+def partials(w: dict) -> list[Path]:
+    return [p for p in w["dest"].rglob("*") if p.name.endswith(".partial")] if w["dest"].exists() else []
+
+
+def no_run_left(w: dict) -> None:
+    assert not (w["dest"] / ".fetch_to_tower.lock").exists(), "the lock was not released"
+    assert not list(w["tmp"].glob("fetch_to_tower.*")), "a temporary directory was left behind"
+
+
+@pytest.mark.covers("R-22")
+def test_r22_jobs_n_fetches_n_files_at_a_time_and_never_more(pworld):
+    w = pworld
+    rows = many(w, 12)
+    p = start(w, jobs(w, rows), args=("--jobs", "4"))
+    try:
+        poll(lambda: len(running(w)) == 4, p, w, "4 transfers open at once")
+        (w["gate"] / "open").write_text("")
+        assert p.wait(timeout=120) == 0, said(w)
+    finally:
+        (w["gate"] / "open").write_text("")
+        if p.poll() is None:
+            p.kill()
+    seen = calls(w)
+    assert sorted(c[-1] for c in seen) == sorted(r[2] for r in rows), "a file was fetched twice or not at all"
+    rec = [json.loads(x) for x in Path(w["env"]["STUB_LOG"]).read_text().splitlines()]
+    assert max(x["running"] for x in rec) == 4, [x["running"] for x in rec]
+    assert len({x["ppid"] for x in rec}) == 4, "the transfers were not made by four workers"
+    for name, f, _u, _m, _l in rows:
+        assert (w["dest"] / name / f).read_bytes() == gdata(int(f[1:4]))
+    out = (w["tmp"] / "bg.out").read_text().splitlines()
+    assert out[-1] == "DONE\tok=12\tskip=0\tfail=0", out
+    assert not partials(w)
+    no_run_left(w)
+
+
+@pytest.mark.covers("R-22")
+def test_r22_jobs_lands_records_and_counts_exactly_with_failures_and_skips(world):
+    w = world
+    rows = many(w, 60)
+    assert run(w, jobs(w, rows[:5], name="first.tsv")).returncode == 0
+    n_before = len(calls(w))
+    for i in (5, 6, 7):
+        rows[i] = rows[i][:3] + (md5(b"another"),) + rows[i][4:]
+    for i in (8, 9):
+        serve(w, rows[i][2], "FAIL")
+    for i in (10, 11):
+        serve(w, rows[i][2], b"no header\n")
+        rows[i] = rows[i][:3] + ("-",) + rows[i][4:]
+    r = run(w, jobs(w, rows), args=("--jobs", "4"))
+    assert r.returncode == 1, r.stdout + r.stderr
+    out = r.stdout.splitlines()
+    assert out[-1] == "DONE\tok=48\tskip=5\tfail=7", out[-3:]
+    ok_re = re.compile(rf"OK\tP\d\tg\d{{3}}\.fasta\t\d+\t[0-9a-f]{{64}}\tCC BY 4\.0\t{DATE}")
+    skip_re = re.compile(r"SKIP\tP\d\tg\d{3}\.fasta")
+    assert all(ok_re.fullmatch(x) or skip_re.fullmatch(x) for x in out[:-1]), [x for x in out[:-1]
+                                                                              if not (ok_re.fullmatch(x) or skip_re.fullmatch(x))]
+    landed = {(x.split("\t")[1], x.split("\t")[2]) for x in out if x.startswith("OK\t")}
+    want_ok = {(r_[0], r_[1]) for i, r_ in enumerate(rows) if i >= 12}
+    assert landed == want_ok and sum(x.startswith("OK\t") for x in out) == 48
+    assert {(x.split("\t")[1], x.split("\t")[2]) for x in out if x.startswith("SKIP\t")} == {(r_[0], r_[1]) for r_ in rows[:5]}
+    err = r.stderr.splitlines()
+    fail_re = re.compile(r"FAIL_[A-Z0-9]+\t[^\t]+\t[^\t]+")
+    assert all(fail_re.fullmatch(x) for x in err), [x for x in err if not fail_re.fullmatch(x)]
+    assert sorted(x.split("\t")[0] for x in err) == ["FAIL_CURL"] * 2 + ["FAIL_FASTA"] * 2 + ["FAIL_MD5"] * 3
+    for d in ("P0", "P1", "P2"):
+        mine = sorted(r_[1] for i, r_ in enumerate(rows) if r_[0] == d and (i < 5 or i >= 12))
+        sums = (w["dest"] / d / "SHA256SUMS").read_text().splitlines()
+        assert sorted(sums) == sorted(f"{sha(gdata(int(f[1:4])))}  {f}" for f in mine), d
+        src = (w["dest"] / d / "SOURCE_URLS.tsv").read_text().splitlines()
+        assert src[0] == "filename\turl\tbytes\tsha256\tlicense\tdate_utc" and src.count(src[0]) == 1, d
+        assert sorted(x.split("\t")[0] for x in src[1:]) == mine, d
+        for f in mine:
+            assert (w["dest"] / d / f).read_bytes() == gdata(int(f[1:4]))
+    asked = [c[-1] for c in calls(w)[n_before:]]
+    assert sorted(asked) == sorted(r_[2] for r_ in rows[5:]), "a file was fetched twice, or a file in place again"
+    assert not partials(w)
+    no_run_left(w)
+
+
+def masked(text: str) -> list[str]:
+    return [re.sub(rf"\t{DATE}$", "\tDATE", x) for x in text.splitlines()]
+
+
+@pytest.mark.covers("R-22")
+def test_r22_jobs_n_prints_and_records_what_jobs_1_does_in_another_order(world):
+    w = world
+    rows = many(w, 20) + good_rows(stage="P0")
+    lst = jobs(w, rows)
+    d1, dd, d4 = w["tmp"] / "one", w["tmp"] / "default", w["tmp"] / "four"
+    r1 = run_to(w, d1, lst, args=("--jobs", "1"))
+    rd = run_to(w, dd, lst)
+    r4 = run_to(w, d4, lst, args=("--jobs", "4"))
+    assert r1.returncode == rd.returncode == r4.returncode == 0, r1.stderr + rd.stderr + r4.stderr
+    assert masked(r1.stdout) == masked(rd.stdout), "--jobs 1 is not the default"
+    assert sorted(masked(r4.stdout)) == sorted(masked(r1.stdout))
+    assert masked(r4.stdout)[-1] == masked(r1.stdout)[-1] == "DONE\tok=24\tskip=0\tfail=0"
+    for d in ("P0", "P1", "P2"):
+        assert sorted((d4 / d / "SHA256SUMS").read_text().splitlines()) == sorted((d1 / d / "SHA256SUMS").read_text().splitlines())
+        a, b = masked((d4 / d / "SOURCE_URLS.tsv").read_text()), masked((d1 / d / "SOURCE_URLS.tsv").read_text())
+        assert a[0] == b[0] and sorted(a[1:]) == sorted(b[1:]), d
+        assert tree(d4 / d).keys() == tree(d1 / d).keys()
+    r = run_to(w, w["tmp"] / "four", lst, args=("--jobs", "4"))
+    assert r.returncode == 0 and r.stdout.splitlines()[-1] == "DONE\tok=0\tskip=24\tfail=0", r.stdout + r.stderr
+
+
+@pytest.mark.covers("R-22")
+def test_r22_jobs_under_bash_in_posix_mode_as_sh_runs_it_on_tower(world):
+    """On tower `sh` is bash, which then runs in POSIX mode; the workers must behave the same there."""
+    w = world
+    rows = many(w, 12)
+    cmd = ["bash", "--posix", str(SCRIPT), "--dest", str(w["dest"]), "--sources", str(w["src"]), "--pause", "0",
+           "--jobs", "3", str(jobs(w, rows))]
+    r = subprocess.run(cmd, env=w["env"], capture_output=True, text=True, timeout=120)
+    assert r.returncode == 0 and r.stdout.splitlines()[-1] == "DONE\tok=12\tskip=0\tfail=0", r.stdout + r.stderr
+    for name, f, _u, _m, _l in rows:
+        assert (w["dest"] / name / f).read_bytes() == gdata(int(f[1:4]))
+    assert sorted(c[-1] for c in calls(w)) == sorted(r_[2] for r_ in rows)
+    no_run_left(w)
+
+
+@pytest.mark.covers("R-22")
+def test_r22_check_reads_the_same_with_jobs(world):
+    w = world
+    lst = jobs(w, good_rows())
+    a = run(w, lst, args=("--check",))
+    b = run(w, lst, args=("--check", "--jobs", "8"))
+    assert a.returncode == b.returncode == 0 and a.stdout == b.stdout, b.stdout + b.stderr
+    assert calls(w) == [] and not w["dest"].exists()
+
+
+@pytest.mark.covers("R-22")
+def test_r22_the_same_destination_twice_is_refused_under_jobs_as_with_one(world):
+    w = world
+    rows = good_rows(keys=("fa", "gz"))
+    r = run(w, jobs(w, rows + rows[:1]), args=("--jobs", "4"))
+    assert r.returncode == 2 and "twice" in r.stderr, r.stdout + r.stderr
+    a, b = jobs(w, rows, name="a.tsv"), jobs(w, rows[1:], name="b.tsv")
+    r = run(w, a, b, args=("--jobs", "2"))
+    assert r.returncode == 2 and "twice" in r.stderr, r.stdout + r.stderr
+    assert calls(w) == [] and not w["dest"].exists()
+
+
+@pytest.mark.covers("R-22")
+@pytest.mark.parametrize("value", ["0", "9", "x", "", "-1", "1.5", "04"])
+def test_r22_a_jobs_value_outside_1_to_8_is_refused_before_any_request(world, value):
+    w = world
+    r = run(w, jobs(w, good_rows()), args=("--jobs", value))
+    assert r.returncode == 2 and "from 1 to 8" in r.stderr, r.stdout + r.stderr
+    assert calls(w) == [] and not w["dest"].exists()
+
+
+@pytest.mark.covers("R-22")
+def test_r22_the_pause_is_taken_by_each_worker_after_each_file_it_lands(pworld):
+    w = pworld
+    (w["tmp"] / "bin" / "sleep").write_text(SLEEP.format(python=sys.executable))
+    (w["tmp"] / "bin" / "sleep").chmod(0o755)
+    env = dict(w["env"], SLEEP_LOG=str(w["tmp"] / "sleeps.jsonl"))
+    rows = many(w, 8)
+    r = run(w, jobs(w, rows), args=("--jobs", "2", "--pause", "7"), env=env)
+    assert r.returncode == 0, r.stdout + r.stderr
+    pauses = [json.loads(x) for x in (w["tmp"] / "sleeps.jsonl").read_text().splitlines()]
+    pauses = [x["ppid"] for x in pauses if x["args"] == ["7"]]
+    fetches = [json.loads(x)["ppid"] for x in Path(w["env"]["STUB_LOG"]).read_text().splitlines()]
+    assert len(pauses) == 8 and len(set(fetches)) == 2
+    assert sorted(pauses) == sorted(fetches), "a pause was not taken by the worker that landed the file"
+
+
+@pytest.mark.covers("R-22")
+@pytest.mark.parametrize("sig", [signal.SIGTERM, signal.SIGINT])
+def test_r22_a_stop_ends_every_worker_leaves_no_partial_and_releases_the_lock(pworld, sig):
+    w = pworld
+    rows = many(w, 9)
+    lst = jobs(w, rows)
+    p = start(w, lst, args=("--jobs", "3"))
+    try:
+        poll(lambda: len(running(w)) == 3 and len(partials(w)) == 3, p, w, "3 transfers with their partials")
+        stubs = [int(m.name.split(".")[1]) for m in running(w)]
+        workers = {int(m.read_text()) for m in running(w)}
+        p.send_signal(sig)
+        assert p.wait(timeout=60) == 130, said(w)
+    finally:
+        if p.poll() is None:
+            p.kill()
+    assert "stopped by a signal" in said(w) and "DONE" not in said(w)
+    poll(lambda: not any(alive(x) for x in stubs + list(workers)), what="the workers and their transfers to end")
+    assert not partials(w), partials(w)
+    assert not [p_ for p_ in w["dest"].rglob("*.fasta")], "a file landed although every transfer was stopped"
+    no_run_left(w)
+    (w["gate"] / "open").write_text("")
+    r = run(w, lst, args=("--jobs", "3"))
+    assert r.returncode == 0 and r.stdout.splitlines()[-1] == "DONE\tok=9\tskip=0\tfail=0", r.stdout + r.stderr
+    for name, f, _u, _m, _l in rows:
+        assert (w["dest"] / name / f).read_bytes() == gdata(int(f[1:4]))
+    assert not partials(w)
+
+
+@pytest.mark.covers("R-22")
+def test_r22_a_worker_that_is_killed_stops_the_run_and_a_rerun_fetches_the_rest(pworld):
+    w = pworld
+    rows = many(w, 6)
+    lst = jobs(w, rows)
+    p = start(w, lst, args=("--jobs", "2"))
+    try:
+        poll(lambda: len(running(w)) == 2, p, w, "2 transfers open at once")
+        marks = running(w)
+        victim, orphan = int(marks[0].read_text()), int(marks[0].name.split(".")[1])
+        os.kill(victim, signal.SIGKILL)
+        assert p.wait(timeout=60) == 1, said(w)
+    finally:
+        if p.poll() is None:
+            p.kill()
+    assert "ended without finishing a share" in said(w) and "DONE" not in said(w)
+    assert not alive(orphan), "the killed worker's transfer outlived the run, which released the lock"
+    no_run_left(w)
+    (w["gate"] / "open").write_text("")
+    r = run(w, lst, args=("--jobs", "2"))
+    assert r.returncode == 0 and r.stdout.splitlines()[-1] == "DONE\tok=6\tskip=0\tfail=0", r.stdout + r.stderr
+    assert not partials(w)
+
+
+@pytest.mark.covers("R-22")
+def test_r22_a_worker_whose_run_was_killed_stops_before_its_next_file(pworld):
+    w = pworld
+    rows = many(w, 6)
+    lst = jobs(w, rows)
+    p = start(w, lst, args=("--jobs", "2"))
+    try:
+        poll(lambda: len(running(w)) == 2, p, w, "2 transfers open at once")
+        workers = [int(m.read_text()) for m in running(w)]
+        p.kill()  # SIGKILL: the run cannot end its workers
+        p.wait(timeout=60)
+    finally:
+        (w["gate"] / "open").write_text("")
+    poll(lambda: not any(alive(x) for x in workers), what="both workers to stop")
+    assert len(calls(w)) == 2, "a worker started a file after its run had ended"
+    assert said(w).count("has ended: a worker stops before") == 2, said(w)
+    assert len(list(w["dest"].rglob("*.fasta"))) == 2 and not partials(w)
+    r = run(w, lst, args=("--jobs", "2"))  # the lock of the killed run: its pid and its workers are gone
+    assert r.returncode == 0 and r.stdout.splitlines()[-1] == "DONE\tok=4\tskip=2\tfail=0", r.stdout + r.stderr
+
+
+@pytest.mark.covers("R-22")
+def test_r22_a_lock_whose_run_has_ended_is_not_taken_while_a_worker_of_it_lives(world):
+    w = world
+    lock = w["dest"] / ".fetch_to_tower.lock"
+    lock.mkdir(parents=True)
+    dead = subprocess.Popen(["true"])
+    dead.wait()
+    (lock / "pid").write_text(str(dead.pid))
+    (lock / "workers").write_text(f"{dead.pid} {os.getpid()}\n")  # this test process stands for a live worker
+    r = run(w, jobs(w, good_rows()), args=("--jobs", "2"))
+    assert r.returncode == 3 and "worker" in r.stderr, r.stdout + r.stderr
+    assert calls(w) == [] and lock.exists()
+    (lock / "workers").write_text(f"{dead.pid}\n")
+    r = run(w, jobs(w, good_rows()))
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert not lock.exists()
+
+
+# --- review of 2026-11-27: transfers that outlive a worker, the write lock, a stop inside the bookkeeping ----------------
+
+
+@pytest.mark.covers("R-22")
+def test_r22_a_transfer_that_outlives_its_killed_worker_keeps_the_lock_until_it_ends(pworld):
+    w = pworld
+    rows = many(w, 4)
+    lst = jobs(w, rows)
+    lock = w["dest"] / ".fetch_to_tower.lock"
+    p = start(w, lst, args=("--jobs", "2"), env=dict(w["genv"], STUB_IGNORE_TERM=rows[0][2]))
+    orphan = None
+    try:
+        poll(lambda: len(running(w)) == 2 and bool(list(w["gate"].glob("ignoring.*"))), p, w,
+             "2 transfers open, one that ignores TERM")
+        ig = next(w["gate"].glob("ignoring.*"))
+        orphan, victim = int(ig.name.split(".")[1]), int(ig.read_text())
+        os.kill(victim, signal.SIGKILL)
+        assert p.wait(timeout=60) == 1, said(w)
+        assert alive(orphan), "the stub transfer should still run: it ignores TERM"
+        assert lock.exists(), "the lock was released while a transfer of the run could still write"
+        n = len(calls(w))
+        r = run(w, lst, args=("--jobs", "2"))
+        assert r.returncode == 3 and "transfer" in r.stderr, r.stdout + r.stderr
+        assert len(calls(w)) == n, "a rerun made a request while the old transfer ran"
+    finally:
+        (w["gate"] / "open").write_text("")
+        if p.poll() is None:
+            p.kill()
+    poll(lambda: not alive(orphan), what="the orphaned transfer to end")
+    r = run(w, lst, args=("--jobs", "2"))
+    assert r.returncode == 0 and r.stdout.splitlines()[-1] == "DONE\tok=4\tskip=0\tfail=0", r.stdout + r.stderr
+    for name, f, _u, _m, _l in rows:
+        assert (w["dest"] / name / f).read_bytes() == gdata(int(f[1:4]))
+    assert not partials(w)
+    no_run_left(w)
+
+
+def mv_env(w: dict, after: bool = False) -> tuple[Path, dict]:
+    """Stub `mv` and `sleep` first on PATH; the real mv is the one this test process finds."""
+    for name, text in (("mv", MV), ("sleep", SLEEP)):
+        (w["tmp"] / "bin" / name).write_text(text.format(python=sys.executable))
+        (w["tmp"] / "bin" / name).chmod(0o755)
+    gate = w["tmp"] / "mvgate"
+    gate.mkdir()
+    env = dict(w["env"], STUB_MV_GATE=str(gate), REAL_MV=shutil.which("mv"), SLEEP_LOG=str(w["tmp"] / "sleeps.jsonl"))
+    if after:
+        env["STUB_MV_AFTER"] = "1"
+    return gate, env
+
+
+def sleeps(w: dict) -> list[dict]:
+    p = w["tmp"] / "sleeps.jsonl"
+    out = []
+    for line in (p.read_text().splitlines() if p.exists() else []):
+        try:
+            out.append(json.loads(line))
+        except json.JSONDecodeError:  # a line being written
+            pass
+    return out
+
+
+def holder_and_waiter(gate: Path, w: dict):
+    """(mv stub pid, the worker holding the write lock, a worker waiting for it), or None while not yet so."""
+    marks = list(gate.glob("mv.*"))
+    if not marks:
+        return None
+    holder = json.loads(marks[0].read_text())["ppid"]
+    waiters = [x["ppid"] for x in sleeps(w) if x["args"] == ["0.1"] and x["ppid"] != holder]
+    return (int(marks[0].name.split(".")[1]), holder, waiters[0]) if waiters else None
+
+
+@pytest.mark.covers("R-22")
+def test_r22_workers_of_a_killed_run_that_wait_for_the_write_lock_end(world):
+    w = world
+    gate, env = mv_env(w)
+    p = start(w, jobs(w, many(w, 2)), args=("--jobs", "2"), env=env)
+    hw = None
+    try:
+        poll(lambda: holder_and_waiter(gate, w) is not None, p, w, "one worker in its move, one waiting for the lock")
+        hw = holder_and_waiter(gate, w)
+        stub, holder, waiter = hw
+        p.kill()  # the run first (SIGKILL), then the holder of the write lock: nobody will release it
+        p.wait(timeout=60)
+        os.kill(holder, signal.SIGKILL)
+        os.kill(stub, signal.SIGKILL)
+        poll(lambda: not alive(waiter), what="the worker waiting for the write lock to end", timeout=30)
+    finally:
+        (gate / "open").write_text("")
+        if p.poll() is None:
+            p.kill()
+        for pid in (hw or ())[1:]:
+            if alive(pid):
+                os.kill(pid, signal.SIGKILL)  # not to leave a spinning worker behind when the test fails
+
+
+@pytest.mark.covers("R-22")
+def test_r22_a_worker_killed_while_it_holds_the_write_lock_does_not_hang_the_run(world):
+    w = world
+    gate, env = mv_env(w)
+    p = start(w, jobs(w, many(w, 2)), args=("--jobs", "2"), env=env)
+    try:
+        poll(lambda: holder_and_waiter(gate, w) is not None, p, w, "one worker in its move, one waiting for the lock")
+        stub, holder, waiter = holder_and_waiter(gate, w)
+        os.kill(holder, signal.SIGKILL)
+        os.kill(stub, signal.SIGKILL)
+        assert p.wait(timeout=60) == 1, said(w)
+    finally:
+        (gate / "open").write_text("")
+        if p.poll() is None:
+            p.kill()
+    assert "ended without finishing a share" in said(w)
+    assert not alive(waiter)
+    no_run_left(w)
+
+
+@pytest.mark.covers("R-22")
+def test_r22_a_stop_between_the_move_and_its_records_writes_the_records_first(world):
+    w = world
+    gate, env = mv_env(w, after=True)
+    rows = many(w, 2)
+    lst = jobs(w, rows)
+    p = start(w, lst, args=("--jobs", "2"), env=env)
+    try:
+        poll(lambda: bool(list(gate.glob("mv.*"))), p, w, "a file moved into place, its records not yet written")
+        m = json.loads(next(gate.glob("mv.*")).read_text())
+        d, f = Path(m["dir"]), m["file"]
+        assert (d / f).is_file() and f not in (d / "SHA256SUMS").read_text()
+        os.kill(m["ppid"], signal.SIGTERM)  # delivered while the worker waits for its mv
+        (gate / "open").write_text("")
+        assert p.wait(timeout=60) == 1, said(w)
+    finally:
+        (gate / "open").write_text("")
+        if p.poll() is None:
+            p.kill()
+    data = gdata(int(f[1:4]))
+    assert f"{sha(data)}  {f}" in (d / "SHA256SUMS").read_text().splitlines(), "a stop left a file in place unrecorded"
+    assert [x for x in (d / "SOURCE_URLS.tsv").read_text().splitlines() if x.split("\t")[0] == f]
+    name = d.relative_to(w["dest"]).as_posix()
+    r = run(w, lst, args=("--jobs", "2"), env={k: v for k, v in env.items() if k not in ("STUB_MV_GATE", "STUB_MV_AFTER")})
+    assert r.returncode == 0 and f"SKIP\t{name}\t{f}" in r.stdout, r.stdout + r.stderr
+    assert not partials(w)
+
+
+@pytest.mark.covers("R-22")
+def test_r22_ctrl_c_to_the_process_group_stops_the_run_as_a_signal_to_it_does(pworld):
+    w = pworld
+    rows = many(w, 6)
+    lst = jobs(w, rows)
+    p = start(w, lst, args=("--jobs", "3"), new_session=True)
+    try:
+        poll(lambda: len(running(w)) == 3 and len(partials(w)) == 3, p, w, "3 transfers with their partials")
+        stubs = [int(m.name.split(".")[1]) for m in running(w)]
+        workers = {int(m.read_text()) for m in running(w)}
+        os.killpg(p.pid, signal.SIGINT)  # what Ctrl-C at a terminal does: every process of the group
+        assert p.wait(timeout=60) == 130, said(w)
+    finally:
+        if p.poll() is None:
+            os.killpg(p.pid, signal.SIGKILL)
+    assert "stopped by a signal" in said(w) and "DONE" not in said(w)
+    poll(lambda: not any(alive(x) for x in stubs + list(workers)), what="the workers and their transfers to end")
+    assert not partials(w)
+    no_run_left(w)
+    (w["gate"] / "open").write_text("")
+    r = run(w, lst, args=("--jobs", "3"))
+    assert r.returncode == 0 and r.stdout.splitlines()[-1] == "DONE\tok=6\tskip=0\tfail=0", r.stdout + r.stderr

@@ -68,6 +68,31 @@ sh scripts/orchestrator/fetch_to_tower.sh --check --sources sources.yaml scripts
 sh scripts/orchestrator/fetch_to_tower.sh --sources sources.yaml scripts/orchestrator/tower_jobs/<list>.tsv
 ```
 
+### Several connections (`--jobs N`, card R-22)
+
+`--jobs N` (1 to 8, default 1) fetches N files of the lists at a time, each by its own worker process over its own
+connection, inside the one run that holds the destination's lock. Use it for a list of many small files from one host,
+where the time goes into opening a connection for each file rather than into moving bytes: `EEMC1` (list 22) landed 325
+files in its first 124 minutes at one connection, about 23 s a file (*measured*, `tower`, 2026-11-27, card R-22's
+"Why"). For a few large files it gains little. A provider's stated connection limit comes first: for CNGB and NCBI ftp
+stay at 4 unless the provider says more. `--pause` is taken by each worker after each file it lands, so keep `--pause 0`
+for list 22.
+
+```
+sh scripts/orchestrator/fetch_to_tower.sh --sources sources.yaml --pause 0 --jobs 4 scripts/orchestrator/tower_jobs/22_later_batch7_EEMC1.tsv
+```
+
+Every rule of one connection holds per file. The log keeps one whole line per file, in the order files end, not in list
+order, and the run's last line counts `ok`, `skip` and `fail` over all workers. A `STOP` file ends each worker before its
+next file. `TERM` or `INT` ends every worker and its transfer, removes their `.partial` files and releases the lock; a
+rerun fetches what is missing. `--jobs` above 1 needs bash 4.3 or later and is refused on an older bash.
+
+The lock (`.fetch_to_tower.lock`) names the run, its workers and each open transfer (`pid`, `workers`, `curl.<K>`), and
+a new run refuses it while any of them lives. Pids can be reused, so after a run was killed with `SIGKILL` look for
+leftover workers and `curl` processes (`ps`) before you clear a lock by hand. curl's own error messages (`-S`) go to
+stderr outside the line lock: each is a whole line, but their order against the run's lines is not kept. A run killed
+with `SIGKILL` also leaves its temporary directory (`fetch_to_tower.XXXXXX` under `$TMPDIR` or `/tmp`) behind.
+
 A job already in its directory's `SHA256SUMS` is skipped. Two lists write into directories that already hold landed
 files: `12_later_batch6b_direct.tsv` (`RNA_VIROID/`) and `18_later_rescue.tsv` (`DSV70/`, `EUK_Y1000/`). None of
 their jobs has landed. The lock of `fetch_to_tower.sh` does not see the old `_fetch_batch2.sh` runs of batches 4 and 5.
