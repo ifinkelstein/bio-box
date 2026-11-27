@@ -993,23 +993,91 @@ The two selection rules:
    `.publishing.json` intent file) is named with its reason and left out, never waited for.
 
 Always run `--dry-run` first. It binds the root read-only, writes nothing, and prints the next
-release name, the ordered stage list, any excluded stages, the clustering estimate (or the earlier
-release whose clustering card B-49 will reuse), and the thread plan by the hour:
+release name, the ordered stage list, any excluded stages, one "Clustering:" line (the earlier
+release whose clustering card B-49 will reuse, or the estimate and the cut), and the thread plan by the hour:
 
 ```bash
-ROOT=/tmp/if2453/r10/root TREE="$TREE" \
+ROOT=/tmp/if2453/r10/root WORK=/tmp/if2453/c46/train_next TREE="$TREE" \
   bash "$TREE/scripts/stress/build_stage_pod/release_train.sh" --dry-run
 ```
 
+What the dry run does not print (card R-16, found by reading `train_plan.py` `format_plan`, 2026-11-26): the
+clustering method, and the cost of a hybrid method. Its "Clustering:" figure is `stage.cluster_cpu_min`, the cascade's
+cost law applied to the protein count, whatever `CLUSTER_METHOD` is, so at 265 M proteins it prints a number of about
+120,000 CPU-minutes (*derived* by the review of 2026-11-26, section 6.7) that the hybrid train does not run; do not
+compare it with the 36,570 CPU-minutes the hybrid plan is priced at (DEC-77, *derived*). The method is passed to the
+planner (`--cluster-method`) and is stored in `$WORK/plan.json` (key `cluster_method`); the hybrid estimate is
+`$WORK/estimate/before.json` (key `cluster_method` again), which `run` writes after the plan and the verification of
+the earlier releases, so it can be read only once the launch is under way. What the dry run does print and what to read
+in it, before a launch:
+
+- `Next release:` the name you expect (`r26.12.<n>` in December, DEC-81 (7)).
+- `Stages (<k>):` the earlier release's stages in their recorded order, then the new ones; `<k>` is the number you
+  expect. `Excluded stages: none`; any stage named there is left out of the release (stop and ask the PI).
+- `Action:` a first launch (`cut`). Stop at `resume`, `refused` or `noop`: a `WORK` that is not fresh, a release left
+  unfinished, or nothing new to cut.
+- The `Clustering:` line: for a first release with a hybrid method no `REUSE`, and in `cut=` the keys `part_cpu_min`
+  (240.0) and `one_process_cpu_min_max` (20000.0) and no `parts` key. A `parts` key means a forced count (below): stop.
+
 If zero new stages are complete since the latest release, `release_train.sh run` exits cleanly
-without cutting a duplicate release. Pass `--same-stages` (and `--parts` matching the earlier
-release's cut, e.g. `--parts 24`) to cut a release over the same stages after adding a feature
-producer or library (DEC-52 (3)); clustering is then reused automatically via card B-49:
+without cutting a duplicate release. Pass `--same-stages` to cut a release over the same stages after adding a feature
+producer or library (DEC-52 (3)); clustering is then reused automatically via card B-49, and only when the new plan's
+cut equals the earlier release's, so give `--parts` only if that release was cut with a forced count (`r26.11.3` was
+not):
 
 ```bash
-ROOT=/tmp/if2453/r10/root TREE="$TREE" \
-  bash "$TREE/scripts/stress/build_stage_pod/release_train.sh" --dry-run --same-stages --parts 24
+ROOT=/tmp/if2453/r10/root WORK=/tmp/if2453/c46/train_next TREE="$TREE" \
+  bash "$TREE/scripts/stress/build_stage_pod/release_train.sh" --dry-run --same-stages
 ```
+
+**No `--parts` for a release of real size (DEC-82 (5), (7)).** `--parts K` (or `PARTS=K`) is handed to `build-stage` as
+`--cluster-parts K`, which forces K parts for every call in place of the part budget: the plan's cut then holds `parts`
+and no `part_cpu_min` (`stage.py` `_cut_args`, lines 2429 and 2430; `l2/cluster.py` `_plan_cut`, line 1443). Both
+exemptions read `part_cpu_min` and find none: DEC-29's one-process call is decided against it (`l2/cluster.py` lines
+1785 to 1787, "A forced count is never DEC-29's case") and DEC-77's shared-index `createindex` is exempt only under it
+(line 1719, which returns nothing without it). With `--parts 24` the 24 parts of NR50 step 1 would each rebuild the
+k-mer table of about 95 M targets, about 330 CPU-minutes each (*derived* by the review, section 6.6), over the 280
+CPU-minute guard, and the one-process `createindex` would be ended at 280 (*inferred* from the code by the same review). A
+forced count is for fixtures and trials only (the rehearsal forces `--parts 2` on three small genomes); a value below 1
+is refused. `r26.11.3` was launched without it, and so is every launch below.
+
+**The order before a launch of the release train** (DEC-82 (4), (5), (6)):
+
+1. The rehearsal with the method you will launch is in hand. For `hybrid-b1` it passed on `wilkcomp02` on 2026-11-26
+   (*measured*: unit `train-rh-hybrid`, `WORK=/tmp/if2453/c46/rh_hybrid`, the lines "rehearsal: OK ..." and "checks: all
+   pass"); it is run again only if the code changed since. Command, for the record:
+   `WORK=/tmp/if2453/c46/rh_hybrid TREE="$TREE" CLUSTER_METHOD=hybrid-b1 bash "$TREE/scripts/stress/build_stage_pod/release_train.sh" rehearse`
+   (small units of at most 4 threads and 8 GB; needs a quiet pod). It proves that a hybrid release is cut after a cascade
+   one, verified, packed and reused; it never reaches DEC-29, DEC-77, pruning at size or the space guards.
+2. A fresh `WORK`: a directory that does not exist (the dry run and the launch name the same one; a `WORK` that has a
+   `plan.json` is a resume, above):
+
+   ```bash
+   test ! -e /tmp/if2453/c46/train_next
+   ```
+
+3. `--dry-run` with that `WORK` (the command above), read as listed there.
+4. The space check. `/tmp` carries the scratch, the release files and the pack on one disk, and the pack build has no
+   free-space guard (`release_train.sh` lines 824 to 835, run outside `r50_watch.py`), so a shortage there is `ENOSPC`
+   and not a clean stop:
+
+   ```bash
+   df -B1G /tmp
+   ```
+
+   The review's figures for `r26.11.4` (`planning/measurements/2026-11-26_dec77_review.md` section 6.5), all its
+   estimates and not measurements: scratch 230 to 280 GB above `TMP_MIN_GB=100`, so 330 to 380 GB free at the start
+   (*estimate*); release files about 113 GB (*derived*: `r26.11.3`'s 43.7 GB times 2.59); the pack about 210 to 230 GB
+   (*derived*: 89.0 GB times 2.39 to 2.59). The release files and the pack come after the clustering has pruned its
+   scratch, so the scratch and those two need not be on disk together, but do not start where the free space is below
+   the scratch figure, and the train itself refuses below `START_MIN_GB=250`. Free was 426 GiB at 13:20 on 2026-11-26
+   (*measured*, `df -B1G`, by the review) before the stages still to build, which add perhaps 100 GB (*estimate*).
+5. If the space is short, retire the oldest release that may be retired, as DEC-83 allows: oldest first, through
+   `bio-box release retire` only, with the tar and `tower` checks of "Retiring an old release" (section 9), never the
+   newest published release and never a signed `rS` release; record it in `STATUS.md` with the command, the tar and
+   both sha256 values. `r26.11.2` may go before the train although it leaves `r26.11.3` the only release that can be
+   searched until the train ends. Check `df -B1G /tmp` again.
+6. Only then launch.
 
 To cut the release on the pod, launch `release_train.sh run` in a small host-side driver unit. It
 checks `$ROOT/STOP`, active build units, and `/tmp` free space; verifies every earlier release and
@@ -1032,7 +1100,8 @@ not a plain `mmseqs linclust` call, DEC-78), then a two-step cascade (`-s 1,2`) 
 `r26.11.3`, and the default of `bio-box build-stage --cluster-method` and `bio-box release cluster plan`),
 `hybrid-a` and `linclust`. The method is in the plan (`PLAN_FORMAT = 2`, key `method`); a resumed train keeps
 the method of its first launch, and a release never reuses the clustering of a release made with another
-method. `--dry-run` prints the method with the estimate. With a hybrid method the finish is two steps
+method. `--dry-run` does not print the method (card R-16, above); it is in `$WORK/plan.json` and `$WORK/estimate/before.json`
+once `run` has started. With a hybrid method the finish is two steps
 (`cluster.finish.nr90`, `cluster.finish.nr50`), and intermediates of MMseqs2 that no later step reads are
 removed from the scratch as soon as the step after them is recorded (`clean_consumed`; the removals are
 listed in `<work dir>/.pruned.json`). The train's guards default to `TMP_MIN_GB=100`, `SCRATCH_MAX_GB=350`
@@ -1040,14 +1109,32 @@ and `START_MIN_GB=250`. A `cluster_uid` is made from a cluster's members and the
 not contain the method: a cluster whose members are the same keeps its `cluster_uid` across methods, and the
 share of clusters whose members change with the method is measured in
 `planning/measurements/2026-11-24_c38c_linclust_vs_cascade.md`. The first release train with a hybrid method
-(`r26.11.4`) is launched only after the PI's review of the three cards (DEC-77 (5)).
+(`r26.11.4`) was held for the PI's review of the three cards (DEC-77 (5)); he signed it on 2026-11-26 (DEC-82), on the
+conditions that the rehearsal has passed, the dry run shows what is listed above and `df` shows the space.
+
+Launch, once the steps above are done. No `--parts`; the thread defaults of DEC-82 (5) are `T=18 J=2 CPUS=18 Q=40`
+(`release_train.sh` lines 50 to 53) and are not set here: do not pass 80 threads for clustering (the parts then pass
+280 CPU-minutes, STATUS W1, W3). With them the clustering is planned at about 15 to 19 h (*derived*, DEC-82 (5)). The
+`WORK` is the one the dry run used; the log directory is made first because `systemd-run` does not make it:
+
+```bash
+mkdir -p /tmp/if2453/c46/train_next
+```
 
 ```bash
 systemd-run --user --unit=c46-driver-run --collect -p MemoryMax=4G -p MemorySwapMax=0 \
-  -p StandardOutput=append:/tmp/if2453/c46/train/driver.out \
-  -p StandardError=append:/tmp/if2453/c46/train/driver.out \
-  nice -n 19 bash "$TREE/scripts/stress/build_stage_pod/release_train.sh" run --parts 24
+  -p StandardOutput=append:/tmp/if2453/c46/train_next/driver.out \
+  -p StandardError=append:/tmp/if2453/c46/train_next/driver.out \
+  nice -n 19 bash "$TREE/scripts/stress/build_stage_pod/release_train.sh" run \
+  --root /tmp/if2453/r10/root --work /tmp/if2453/c46/train_next
 ```
+
+Use another `--unit` name if `c46-driver-run` is still known to `systemctl --user`. To watch it: `systemctl --user status
+c46-driver-run`; `tail -n 20 /tmp/if2453/c46/train_next/driver.log` (the driver's lines, with `FAILED:` on a stop);
+`ls /tmp/if2453/c46/train_next/run/*/` for each unit's `rates.jsonl` and `guard.jsonl`; and in the first hours
+`/tmp/if2453/c46/train_next/estimate/before.json` (the hybrid estimate and its method), the first `.cut` run records
+and `scratch_peak`, which the dry run and the rehearsal cannot show (the review, section 7). `$WORK/DONE` is the success
+marker. `df -B1G /tmp` shows the space as the clustering runs.
 
 **After a guard stop.** When the rate guard stops the unit (`FAILED: rate guard >20% over estimate` in
 `$WORK/driver.log`; each check's line is in `$WORK/run/<unit>/rates.jsonl`), the root is left at its last published
