@@ -509,3 +509,97 @@ def test_a_file_of_64_mib_lands_on_stor_and_no_small_file_is_written_there(world
     assert all(size >= MIB64 for size, _, _ in landed.values())  # no SHA256SUMS on /stor
     log = w["log"].read_text()
     assert entries[0][1] in log and "SHA256SUMS: not written" in log
+
+
+# --- card R-18: --space-as-underscore ---------------------------------------------------------------------------------
+
+OPT = "--space-as-underscore"
+
+
+def add_file(w: dict, rel: str, data: bytes) -> tuple[str, str]:
+    (w["src"] / rel).write_bytes(data)
+    return rel, sha(data)
+
+
+def test_r18_a_space_is_refused_without_the_option_and_the_message_names_it(world):
+    w = world
+    rel, h = add_file(w, "a b.tar", b"spaced bytes")
+    r = run(w, lst=write_list(w, [(rel, h)]))
+    assert r.returncode == 2, r.stdout + r.stderr
+    assert OPT in r.stderr
+    assert calls(w) == []
+
+
+@pytest.mark.parametrize("streams", ["1", "2"])
+def test_r18_with_the_option_a_spaced_name_lands_under_its_underscore_name(world, streams):
+    w = world
+    data = bytes(random.Random(18).getrandbits(8) for _ in range(50_000))
+    rel, h = add_file(w, "a b.tar", data)
+    nested = "dir one/c d e.tsv"
+    (w["src"] / "dir one").mkdir()
+    entries = [add_file(w, nested, b"nested spaced")] + [(rel, h)]
+    before = tree(w["src"])
+    r = run(w, OPT, "--streams", streams, lst=write_list(w, entries))
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert (w["dst_local"] / "a_b.tar").read_bytes() == data
+    assert (w["dst_local"] / "dir_one" / "c_d_e.tsv").read_bytes() == b"nested spaced"
+    assert not (w["dst_local"] / "a b.tar").exists()
+    assert not partials(w)
+    assert sums_lines(w) == sums_of([("a_b.tar", h), ("dir_one/c_d_e.tsv", sha(b"nested spaced"))])
+    log = w["log"].read_text()
+    assert "a b.tar" in log and "a_b.tar" in log and f"sha256 {h}" in log
+    assert (w["src"] / "a b.tar").read_bytes() == data and tree(w["src"]) == before
+
+
+def test_r18_dry_run_lists_the_pod_name_and_writes_nothing(world):
+    w = world
+    rel, h = add_file(w, "Dereplicated genomes.zip", b"zip bytes")
+    r = run(w, OPT, "--dry-run", lst=write_list(w, [(rel, h)]))
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "Dereplicated genomes.zip" in r.stdout and "Dereplicated_genomes.zip" in r.stdout
+    assert not w["dst_local"].exists() and not w["log"].exists()
+
+
+@pytest.mark.parametrize("name", ["a  b.tar", " a.tar", "a.tar ", "a b.tar ", "a ;b.tar", "d/ e.tar", "d /e.tar", "a\tb.tar"])
+def test_r18_with_the_option_other_spacings_are_still_refused_before_any_call(world, name):
+    w = world
+    p = w["tmp"] / "bad.tsv"
+    p.write_text(f"README.txt\t{sha(w['files']['README.txt'])}\n{name}\t{'c' * 64}\n")
+    r = run(w, OPT, lst=p)
+    assert r.returncode == 2, r.stdout + r.stderr
+    assert calls(w) == []
+    assert not w["dst_local"].exists()
+
+
+@pytest.mark.parametrize("pair", [("a b.tar", "a_b.tar"), ("a_b.tar", "a b.tar")])
+def test_r18_two_lines_with_one_pod_name_are_refused_before_any_call(world, pair):
+    w = world
+    p = w["tmp"] / "dup.tsv"
+    p.write_text(f"{pair[0]}\t{'c' * 64}\n{pair[1]}\t{'d' * 64}\n")
+    r = run(w, OPT, lst=p)
+    assert r.returncode == 2, r.stdout + r.stderr
+    assert calls(w) == []
+
+
+def test_r18_a_pod_name_that_is_the_relays_own_is_refused(world):
+    w = world
+    p = w["tmp"] / "own.tsv"
+    p.write_text(f"x y.partial\t{'c' * 64}\n")
+    r = run(w, OPT, lst=p)
+    assert r.returncode == 2, r.stdout + r.stderr
+    assert calls(w) == []
+
+
+@pytest.mark.parametrize("name", ["a b.tar", "a =sh", "a ,b"])
+def test_r18_the_tower_path_is_one_single_quoted_word(world, name):
+    w = world
+    data = name.encode() + b" content"
+    rel, h = add_file(w, name, data)
+    r = run(w, OPT, lst=write_list(w, [(rel, h)]))
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert (w["dst_local"] / name.replace(" ", "_")).read_bytes() == data
+    tower_cmds = host_cmds(w, "tower")
+    assert f"cat -- '{w['src']}/{name}'" in tower_cmds, tower_cmds
+    for c in host_cmds(w, "tower") + host_cmds(w, "pod"):
+        assert name not in re.sub(r"'[^']*'", "''", c), c
+    assert not [c for c in host_cmds(w, "pod") if name in c], "the tower name reached the pod"

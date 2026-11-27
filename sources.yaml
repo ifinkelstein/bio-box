@@ -560,7 +560,64 @@ sources:
       c57db3d185ad60c2a7d79cf517bc37450705b499846feda1f6be6b57dc7b247b, 306,260 member files across 31 chunks, extracting
       the 7,139 .fa.gz files of proposed stage G1 (2,903,786,890 bytes on disk, 10,087,932,724 FASTA bytes, 1,227,287
       records, 10,051,402,938 bp) into /tmp/if2453/s3/globdb/genomes/G1/
-    stored: local only (/tmp on wilkcomp02); nothing under /stor
+    stored: >-
+      /stor/scratch/Wilke/if2453/fragdef/db/globdb-r226/ on wilkcomp02 (read-only to bio-box): the genome FASTA archive
+      globdb_r226_genome_fasta.tar.gz (251,371,669,660 bytes), with protein_fasta, gff_cog, taxonomy, tax_plus_stats,
+      dictionaries and md5sums, fetched 2026-10-23 by aria2c for another project (its README.txt there); md5.result
+      there reads "VERIFIED md5 6/6 files", the archive's md5 a34a10d72cd688ed518eb6c0e2c30d26 equal to
+      globdb_r226_md5sums.txt (read 2026-11-26, card C-75). Cards C-63 and C-75 streamed the archive from there. The
+      metadata tables of card C-41's fetch are also in /tmp/if2453/s3/globdb/dl/. (Corrected by card C-75: this field
+      said "local only (/tmp on wilkcomp02); nothing under /stor".)
+    staged:
+      - stage: GRARE1
+        object: /stor/scratch/Wilke/if2453/bio-box-staging/GRARE/grare1.fna.gz
+        bytes: 3148662820
+        sha256: 558ffa4e9461fc92e7f450d0c2c47133eeea338157209ea453b462d61d32b9c4
+        metadata_dir: /tmp/if2453/c75/meta/GRARE1/ (genomes.json sha256 ca6526002510c2e8bd123844d545ba75d4a69d03dce5734052ac14054f96d078; moved into /tmp/if2453/s2/inputs/GRARE1/ by card A-29)
+        derived_from: >-
+          globdb_r226_genome_fasta.tar.gz (md5 a34a10d72cd688ed518eb6c0e2c30d26), non_gtdb_stages.tsv (sha256
+          1b70c1f9…d755633bd98f), globdb_r226_tax_plus_stats.tsv.gz and card C-74's rekey_unbuilt.tsv (sha256
+          78022532…a11a72968f8988f)
+        rule: >-
+          scripts/stress/build_stage_pod/c75_grare_inputs.py (DEC-79): of the r226 non-GTDB species representatives no
+          stage holds (not G1, GART1, GART2), the archaea, the unclassified domain, the phyla with no GTDB genome and the
+          bacterial phyla with fewer than 1,000 non-GTDB genomes, phyla kept whole, cut in three by size; GRARE1 is the
+          archaea (733), the unclassified domain (754), the no-GTDB phyla (57) and the smallest minor phyla to
+          Latescibacterota (4,779 genomes, 1,659,970 distinct contigs, 11.583 Gbp; 4,768 code 11 and 11 code 25;
+          1,647,801 contigs / 11.369 Gbp new after the root and r26.11.4; r232 kept 1,817, replaced 3, dropped 2,959;
+          measured wilkcomp02 2026-11-26, planning/measurements/2026-11-26_grare_inputs.md); template
+          stages/templates/GRARE1.conf (DEPTH=called)
+        also_written: >-
+          by the same single pass, not a stage: /stor/scratch/Wilke/if2453/bio-box-staging/GRARE/globdb_r226_archaea.fna.gz
+          (every archaeon of GlobDB r226: 14,839 genomes, 6,967 of them GTDB R226, 2,166,084 records, 23,380,572,012 bp;
+          6,273,649,237 bytes, sha256 28e1ce80d2f1271b37d792ca6fd75941f9e2a536c7ec84940464e9b3cb3c8fca) with its list
+          /tmp/if2453/c75/meta/archaea/archaea_list.tsv (sha256
+          2d627c856c45523b97e914303a41e12b0359d4343bdc154314c10fe3bb0836ae), the ANI references of cards C-70 and C-78
+      - stage: GRARE2
+        object: /stor/scratch/Wilke/if2453/bio-box-staging/GRARE/grare2.fna.gz
+        bytes: 2825119398
+        sha256: 7d0d7800017c09a8fb3aa40dfd2eb06c84eb37e364fdcc34253c9921e1fc019b
+        metadata_dir: /tmp/if2453/c75/meta/GRARE2/ (genomes.json sha256 6973abf7e0435f416c0ca7c4d20f3b9156b44ad81d192afa9ef74429a2eed485; moved into /tmp/if2453/s2/inputs/GRARE2/ by card A-29)
+        derived_from: the same as GRARE1
+        rule: >-
+          c75_grare_inputs.py, the same rule: the minor phyla Fusobacteriota to Chlamydiota (3,806 genomes, 1,253,416
+          distinct contigs, 10.456 Gbp, all code 11; 1,244,827 contigs / 10.280 Gbp new after the root, r26.11.4 and
+          GRARE1; r232 kept 1,983, dropped 1,823; same note); template stages/templates/GRARE2.conf (DEPTH=called)
+      - stage: GRARE3
+        object: /stor/scratch/Wilke/if2453/bio-box-staging/GRARE/grare3.fna.gz
+        bytes: 2810598717
+        sha256: 6febb9ef5324c7ede8163c54184fd940e3b1d2084c06ae7e98a11e64b592dda2
+        metadata_dir: /tmp/if2453/c75/meta/GRARE3/ (genomes.json sha256 23e1e586691c90c436518171af2fe697e1794ee8bd0067fb3f6cb5b209d6a603; moved into /tmp/if2453/s2/inputs/GRARE3/ by card A-29)
+        derived_from: the same as GRARE1
+        rule: >-
+          c75_grare_inputs.py, the same rule: the minor phyla Desulfobacterota_I to Bdellovibrionota (3,638 genomes,
+          1,341,414 distinct contigs, 10.335 Gbp, all code 11; 1,333,589 contigs / 10.190 Gbp new after the root,
+          r26.11.4, GRARE1 and GRARE2; r232 kept 1,898, dropped 1,740; same note); template
+          stages/templates/GRARE3.conf (DEPTH=called)
+        left_for_later: >-
+          /tmp/if2453/c75/select/remainder.tsv (118,737 genomes, 316.64 Gbp, the 12 phyla with 1,000 or more non-GTDB
+          genomes, each with its r232 key; 26,346,957 bytes, sha256
+          803af01eb6f73b952452dac20ecc913178ff6d09d94ac0f7968c20bda0c4ed0f); DEC-59, planning/CATALOG_GOAL.md
     stage_inputs: >-
       proposed stage G1 (card C-41, first of G1..G41): /tmp/if2453/s2/inputs/G1/ on wilkcomp02, made by make_inputs.py
       prok (7,139 genomes, 1,227,222 distinct contigs, 10,048,202,556 bp; genomes.json sha256
@@ -2109,6 +2166,18 @@ sources:
       30 of 30 files by curl on tower, UTC 2026-11-25T21:55:03Z to 2026-11-25T21:56:05Z (_fetch_one.sh, -A curl);
       bytes and sha256 above measured on tower, copied from SOURCE_URLS.tsv on 2026-11-25 20:12 CST
     stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/ECE2/ (SOURCE_URLS.tsv and SHA256SUMS there)
+    fetched_pod: >-
+      30 of 30 files copied from tower to wilkcomp02 by scripts/orchestrator/relay_to_pod.sh (card C-73), 2026-11-26
+      18:56 CST: the 29 Inocle FASTA (9,557,311 bytes) to /tmp/if2453/c70/dl/ECE2/ and the pro-tycheposons archive
+      (134,806,177 bytes) to /stor/scratch/Wilke/if2453/bio-box-staging/ECE2/dl/, every sha256 equal to tower's SHA256SUMS
+      (the providers were not asked again)
+    staged: >-
+      card C-70, 2026-11-26: the 29 Inocles (circular, DEC-65 (1), none trimmed) and the 937 elements of the archive's
+      elements-pro/pro-623-elements.fna (501 Tycheposon, 436 cryptic; linear, byte-identical) as stage ECE2: 945 genomes,
+      945 contigs, 17,676,120 bp, none held by an earlier stage, in /tmp/if2453/c70/meta/ECE2/ on wilkcomp02, then to
+      tower:/mnt/user/research-bulk/bio-box/sources/ECE2/ (the second run's objects.json, Inocles redistributable false,
+      in its subdirectory c70_rev2/); the archive's host genome assemblies and its other files stay
+      out; planning/measurements/2026-11-26_c70_tier1_inputs.md
     approved: "by the PI, 2026-11-25 15:47 CST: \"stage the nucleotides ... on tower\" (the audit of 2026-11-25)"
   - name: tower_mir1
     what: >-
@@ -2146,6 +2215,17 @@ sources:
       Asfarviridae (African swine fever) isolate genomes and overlaps GV1 for 660 of 1,817 genomes (36.3%), by the
       Antigravity audit wish list (planning/measurements/2026-11-25_r26_11_5_wide_and_audit_wishlist.md, Part IV; not
       re-measured): filter before staging
+    fetched_pod: >-
+      10 of 10 files copied from tower to wilkcomp02 by scripts/orchestrator/relay_to_pod.sh (card C-73), 2026-11-26
+      18:57 to 18:58 CST: the six under 64 MiB to /tmp/if2453/c70/dl/MIR1/, the four larger to
+      /stor/scratch/Wilke/if2453/bio-box-staging/MIR1/dl/, every sha256 equal to tower's SHA256SUMS
+    staged: >-
+      card C-70, 2026-11-26: stage MIR1, 9,992 genomes, 65,360 contigs, 1,153,750,393 bp, 820,588,756 bp new (the 54
+      Poxviridae and 13 Asfarviridae references of the GOEV archive left out, and 508 GVMAG-named GOEV genomes that match
+      GV1 at ANI 95 over 85% of the shorter; the Bellas EVE loci included, more than 20 % over the card's estimate, taken
+      as measured by the orchestrating session), the four FASTA of 64 MiB and more in
+      /stor/scratch/Wilke/if2453/bio-box-staging/MIR1/, the rest in /tmp/if2453/c70/meta/MIR1/ on wilkcomp02, then to
+      tower:/mnt/user/research-bulk/bio-box/sources/MIR1/; planning/measurements/2026-11-26_c70_tier1_inputs.md section 3
     approved: "by the PI, 2026-11-25 15:47 CST: \"stage the nucleotides ... on tower\" (the audit of 2026-11-25)"
   - name: tower_gsv1
     what: >-
@@ -2164,7 +2244,11 @@ sources:
     approved: "by the PI, 2026-11-25 15:47 CST: \"stage the nucleotides ... on tower\" (the audit of 2026-11-25)"
   - name: tower_asg1
     what: >-
-      Data.zip from figshare file 60829597; the job list gives no description and the archive was not opened
+      Data.zip from figshare file 60829597 (the job list gives no description): the figure data of Appler et al. 2026,
+      read by card C-70 on 2026-11-26 (planning/measurements/2026-11-26_c70_tier1_inputs.md section 4): 12 inner zips of
+      1,178 predicted proteomes (869 Asgard archaea, 309 outgroups), protein alignments, trees and structure models;
+      the 404 study genomes are named (Fig1.zip 001_Fig1/08_PD/00_ThisStudy.tsv) without accessions; no genome
+      nucleotide sequence
     url: https://ndownloader.figshare.com/files/60829597
     files:
       - {file: "Data.zip", bytes: 4961607078, sha256: a6b0eb73a82963b91c3e073ea4fdc29c15832dcf669f2f6a2b5fba2bd218ff56, md5: bdcf212083b851812133c7cef5d2cd07}
@@ -5592,6 +5676,22 @@ sources:
     fetched: >-
       nothing yet: 3 files named in 2026-11-26_c72_part1.tsv, listed here before the fetch (card C-72, part 1)
     stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/GWV1/
+    fetched_pod: >-
+      3 of 3 files copied from tower:/mnt/user/research-bulk/bio-box/sources_incoming/GWV1/ to wilkcomp02 by
+      scripts/orchestrator/relay_to_pod.sh (card C-73), 2026-11-26 18:53 to 18:56 CST, each sha256 equal to tower's
+      SHA256SUMS (the provider was not asked again): GWVC.vOTUs.fna.gz (1,166,850,604 bytes, sha256
+      377d5f59b3d28a8a9f2218009042f673b54fdb86a5cf20dcc41c87484e26bef0) to
+      /stor/scratch/Wilke/if2453/bio-box-staging/GWV1/dl/; GWVC.vOTUs.information.txt (62,086,246, sha256
+      82e33893eaaf0b4f03e686fd1fd848d764e7243da818ee5e5cf5000eac563264) and GWVC.vOTUs.virus-host.linkage.txt
+      (59,543,590, sha256 24126ef80ef19463f7232a30549e31902f3572c80a1574ab9228aafa9e381bb3) to /tmp/if2453/c81/dl/GWV1/
+    staged: >-
+      card C-81, 2026-11-26: all 280,420 vOTU records (3,741,506,338 bp; DEC-65 (1): 5,210 exact DTRs trimmed by
+      710,277 bp and staged circular; 3,740,796,061 bp staged; 70 contigs held by H1, none by MV1, V2, V3, MV2) as stage
+      GWV1 in /tmp/if2453/c81/meta/GWV1/ and /stor/scratch/Wilke/if2453/bio-box-staging/GWV1/ (gwv1_gwvc.fna.gz and the
+      78 MB records.tsv) on wilkcomp02, then to tower:/mnt/user/research-bulk/bio-box/sources/GWV1/; a 2.9 % sample
+      share meets the vOTU threshold with MV1, V2, V3 or MV2 (recorded, not cut);
+      planning/measurements/2026-11-26_gwv1_sag3_wet1_inputs.md. redistributable: true (DEC-80 (3): the record states
+      cc-by-4.0)
     note: >-
       CPR.DPANN.genomes.tar.gz (43,339,586 bytes) is not taken: the record's description does not say what the
       archive holds (it points to 0README.txt, which was not read); DEC-79 (4) names it only if the description shows
@@ -5611,6 +5711,21 @@ sources:
     fetched: >-
       nothing yet: 2 files named in 2026-11-26_c72_part1.tsv, listed here before the fetch (card C-72, part 1)
     stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/SAG3/
+    fetched_pod: >-
+      2 of 2 files copied from tower:/mnt/user/research-bulk/bio-box/sources_incoming/SAG3/ to wilkcomp02 by
+      scripts/orchestrator/relay_to_pod.sh (card C-73), 2026-11-26 18:56 to 18:57 CST, each sha256 equal to tower's
+      SHA256SUMS (the provider was not asked again): OMZ_Compendium_SAGs_Full.tar.gz (747,416,178 bytes, sha256
+      a2a89c5de07a9045e283fc214b1322384873d3e030c810f748eded9a67a4351b) to
+      /stor/scratch/Wilke/if2453/bio-box-staging/SAG3/dl/;
+      Table_S1_Metadata-template-Bio-Med-SAGdescriptor-OMZ_May_23_2023.xlsx (4,433,905, sha256
+      9f6d87f2528a1863f23461d7453fbebc8b829d5648ae3ff17caa62d574a64e64) to /tmp/if2453/c81/dl/SAG3/
+    staged: >-
+      card C-81, 2026-11-26: all 3,570 assembled single cells of the archive (301,688 records, 299,181 distinct contigs,
+      2,408,106,251 bp; 3,568 genomes after DEC-27; 574 in GTDB R232 by WGS project, none removed on r232 status;
+      1,100 are GORG-Tropics cells whose contigs SAG1 holds, 50,613 contigs) as stage SAG3 in
+      /tmp/if2453/c81/meta/SAG3/ and /stor/scratch/Wilke/if2453/bio-box-staging/SAG3/sag3_omz.fna.gz on wilkcomp02, then
+      to tower:/mnt/user/research-bulk/bio-box/sources/SAG3/; planning/measurements/2026-11-26_gwv1_sag3_wet1_inputs.md.
+      redistributable: true (DEC-80 (3): both articles state CC BY 4.0)
     approved: "by the PI, 2026-11-26 about 08:03 CST: \"for each of the four decisions, go ahead with your recommendations\" (DEC-79 (4))"
   - name: tower_wet1
     what: >-
@@ -5627,6 +5742,10 @@ sources:
     fetched: >-
       nothing yet: 2 files named in 2026-11-26_c72_part1.tsv, listed here before the fetch (card C-72, part 1)
     stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/WET1/
+    fetched_pod: >-
+      nothing (card C-81, 2026-11-26): scripts/orchestrator/relay_to_pod.sh refuses the name "Dereplicated genomes.zip"
+      (a space) before any remote call, so WET1 waits for a change to that script; nothing on tower was renamed or
+      linked, nothing was copied by hand (planning/measurements/2026-11-26_gwv1_sag3_wet1_inputs.md §5)
     approved: "by the PI, 2026-11-26 about 08:03 CST: \"for each of the four decisions, go ahead with your recommendations\" (DEC-79 (4))"
   - name: tower_globdb_r232_tables
     what: >-
