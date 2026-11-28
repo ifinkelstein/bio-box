@@ -1994,20 +1994,21 @@ sources:
           LR2 problems: []; the FASTA scans clean (r19_fasta_scan.py); r232 status in
           /tmp/if2453/r19/c76/LR2/r232_status.tsv: all 44,064 not visible to the accession test, none removed;
           mirrored to tower sources/LR2/r19_restage/; planning/measurements/2026-11-27_staged_fasta_scan.md)
-      - stage: LR2 (superseded by lr2_compendia_r19.fna.gz, card R-19; not a stage input)
+      - stage: LR2 (superseded by lr2_compendia_r19.fna.gz, card R-19; not a stage input; deleted on /stor on the PI's word, DEC-84 (3))
         object: /stor/scratch/Wilke/if2453/bio-box-staging/LR2/lr2_compendia.fna.gz
         bytes: 6329546501
         sha256: 89dba3ba4098796fd3042b132089b9ea5393949d48dc7bf2783912e0b1eef377
         metadata_dir: >-
           DAMAGED (card R-19: card C-66's stager read the 691 gzip-compressed Bickhart bins as text, so from record
-          504,174 the file holds compressed bytes as sequence; 20,526 headers not UTF-8). /tmp/if2453/c66/LR2/ (49,205 genomes: 5,108 MAGs [EMERGE 2019 733, Singleton 2021 WWTP ONT 3,733,
+          504,174 the file holds compressed bytes as sequence; 20,526 headers not UTF-8; deleted on /stor on the PI's
+          word, DEC-84 (3)). /tmp/if2453/c66/LR2/ (49,205 genomes: 5,108 MAGs [EMERGE 2019 733, Singleton 2021 WWTP ONT 3,733,
           Bickhart 2022 Rumen HiFi 642] + 44,097 Bickhart unbinned >= 5 kb HiFi contigs; 555,301 distinct contigs,
           21.672 Gbp, 1,863 circular with 20 DEC-65 DTR trims, 49,170 code 11 / 35 code 25, 59 contigs held by
           S1..SAG1+NX1 -> 555,242 contigs / 21.549 Gbp = 99.43% net new; genomes.json sha256
           22d9f1fe2e07ff0756f34806fed450f6592d9bea9f80b49eceb54066f2143061; objects.json sha256
           fbe792620f011a9a7a6f842e5fe165946d2055a2b45dc0387e3eb4c516e9b3a8; s2_check_inputs.py LR2 problems: [];
-          awaiting /tmp headroom after r26.11.3 before moving into /tmp/if2453/s2/inputs/LR2/; card C-76,
-          2026-11-26: files re-checked, kept whole; r232 status in /tmp/if2453/c76/LR2/r232_status.tsv: no genome
+          card C-76, 2026-11-26: files re-checked before R-19 found the compressed bins and DEC-84 (3) deleted
+          lr2_compendia.fna.gz on /stor; r232 status in /tmp/if2453/c76/LR2/r232_status.tsv: no genome
           carries an INSDC accession, so all 49,205 are not visible to the accession test, none removed;
           planning/measurements/2026-11-26_lr2_sag1_nx1_r232.md)
     approved: under DEC-50 (entry written by card C-66 on 2026-11-24 before any fetch)
@@ -2139,18 +2140,19 @@ sources:
           the FASTA scans clean (r19_fasta_scan.py); r232 status in /tmp/if2453/r20/c76/NX1/r232_status.tsv,
           C-76's rows of the 893 byte for byte; mirrored to tower sources/NX1/r20_restage/;
           planning/measurements/2026-11-27_staged_fasta_scan.md §8)
-      - stage: NX1 (superseded by nx1_compendia_r20.fna.gz, card R-20; not a stage input)
+      - stage: NX1 (superseded by nx1_compendia_r20.fna.gz, card R-20; not a stage input; deleted on /stor on the PI's word, DEC-84 (3))
         object: /stor/scratch/Wilke/if2453/bio-box-staging/NX1/nx1_compendia.fna.gz
         bytes: 1041939827
         sha256: 9da4516e264df7125a845848658915706e7079f04bf01b2fdd7ec1bbb17e3863
         metadata_dir: >-
-          HOLDS THREE 16S ALIGNMENT FILES AS GENOMES (card R-19's scan; removed by card R-20).
+          HOLDS THREE 16S ALIGNMENT FILES AS GENOMES (card R-19's scan; removed by card R-20; deleted on /stor on the
+          PI's word, DEC-84 (3)).
           /tmp/if2453/c66/NX1/ (896 distinct MAGs after 26 skani 96% ANI dedup, 391,103 distinct contigs, 3.398 Gbp,
           889 code 11 / 6 code 25 / 1 code 4, 5 contigs held by S1..SAG1 -> 391,098 contigs / 3.398 Gbp = 99.999% net
           new; genomes.json sha256 2ea62f7c05baccc7f685e25be9557f21e68a6cb0740e5186132970589176895a; objects.json sha256
           d808af5f52d1b11d03194dee0dac911041243caa2b44b7ceeabba8e8a595f172; s2_check_inputs.py NX1 problems: [];
-          awaiting /tmp headroom after r26.11.3 before moving into /tmp/if2453/s2/inputs/NX1/; card C-76,
-          2026-11-26: files re-checked against these sizes and sha256, kept whole, 5 contigs held by S1..GART2;
+          card C-76, 2026-11-26: files re-checked against these sizes and sha256 before R-20 re-staged and DEC-84 (3)
+          deleted nx1_compendia.fna.gz on /stor, 5 contigs held by S1..GART2;
           r232 status recorded in /tmp/if2453/c76/NX1/r232_status.tsv: 537 genomes in GTDB R232 [473 of them also
           in GlobDB r232; 61 of this entry's 678 and 3 of eHOMD's 20 in GTDB R232 only], 161 in neither, 198 named
           MAGs not visible to the accession test; recorded for the later r232 cut, not used to remove;
@@ -2582,7 +2584,7 @@ sources:
       2026-11-26), 1,842 genomes and the 26 MGE contigs (kind virus, no class in their table), 1,796,037,907 bp,
       1,791,619,991 new, DEPTH called, as stage DPN1 in /tmp/if2453/c78/meta/DPN1/ and
       /stor/scratch/Wilke/if2453/bio-box-staging/DPN1/dpn1_dpann_genomes_rev2.fna.gz (the first pass's
-      dpn1_dpann_genomes.fna.gz there is superseded) on wilkcomp02, then to
+      dpn1_dpann_genomes.fna.gz on /stor is superseded and was deleted on the PI's word, DEC-84 (3)) on wilkcomp02, then to
       tower:/mnt/user/research-bulk/bio-box/sources/DPN1/; planning/measurements/2026-11-26_c78_compact_inputs.md.
       redistributable: false (DEC-80 (3): the licence above is the job list's statement, no provider record was read)
     approved: "by the PI, 2026-11-25 15:47 CST: \"stage the nucleotides ... on tower\" (the audit of 2026-11-25)"
@@ -6001,3 +6003,23 @@ sources:
       to MD5SUM.txt (card C-74)
     stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/GTDB_R232_META/ (SHA256SUMS there); a copy on the pod at /tmp/if2453/c74/GTDB_R232_META/
     approved: "by the PI, 2026-11-26 about 08:03 CST: \"for each of the four decisions, go ahead with your recommendations\" (DEC-79 (4))"
+  - name: uniprot_relnotes
+    what: >-
+      UniProt current-release plain-text release notes (Release 2026_04, 04-Nov-2026: relnotes.txt,
+      uniref50.release_note, uniref100.release_note) to verify the UniRef50 (41,243,524 clusters) and
+      UniRef100 (227,086,028 clusters) benchmark lines of the release-diversity figure; card A-32 (DEC-87)
+    url: https://ftp.uniprot.org/pub/databases/uniprot/current_release/relnotes.txt
+    url_2: https://ftp.uniprot.org/pub/databases/uniprot/current_release/uniref/uniref50/uniref50.release_note
+    url_3: https://ftp.uniprot.org/pub/databases/uniprot/current_release/uniref/uniref100/uniref100.release_note
+    files:
+      - {file: "relnotes.txt", bytes: 1125, sha256: 764d77997cab2d053555fe859aabeb946bef4a93359c30681f560b84ed436e86}
+      - {file: "uniref50.release_note", bytes: 311, sha256: 9ff782280c206c85067aeeb3f005eca659f887b153c1f282b41e725d9199c97c}
+      - {file: "uniref100.release_note", bytes: 312, sha256: f3ddf0e7fdc51c5d526cfb7fc412164344883792bb61300628eb95fce4dca12b}
+    checksum: none published in a separate checksum file for the plain-text release notes; our sha256 recorded at fetch
+    license: CC BY 4.0
+    redistributable: true
+    fetched: >-
+      3 of 3 plain-text files fetched gently on tower (curl -fsSL -A curl --proto =https --proto-redir =https, one
+      file at a time), UTC 2026-11-27T22:38:21Z to 2026-11-27T22:42:10Z (card A-32); bytes and sha256 measured on tower
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/UNIPROT_RELNOTES/ (SOURCE_URLS.tsv and SHA256SUMS there)
+    approved: "by the PI, 2026-11-27 13:57 CST: \"i approve adding uniprot url to sources.yaml\" (DEC-87)"

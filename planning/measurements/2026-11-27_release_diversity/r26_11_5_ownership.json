@@ -1,0 +1,1085 @@
+{
+ "after": {
+  "DPN1": "SAG2",
+  "ECE2": "EGV1",
+  "EGV1": "GV1",
+  "GBRMGD": "RMD1",
+  "GRARE1": "GART2",
+  "GRARE2": "GRARE1",
+  "GRARE3": "GRARE2",
+  "GV1": "NX1",
+  "GWV1": "INPH2604",
+  "INPH2604": "KAVHIFI",
+  "KAVHIFI": "MVEUKV",
+  "LR2": "GRARE3",
+  "LRP1": "SYM2",
+  "MIR1": "ECE2",
+  "MIR2": "LRP1",
+  "MV2": "MIR2",
+  "MVEUKV": "MV2",
+  "NX1": "SAG1",
+  "RMD1": "WET1",
+  "SAG1": "LR2",
+  "SAG2": "MIR1",
+  "SAG3": "GWV1",
+  "SYM2": "DPN1",
+  "WET1": "SAG3"
+ },
+ "argv": [
+  "ownership",
+  "--root",
+  "/tmp/if2453/r10/root",
+  "--tree",
+  "/tmp/if2453/ci/A-32",
+  "--inputs-home",
+  "/tmp/if2453/s2/inputs",
+  "--tmp",
+  "/tmp/if2453/a32/work",
+  "--workers",
+  "3",
+  "--out",
+  "/tmp/if2453/a32/r26_11_5_ownership.json"
+ ],
+ "chain": [
+  "GRARE1",
+  "GRARE2",
+  "GRARE3",
+  "LR2",
+  "SAG1",
+  "NX1",
+  "GV1",
+  "EGV1",
+  "ECE2",
+  "MIR1",
+  "SAG2",
+  "DPN1",
+  "SYM2",
+  "LRP1",
+  "MIR2",
+  "MV2",
+  "MVEUKV",
+  "KAVHIFI",
+  "INPH2604",
+  "GWV1",
+  "SAG3",
+  "WET1",
+  "RMD1",
+  "GBRMGD"
+ ],
+ "complete": true,
+ "discrepancies": [],
+ "new_bases_r26_11_5": 151204587185,
+ "new_contigs_r26_11_5": 14678732,
+ "owned_contigs": 29150919,
+ "problems": [],
+ "r26_11_4": [
+  "V2",
+  "PL2",
+  "PL3",
+  "CG1",
+  "MGE1",
+  "SAT1",
+  "ECE1",
+  "O1",
+  "O2",
+  "LPL1",
+  "SYM1",
+  "LRV1",
+  "LGRT1",
+  "MGE2",
+  "MV1",
+  "V3",
+  "LR1",
+  "GART1",
+  "GART2"
+ ],
+ "root": "/tmp/if2453/r10/root",
+ "root_partitions_not_read": {
+  "CG1": {
+   "contigs": 120428,
+   "files": 1
+  },
+  "MGE1": {
+   "contigs": 13847,
+   "files": 1
+  },
+  "PL2": {
+   "contigs": 112562,
+   "files": 1
+  },
+  "PL3": {
+   "contigs": 745873,
+   "files": 1
+  },
+  "SAT1": {
+   "contigs": 37660,
+   "files": 1
+  },
+  "V2": {
+   "contigs": 243466,
+   "files": 1
+  }
+ },
+ "root_stages": [
+  "S1",
+  "P1",
+  "P2",
+  "P3",
+  "P4",
+  "P5",
+  "P6",
+  "H1",
+  "PL1",
+  "C5",
+  "V1",
+  "G1",
+  "SPX1"
+ ],
+ "stages": {
+  "CG1": {
+   "held_by": {},
+   "held_contigs": 0,
+   "new_contigs": 120428,
+   "total_contigs": 120428
+  },
+  "DPN1": {
+   "held_bases": 4515663,
+   "held_bases_by": {
+    "G1": 43813,
+    "GRARE2": 97747,
+    "MV1": 1193613,
+    "P3": 829411,
+    "PL3": 4441,
+    "SPX1": 410251,
+    "SYM1": 1619578,
+    "V2": 316809
+   },
+   "held_by": {
+    "G1": 9,
+    "GRARE2": 2,
+    "MV1": 22,
+    "P3": 1,
+    "PL3": 1,
+    "SPX1": 24,
+    "SYM1": 2,
+    "V2": 8
+   },
+   "held_contigs": 69,
+   "new_bases": 1791522244,
+   "new_contigs": 135155,
+   "object_sha256": {
+    "dpn1_dpann_genomes_rev2.fna.gz": "11cd60bd5c7e79443ff8840644f9b19f94e213057c6b6e1a8e01ae5d3d028bfc",
+    "dpn1_dpann_mges.fna": "8a3b8cf8c19190f0ba08a16107b607522c9bfd94c00e28bafb3cec63c848ba11"
+   },
+   "read_seconds": 35.3,
+   "record_bases": 1798397715,
+   "records": 135231,
+   "total_bases": 1796037907,
+   "total_contigs": 135224
+  },
+  "ECE1": {
+   "held_by": {
+    "C5": 2,
+    "P1": 34,
+    "P2": 339,
+    "P3": 570,
+    "P4": 543,
+    "P5": 60,
+    "P6": 176,
+    "PL1": 8008,
+    "PL2": 1293,
+    "PL3": 5,
+    "S1": 9,
+    "V2": 2
+   },
+   "held_contigs": 11041,
+   "new_contigs": 2739,
+   "total_contigs": 13780
+  },
+  "ECE2": {
+   "held_bases": 0,
+   "held_bases_by": {},
+   "held_by": {},
+   "held_contigs": 0,
+   "new_bases": 17676120,
+   "new_contigs": 945,
+   "object_sha256": {
+    "ece2_inocles.fna": "75f6a1b59fecf3ce54e638ab25d1b5af387574e423d521c4b872fac0c959a9c1",
+    "ece2_tycheposons.fna": "f0b644f0fc51a9dd5c860bd26dc51db91cadcb9354544e6e96293f809424a932"
+   },
+   "read_seconds": 0.2,
+   "record_bases": 17828599,
+   "records": 966,
+   "total_bases": 17676120,
+   "total_contigs": 945
+  },
+  "EGV1": {
+   "held_bases": 0,
+   "held_bases_by": {},
+   "held_by": {},
+   "held_contigs": 0,
+   "new_bases": 50954930,
+   "new_contigs": 3301,
+   "object_sha256": {
+    "egovirales_gaia_2026.fna": "79be0be3b058b53b21d389e8ef066fe723827e70c5459bc3670e6c39e9b89878"
+   },
+   "read_seconds": 0.6,
+   "record_bases": 51192459,
+   "records": 3306,
+   "total_bases": 50954930,
+   "total_contigs": 3301
+  },
+  "GART1": {
+   "held_by": {
+    "H1": 1,
+    "MV1": 5,
+    "P2": 3,
+    "PL2": 3,
+    "PL3": 42,
+    "SPX1": 23277,
+    "V2": 4,
+    "V3": 126
+   },
+   "held_contigs": 23461,
+   "new_contigs": 5194697,
+   "total_contigs": 5218158
+  },
+  "GART2": {
+   "held_by": {
+    "G1": 10,
+    "GART1": 4,
+    "H1": 1,
+    "MV1": 13,
+    "PL3": 1,
+    "SPX1": 9938,
+    "SYM1": 2,
+    "V2": 1,
+    "V3": 42
+   },
+   "held_contigs": 10012,
+   "new_contigs": 1202957,
+   "total_contigs": 1212969
+  },
+  "GBRMGD": {
+   "held_bases": 0,
+   "held_bases_by": {},
+   "held_by": {},
+   "held_contigs": 0,
+   "new_bases": 10238417378,
+   "new_contigs": 466872,
+   "object_sha256": {
+    "gbrmgd_bins.fna.gz": "46e74ae0c87b6e529afe684b1560bed61364de5d200cde232ea1eba1f7e75a7d"
+   },
+   "read_seconds": 230.8,
+   "record_bases": 10244764294,
+   "records": 467187,
+   "total_bases": 10238417378,
+   "total_contigs": 466872
+  },
+  "GRARE1": {
+   "held_bases": 213250601,
+   "held_bases_by": {
+    "G1": 5642,
+    "GART1": 21561,
+    "GART2": 60078,
+    "H1": 255409,
+    "MV1": 91059,
+    "P2": 2137654,
+    "PL3": 5329,
+    "SPX1": 199734968,
+    "V3": 10938901
+   },
+   "held_by": {
+    "G1": 2,
+    "GART1": 6,
+    "GART2": 4,
+    "H1": 1,
+    "MV1": 4,
+    "P2": 1,
+    "PL3": 1,
+    "SPX1": 11830,
+    "V3": 320
+   },
+   "held_contigs": 12169,
+   "new_bases": 11369361616,
+   "new_contigs": 1647801,
+   "object_sha256": {
+    "grare1.fna.gz": "558ffa4e9461fc92e7f450d0c2c47133eeea338157209ea453b462d61d32b9c4"
+   },
+   "read_seconds": 117.4,
+   "record_bases": 11583415844,
+   "records": 1659995,
+   "total_bases": 11582612217,
+   "total_contigs": 1659970
+  },
+  "GRARE2": {
+   "held_bases": 175004986,
+   "held_bases_by": {
+    "G1": 2167,
+    "GART1": 22809,
+    "GART2": 6891,
+    "GRARE1": 9826,
+    "MV1": 123270,
+    "P2": 2284180,
+    "PL3": 225713,
+    "SPX1": 170674104,
+    "V2": 141288,
+    "V3": 1514738
+   },
+   "held_by": {
+    "G1": 1,
+    "GART1": 4,
+    "GART2": 1,
+    "GRARE1": 2,
+    "MV1": 3,
+    "P2": 2,
+    "PL3": 6,
+    "SPX1": 8529,
+    "V2": 2,
+    "V3": 39
+   },
+   "held_contigs": 8589,
+   "new_bases": 10280169858,
+   "new_contigs": 1244827,
+   "object_sha256": {
+    "grare2.fna.gz": "7d0d7800017c09a8fb3aa40dfd2eb06c84eb37e364fdcc34253c9921e1fc019b"
+   },
+   "read_seconds": 104.6,
+   "record_bases": 10455837641,
+   "records": 1253559,
+   "total_bases": 10455174844,
+   "total_contigs": 1253416
+  },
+  "GRARE3": {
+   "held_bases": 144765201,
+   "held_bases_by": {
+    "GART1": 4906,
+    "GART2": 4084,
+    "GRARE2": 31476,
+    "MV1": 180453,
+    "PL3": 61903,
+    "SPX1": 143034186,
+    "V2": 135364,
+    "V3": 1312829
+   },
+   "held_by": {
+    "GART1": 2,
+    "GART2": 2,
+    "GRARE2": 10,
+    "MV1": 3,
+    "PL3": 3,
+    "SPX1": 7768,
+    "V2": 3,
+    "V3": 34
+   },
+   "held_contigs": 7825,
+   "new_bases": 10190173735,
+   "new_contigs": 1333589,
+   "object_sha256": {
+    "grare3.fna.gz": "6febb9ef5324c7ede8163c54184fd940e3b1d2084c06ae7e98a11e64b592dda2"
+   },
+   "read_seconds": 105.7,
+   "record_bases": 10335237414,
+   "records": 1341468,
+   "total_bases": 10334938936,
+   "total_contigs": 1341414
+  },
+  "GV1": {
+   "held_bases": 2674672049,
+   "held_bases_by": {
+    "H1": 2242617,
+    "MV1": 2251256237,
+    "PL3": 36892,
+    "SPX1": 29685,
+    "V2": 421106618
+   },
+   "held_by": {
+    "H1": 6,
+    "MV1": 130131,
+    "PL3": 2,
+    "SPX1": 3,
+    "V2": 17649
+   },
+   "held_contigs": 147791,
+   "new_bases": 1640410024,
+   "new_contigs": 134010,
+   "object_sha256": {
+    "gvmags_v2_all_18kgenomes_r23.fna": "a87aad1f9987179d55c6d6134f60a3ce7f0bf63b7b8975c065982dd40b920bfb"
+   },
+   "read_seconds": 48.5,
+   "record_bases": 4576307467,
+   "records": 288536,
+   "total_bases": 4315082073,
+   "total_contigs": 281801
+  },
+  "GWV1": {
+   "held_bases": 18912716,
+   "held_bases_by": {
+    "H1": 18912716
+   },
+   "held_by": {
+    "H1": 70
+   },
+   "held_contigs": 70,
+   "new_bases": 3721883345,
+   "new_contigs": 280350,
+   "object_sha256": {
+    "gwv1_gwvc.fna.gz": "e387439dbb6b4838d271325837e62ec5d783591304e022f80df56052eb9e16eb"
+   },
+   "read_seconds": 86.0,
+   "record_bases": 3740796061,
+   "records": 280420,
+   "total_bases": 3740796061,
+   "total_contigs": 280420
+  },
+  "INPH2604": {
+   "held_bases": 533414,
+   "held_bases_by": {
+    "MV1": 533414
+   },
+   "held_by": {
+    "MV1": 8
+   },
+   "held_contigs": 8,
+   "new_bases": 31000866,
+   "new_contigs": 345,
+   "object_sha256": {
+    "inphared_7apr2026_delta.fna": "de2c3531ac6930a3da2c4f77f0fdb333e8fb16ec970f6b0089efd910d4aa1c15"
+   },
+   "read_seconds": 0.6,
+   "record_bases": 34889413,
+   "records": 386,
+   "total_bases": 31534280,
+   "total_contigs": 353
+  },
+  "KAVHIFI": {
+   "held_bases": 138278,
+   "held_bases_by": {
+    "SPX1": 138278
+   },
+   "held_by": {
+    "SPX1": 16
+   },
+   "held_contigs": 16,
+   "new_bases": 4658926055,
+   "new_contigs": 529271,
+   "object_sha256": {
+    "kavagutti_hifi_bacterial_mags.fna": "5c310ee70e183ecf4a5132fd85a2d738824a93d521e3d75bc38471bc3942dcd5",
+    "kavagutti_hifi_ncldv.fna": "02275a2997b6dee6989cd0df16f7a7bbc3979fba8fcadc2798fe9232eaa4c6c1"
+   },
+   "read_seconds": 107.5,
+   "record_bases": 4688660420,
+   "records": 530743,
+   "total_bases": 4659064333,
+   "total_contigs": 529287
+  },
+  "LGRT1": {
+   "held_by": {},
+   "held_contigs": 0,
+   "new_contigs": 378,
+   "total_contigs": 378
+  },
+  "LPL1": {
+   "held_by": {
+    "O2": 6,
+    "PL2": 159
+   },
+   "held_contigs": 165,
+   "new_contigs": 408,
+   "total_contigs": 573
+  },
+  "LR1": {
+   "held_by": {
+    "MV1": 87,
+    "P2": 2,
+    "P3": 3,
+    "P6": 2,
+    "SYM1": 1
+   },
+   "held_contigs": 95,
+   "new_contigs": 856624,
+   "total_contigs": 856719
+  },
+  "LR2": {
+   "held_bases": 123240285,
+   "held_bases_by": {
+    "GART1": 3188241,
+    "MV1": 32533,
+    "P1": 2256357,
+    "P2": 11058528,
+    "P3": 106648151,
+    "PL3": 56475
+   },
+   "held_by": {
+    "GART1": 3,
+    "MV1": 1,
+    "P1": 2,
+    "P2": 6,
+    "P3": 44,
+    "PL3": 3
+   },
+   "held_contigs": 59,
+   "new_bases": 21131651868,
+   "new_contigs": 548506,
+   "object_sha256": {
+    "lr2_compendia_r19.fna.gz": "36bb8a4e47213d5bbc44471fa44a7709c483cf1c3a7cff9c946d1fef9ea14ebe"
+   },
+   "read_seconds": 403.0,
+   "record_bases": 21254892153,
+   "records": 548565,
+   "total_bases": 21254892153,
+   "total_contigs": 548565
+  },
+  "LRP1": {
+   "held_bases": 43845,
+   "held_bases_by": {
+    "GRARE2": 1901,
+    "MGE1": 4417,
+    "NX1": 1203,
+    "PL2": 2536,
+    "PL3": 33788
+   },
+   "held_by": {
+    "GRARE2": 1,
+    "MGE1": 2,
+    "NX1": 1,
+    "PL2": 2,
+    "PL3": 9
+   },
+   "held_contigs": 15,
+   "new_bases": 240645848,
+   "new_contigs": 78722,
+   "object_sha256": {
+    "lrp1_urban_water_plasmidome.fna": "e28a44bb6d26789208705986ae052f03444fe2585f6169da539365483598797a"
+   },
+   "read_seconds": 4.1,
+   "record_bases": 240689693,
+   "records": 78737,
+   "total_bases": 240689693,
+   "total_contigs": 78737
+  },
+  "LRV1": {
+   "held_by": {},
+   "held_contigs": 0,
+   "new_contigs": 2535,
+   "total_contigs": 2535
+  },
+  "MGE1": {
+   "held_by": {
+    "PL1": 9,
+    "PL2": 76,
+    "PL3": 9,
+    "S1": 2
+   },
+   "held_contigs": 96,
+   "new_contigs": 13847,
+   "total_contigs": 13943
+  },
+  "MGE2": {
+   "held_by": {
+    "V1": 159,
+    "V2": 421
+   },
+   "held_contigs": 580,
+   "new_contigs": 22347,
+   "total_contigs": 22927
+  },
+  "MIR1": {
+   "held_bases": 333161637,
+   "held_bases_by": {
+    "GRARE1": 26960,
+    "GV1": 261469538,
+    "H1": 610033,
+    "MV1": 45242300,
+    "V2": 25681410,
+    "V3": 131396
+   },
+   "held_by": {
+    "GRARE1": 3,
+    "GV1": 23826,
+    "H1": 1,
+    "MV1": 1913,
+    "V2": 1848,
+    "V3": 1
+   },
+   "held_contigs": 27592,
+   "new_bases": 820588756,
+   "new_contigs": 37768,
+   "object_sha256": {
+    "mir1_bellas2023_eve_loci.fna": "93407d18302bd0f45049f7a8ef4f6fca013e72ea18ae957cd8e6b7a74ed38a73",
+    "mir1_bellas2023_flye_plv.fna": "4f925c80680838005d975c95c7ac60eff6269801e2529ecd41d41154b674c0fb",
+    "mir1_gaia2023_mirus.fna": "f08ad08739b9d1f0538e4652da69594781e748878c8371693b33ff280efed99f",
+    "mir1_goev_environmental.fna": "c06a6def8c1070d45e3f6be04ab5caa26d0174f84c21a610237c647c37e22d67",
+    "mir1_goev_reference.fna": "1b9d85f0665d1f6f1f950b009c2cb2afe692b30b2ae82bc638f21c83f4cada85",
+    "mir1_medvedeva2025.fna": "88c997a8afdc5fceb11253f9e1cdbd06d7ae1d29479156719dfd6bc86150e9cd"
+   },
+   "read_seconds": 20.7,
+   "record_bases": 1185579620,
+   "records": 68647,
+   "total_bases": 1153750393,
+   "total_contigs": 65360
+  },
+  "MIR2": {
+   "held_bases": 98197304,
+   "held_bases_by": {
+    "G1": 11479,
+    "GV1": 1156898,
+    "MV1": 61462988,
+    "V2": 35565939
+   },
+   "held_by": {
+    "G1": 1,
+    "GV1": 95,
+    "MV1": 3792,
+    "V2": 1522
+   },
+   "held_contigs": 5410,
+   "new_bases": 487711936,
+   "new_contigs": 50682,
+   "object_sha256": {
+    "mir2_bellas_2026_plv_framework.fna": "88ea664a7de971be13b927811a371585467634dd1353383b3fd9a1ec23d566db",
+    "mir2_bulzu_2025_plv_virophage.fna": "382c77a48fa82d8cdffd2ff73204b6ce5895425bde570c15df075325d523f0b0"
+   },
+   "read_seconds": 7.8,
+   "record_bases": 585909240,
+   "records": 56092,
+   "total_bases": 585909240,
+   "total_contigs": 56092
+  },
+  "MV1": {
+   "held_by": {
+    "G1": 41,
+    "H1": 3348,
+    "MGE2": 361,
+    "P1": 1,
+    "P2": 5,
+    "P3": 8,
+    "P4": 12,
+    "P5": 26,
+    "P6": 3,
+    "PL1": 100,
+    "PL2": 20,
+    "PL3": 34,
+    "S1": 2487,
+    "SAT1": 2976,
+    "SPX1": 16,
+    "V1": 76266,
+    "V2": 215193
+   },
+   "held_contigs": 300897,
+   "new_contigs": 871018,
+   "total_contigs": 1171915
+  },
+  "MV2": {
+   "held_bases": 145262213,
+   "held_bases_by": {
+    "DPN1": 328499,
+    "G1": 678508,
+    "GART1": 108876,
+    "GART2": 36281,
+    "GRARE1": 38934,
+    "GRARE2": 122439,
+    "GRARE3": 31282,
+    "GV1": 98597781,
+    "LR1": 477865,
+    "MGE2": 64145,
+    "MIR2": 1327416,
+    "MV1": 654018,
+    "PL1": 94564,
+    "PL2": 31073,
+    "PL3": 57461,
+    "S1": 35082,
+    "SAG1": 313874,
+    "V1": 41594192,
+    "V2": 669923
+   },
+   "held_by": {
+    "DPN1": 7,
+    "G1": 15,
+    "GART1": 3,
+    "GART2": 1,
+    "GRARE1": 1,
+    "GRARE2": 2,
+    "GRARE3": 1,
+    "GV1": 4376,
+    "LR1": 15,
+    "MGE2": 2,
+    "MIR2": 41,
+    "MV1": 13,
+    "PL1": 3,
+    "PL2": 1,
+    "PL3": 1,
+    "S1": 1,
+    "SAG1": 8,
+    "V1": 1092,
+    "V2": 17
+   },
+   "held_contigs": 5600,
+   "new_bases": 3760239769,
+   "new_contigs": 95883,
+   "object_sha256": {
+    "mv2.fna": "5a706ef42466f73488d5b9914a8a9a5ded42bcaf715b9902d63d6802e3767bb7"
+   },
+   "read_seconds": 33.1,
+   "record_bases": 3909111248,
+   "records": 101573,
+   "total_bases": 3905501982,
+   "total_contigs": 101483
+  },
+  "MVEUKV": {
+   "held_bases": 99253298,
+   "held_bases_by": {
+    "GRARE3": 10331,
+    "GV1": 55488128,
+    "MIR1": 38981,
+    "MIR2": 42764153,
+    "MV1": 512545,
+    "SAG1": 65435,
+    "V1": 141142,
+    "V2": 232583
+   },
+   "held_by": {
+    "GRARE3": 1,
+    "GV1": 3812,
+    "MIR1": 2,
+    "MIR2": 4638,
+    "MV1": 39,
+    "SAG1": 4,
+    "V1": 7,
+    "V2": 17
+   },
+   "held_contigs": 8520,
+   "new_bases": 1157642489,
+   "new_contigs": 97541,
+   "object_sha256": {
+    "mveukv.fna": "8ec7b906090ccbf82258d3e323e0bd8d3c360831c9c442bf0cf6b46c8112151f"
+   },
+   "read_seconds": 12.7,
+   "record_bases": 1257239393,
+   "records": 106087,
+   "total_bases": 1256895787,
+   "total_contigs": 106061
+  },
+  "NX1": {
+   "held_bases": 84773,
+   "held_bases_by": {
+    "MV1": 53034,
+    "PL1": 17964,
+    "PL3": 13775
+   },
+   "held_by": {
+    "MV1": 1,
+    "PL1": 2,
+    "PL3": 2
+   },
+   "held_contigs": 5,
+   "new_bases": 3398225424,
+   "new_contigs": 391029,
+   "object_sha256": {
+    "nx1_compendia_r20.fna.gz": "395a840112ce6e1a113487b0b34a57935a5a6ab033d40b8020e86f4cb4639176"
+   },
+   "read_seconds": 66.7,
+   "record_bases": 3398310197,
+   "records": 391034,
+   "total_bases": 3398310197,
+   "total_contigs": 391034
+  },
+  "O1": {
+   "held_by": {
+    "PL2": 1
+   },
+   "held_contigs": 1,
+   "new_contigs": 15149,
+   "total_contigs": 15150
+  },
+  "O2": {
+   "held_by": {
+    "PL2": 1
+   },
+   "held_contigs": 1,
+   "new_contigs": 2411,
+   "total_contigs": 2412
+  },
+  "PL2": {
+   "held_by": {
+    "C5": 21,
+    "P1": 112,
+    "P2": 1226,
+    "P3": 964,
+    "P4": 1514,
+    "P5": 1691,
+    "P6": 1227,
+    "PL1": 59107,
+    "S1": 3,
+    "V1": 6,
+    "V2": 17
+   },
+   "held_contigs": 65888,
+   "new_contigs": 112562,
+   "total_contigs": 178450
+  },
+  "PL3": {
+   "held_by": {
+    "C5": 5,
+    "G1": 2,
+    "P1": 27,
+    "P2": 178,
+    "P3": 417,
+    "P4": 419,
+    "P5": 62,
+    "P6": 13,
+    "PL1": 4850,
+    "PL2": 1711,
+    "SPX1": 2,
+    "V1": 4,
+    "V2": 56
+   },
+   "held_contigs": 7746,
+   "new_contigs": 745873,
+   "total_contigs": 753619
+  },
+  "RMD1": {
+   "held_bases": 2025934730,
+   "held_bases_by": {
+    "G1": 140085452,
+    "GART1": 233286298,
+    "GART2": 18151452,
+    "GRARE1": 499477440,
+    "GRARE2": 854957355,
+    "GRARE3": 238997056,
+    "LR1": 10553,
+    "MGE1": 1331,
+    "MV1": 81529,
+    "P2": 3904512,
+    "P3": 19270294,
+    "P5": 10879628,
+    "PL2": 441112,
+    "PL3": 6390718
+   },
+   "held_by": {
+    "G1": 19569,
+    "GART1": 23718,
+    "GART2": 3004,
+    "GRARE1": 49388,
+    "GRARE2": 64697,
+    "GRARE3": 23488,
+    "LR1": 2,
+    "MGE1": 1,
+    "MV1": 3,
+    "P2": 1,
+    "P3": 5,
+    "P5": 3,
+    "PL2": 1,
+    "PL3": 89
+   },
+   "held_contigs": 183969,
+   "new_bases": 38301644358,
+   "new_contigs": 4662357,
+   "object_sha256": {
+    "rmd1_reef_genomes.fna.gz": "285a634959f2f4d60ba5cbd0e60669274021d73edfca12db86efa13619024255"
+   },
+   "read_seconds": 854.5,
+   "record_bases": 40388129994,
+   "records": 4850322,
+   "total_bases": 40327579088,
+   "total_contigs": 4846326
+  },
+  "SAG1": {
+   "held_bases": 31598860,
+   "held_bases_by": {
+    "G1": 1809394,
+    "GART1": 14037354,
+    "GRARE1": 10929128,
+    "GRARE3": 2749606,
+    "MV1": 1873076,
+    "PL3": 140793,
+    "V2": 59509
+   },
+   "held_by": {
+    "G1": 99,
+    "GART1": 805,
+    "GRARE1": 661,
+    "GRARE3": 100,
+    "MV1": 40,
+    "PL3": 9,
+    "V2": 1
+   },
+   "held_contigs": 1715,
+   "new_bases": 4910082377,
+   "new_contigs": 234683,
+   "object_sha256": {
+    "sag1_gorg.fna.gz": "42b500ab64bd734357935120b2c6eed4815d2864cd227cc2b08e7e928770413e"
+   },
+   "read_seconds": 106.4,
+   "record_bases": 4941715933,
+   "records": 236405,
+   "total_bases": 4941681237,
+   "total_contigs": 236398
+  },
+  "SAG2": {
+   "held_bases": 12578,
+   "held_bases_by": {
+    "GRARE1": 12578
+   },
+   "held_by": {
+    "GRARE1": 2
+   },
+   "held_contigs": 2,
+   "new_bases": 8020041491,
+   "new_contigs": 620039,
+   "object_sha256": {
+    "sag2_gorg_dark.fna.gz": "74779dc13541703388cb639fc554e52728e73aca1f395e654b1345e15b84c3e2"
+   },
+   "read_seconds": 176.6,
+   "record_bases": 8020962436,
+   "records": 620195,
+   "total_bases": 8020054069,
+   "total_contigs": 620041
+  },
+  "SAG3": {
+   "held_bases": 881624810,
+   "held_bases_by": {
+    "G1": 9515941,
+    "GART1": 15795258,
+    "GART2": 1779565,
+    "GRARE1": 11886838,
+    "MV1": 1058931,
+    "MV2": 100544,
+    "MVEUKV": 32511,
+    "PL3": 647026,
+    "SAG1": 840766748,
+    "V2": 41448
+   },
+   "held_by": {
+    "G1": 321,
+    "GART1": 833,
+    "GART2": 61,
+    "GRARE1": 690,
+    "MV1": 26,
+    "MV2": 2,
+    "MVEUKV": 2,
+    "PL3": 38,
+    "SAG1": 50613,
+    "V2": 1
+   },
+   "held_contigs": 52587,
+   "new_bases": 1523911457,
+   "new_contigs": 246594,
+   "object_sha256": {
+    "sag3_omz.fna.gz": "2c62483fe32de8915f6795df9cca28b4e7eff5d7e68413d4af474c1852491b8d"
+   },
+   "read_seconds": 52.1,
+   "record_bases": 2408106251,
+   "records": 301688,
+   "total_bases": 2405536267,
+   "total_contigs": 299181
+  },
+  "SAT1": {
+   "held_by": {
+    "H1": 2,
+    "P4": 1,
+    "PL1": 6,
+    "PL2": 3,
+    "S1": 4766,
+    "V1": 118,
+    "V2": 9
+   },
+   "held_contigs": 4905,
+   "new_contigs": 37660,
+   "total_contigs": 42565
+  },
+  "SYM1": {
+   "held_by": {
+    "G1": 1,
+    "PL1": 5,
+    "PL2": 6
+   },
+   "held_contigs": 12,
+   "new_contigs": 2710,
+   "total_contigs": 2722
+  },
+  "SYM2": {
+   "held_bases": 20968682,
+   "held_bases_by": {
+    "GV1": 20968682
+   },
+   "held_by": {
+    "GV1": 1050
+   },
+   "held_contigs": 1050,
+   "new_bases": 846561660,
+   "new_contigs": 88691,
+   "object_sha256": {
+    "sym2_protist_symbiont_bins.fna": "9b26ace425ff5f2fa9b9748490bbb44aa377c51b8e8885d20db3c5bd0a3ff9ba",
+    "sym2_protist_viruses.fna": "103f6ca82ea23ef8c7243cdb07c213e48a4d0f8262570a88fe70b6ead2e3622a"
+   },
+   "read_seconds": 9.1,
+   "record_bases": 868366559,
+   "records": 89775,
+   "total_bases": 867530342,
+   "total_contigs": 89741
+  },
+  "V2": {
+   "held_by": {
+    "G1": 8,
+    "H1": 1136,
+    "P2": 3,
+    "P3": 5,
+    "P4": 10,
+    "P5": 2,
+    "PL1": 68,
+    "S1": 70,
+    "SPX1": 7,
+    "V1": 16803
+   },
+   "held_contigs": 18112,
+   "new_contigs": 243466,
+   "total_contigs": 261578
+  },
+  "V3": {
+   "held_by": {
+    "CG1": 1,
+    "G1": 25,
+    "H1": 2,
+    "MV1": 224,
+    "PL2": 4,
+    "PL3": 1,
+    "SPX1": 4144,
+    "V1": 916,
+    "V2": 195
+   },
+   "held_contigs": 5512,
+   "new_contigs": 686211,
+   "total_contigs": 691723
+  },
+  "WET1": {
+   "held_bases": 550233,
+   "held_bases_by": {
+    "GART1": 169130,
+    "GART2": 24631,
+    "GRARE1": 182953,
+    "GRARE2": 91903,
+    "GRARE3": 81616
+   },
+   "held_by": {
+    "GART1": 58,
+    "GART2": 6,
+    "GRARE1": 66,
+    "GRARE2": 37,
+    "GRARE3": 24
+   },
+   "held_contigs": 191,
+   "new_bases": 12615143581,
+   "new_contigs": 1749771,
+   "object_sha256": {
+    "wet1_gwm.fna.gz": "e77e9f6afa156b2706167c0d3149178ba35c1fde7aa10b44571a65b4c4b7bba9"
+   },
+   "read_seconds": 286.6,
+   "record_bases": 12615718580,
+   "records": 1749972,
+   "total_bases": 12615693814,
+   "total_contigs": 1749962
+  }
+ },
+ "wall_seconds": 1084.7
+}
