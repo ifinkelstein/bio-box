@@ -248,6 +248,10 @@ def test_genetic_code_screens_11_4_25_and_59_stage_prefix_defaults():
     assert mod.screen_prokaryote_code([seq_11], "d__Bacteria;p__Bacteroidota;g__Prevotella")["genetic_code"] == 11
     assert mod.screen_prokaryote_code([seq_c4], "d__Bacteria;p__Firmicutes_A;g__Unclassified")["genetic_code"] == 4
     assert mod.screen_prokaryote_code([seq_c25], "d__Bacteria;p__Patescibacteriota;c__Saccharimonadia")["genetic_code"] == 25
+    # Degenerate / high-N assembly (>5 kb of Ns) and fragmented multi-contig SAG (>500 kb with short chaff) must not crash
+    assert mod.screen_prokaryote_code([b"N" * 12_000], "")["genetic_code"] == 11
+    chaff = [b"ACGT" * 15 for _ in range(400)]
+    assert mod.screen_prokaryote_code([seq_c25 * 22, *chaff], "d__Bacteria;p__Patescibacteriota")["genetic_code"] == 25
 
 
 # ==================================================================================================================

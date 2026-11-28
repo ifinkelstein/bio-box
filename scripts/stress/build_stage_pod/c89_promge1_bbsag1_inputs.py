@@ -15,6 +15,7 @@ Subcommands:
 from __future__ import annotations
 
 import argparse
+import array
 import bz2
 import contextlib
 import csv
@@ -35,6 +36,7 @@ from collections.abc import Iterable, Iterator
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import a26_r26_11_4_chain as a26  # noqa: E402
@@ -408,14 +410,20 @@ def _train_call_stats(seq_strs: list[str], total_bp: int, table: int) -> dict:
     if total_bp <= 0:
         return {"cd": 0.0, "mean_orf": 0.0, "n_genes": 0, "n_cod": 0, "n_tga": 0, "n_tgg": 0}
     finder = pyrodigal.GeneFinder(meta=False)
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", UserWarning)
-        if total_bp < 20_000:
-            joined = "".join(seq_strs)
-            reps = (20_000 // max(1, len(joined))) + 2
-            finder.train(joined * reps, translation_table=table)
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            if total_bp < 20_000:
+                joined = "".join(seq_strs)
+                reps = (20_000 // max(1, len(joined))) + 2
+                finder.train(joined * reps, translation_table=table)
+            else:
+                finder.train(*seq_strs, translation_table=table)
+    except (ValueError, RuntimeError):
+        if table == 11:
+            finder = pyrodigal.GeneFinder(meta=True)
         else:
-            finder.train(*seq_strs, translation_table=table)
+            return {"cd": 0.0, "mean_orf": 0.0, "n_genes": 0, "n_cod": 0, "n_tga": 0, "n_tgg": 0}
 
     coding_bp = n_genes = n_cod = n_tga = n_tgg = 0
     for s in seq_strs:
@@ -451,7 +459,7 @@ def screen_prokaryote_code(
     screen_max_bp: int = 500_000,
 ) -> dict:
     """Screen prokaryotic SAGs/MAGs across genetic codes 11, 4 (UGA->Trp), and 25 (UGA->Gly)."""
-    pre_strs, pre_bp, is_full = c58._prefix_seqs_for_screen(seqs, screen_max_bp)
+    pre_strs, pre_bp, _ = c58._prefix_seqs_for_screen(seqs, screen_max_bp)
     if pre_bp < 5_000:
         code = 4 if _CODE4_TAX_RE.search(taxonomy_hint) else (25 if _CODE25_TAX_RE.search(taxonomy_hint) else 11)
         return {
@@ -481,15 +489,8 @@ def screen_prokaryote_code(
             "tga_per_kb": None,
         }
 
-    if not is_full:
-        full_strs = [s.upper().decode("ascii") for s in seqs]
-        full_bp = sum(len(s) for s in seqs)
-        s11 = _train_call_stats(full_strs, full_bp, 11)
-    else:
-        full_strs, full_bp = pre_strs, pre_bp
-
-    s4 = _train_call_stats(full_strs, full_bp, 4)
-    s25 = _train_call_stats(full_strs, full_bp, 25)
+    s4 = _train_call_stats(pre_strs, pre_bp, 4)
+    s25 = _train_call_stats(pre_strs, pre_bp, 25)
     best_cd = max(s4["cd"], s25["cd"])
     best_orf = max(s4["mean_orf"], s25["mean_orf"])
     cd_gain = best_cd - s11["cd"]
@@ -497,7 +498,7 @@ def screen_prokaryote_code(
 
     tga_per_kb: float | None = None
     if cd_gain >= 0.08 and orf_ratio >= 1.20 and s4["n_tga"] >= 3:
-        coding_bp_4 = s4["cd"] * full_bp
+        coding_bp_4 = s4["cd"] * pre_bp
         tga_per_kb = (1000.0 * s4["n_tga"] / coding_bp_4) if coding_bp_4 > 0 else 0.0
         llr_25 = (
             genecall._code25_llr(s4["n_cod"], s4["n_tga"], s4["n_tgg"])
@@ -1727,19 +1728,42 @@ def stage_bbsag1(
 
     try:
         gc_results: dict[str, dict] = {}
-        contigs: dict[str, tuple[bytes, list[int]]] = {}
-        spool_index: dict[str, list[tuple[int, int, int, bool]]] = {}  # gid -> [(offset, byte_len, seq_len, circ)]
+        contigs: dict[str, tuple[bytes, array.array]] = {}
+        spool_index: dict[str, tuple[int, int]] = {}  # gid -> (genome_start_off, genome_byte_len)
+        shared_circ_any: set[bytes] = set()
         ginfo: dict[str, dict] = {}
         skipped_members: list[tuple] = []
         trims: list[tuple] = []
         dtr_classes: Counter[str] = Counter()
         order_gids: list[str] = []
+        FADVISE_STEP = 64 << 20
+        spool_written_since_fadvise = 0
+
+        def _drop_cache(fd: int) -> None:
+            if hasattr(os, "posix_fadvise") and hasattr(os, "POSIX_FADV_DONTNEED"):
+                try:
+                    os.posix_fadvise(fd, 0, 0, os.POSIX_FADV_DONTNEED)
+                except OSError:
+                    pass
+
+        def _pre_slice_for_screen(seqs: list[bytes], max_bp: int = 500_000) -> list[bytes]:
+            if sum(len(s) for s in seqs) <= max_bp:
+                return seqs
+            out_s: list[bytes] = []
+            acc_bp = 0
+            for s in sorted(seqs, key=len, reverse=True):
+                out_s.append(s)
+                acc_bp += len(s)
+                if acc_bp >= max_bp:
+                    break
+            return out_s
 
         def submit_screen(gid: str, seqs: list[bytes], tax: str, force_alt: bool = False) -> None:
+            trimmed_seqs = _pre_slice_for_screen(seqs, 500_000)
             if pool is None:
-                gc_results[gid] = screen_prokaryote_code(seqs, tax, force_alt=force_alt)
+                gc_results[gid] = screen_prokaryote_code(trimmed_seqs, tax, force_alt=force_alt)
                 return
-            pending.append((gid, pool.submit(_prok_screen_worker, (gid, seqs, tax, force_alt))))
+            pending.append((gid, pool.submit(_prok_screen_worker, (gid, trimmed_seqs, tax, force_alt))))
             while len(pending) >= 4 * workers:
                 s, fut = pending.pop(0)
                 gc_results[s] = fut.result()[1]
@@ -1761,6 +1785,7 @@ def stage_bbsag1(
                 cluster_id: str,
                 apply_single_dtr: bool = False,
             ) -> None:
+                nonlocal spool_written_since_fadvise
                 raw_recs: list[tuple[str, bytes, int]] = []
                 for acc, hdr, seq, width in iter_fasta_fast(fobj):
                     if not seq or seq.translate(None, IUPAC_BYTES):
@@ -1774,11 +1799,11 @@ def stage_bbsag1(
                     raise Refused(f"BBSAG1: duplicate genome identifier {gid}")
 
                 cus: list[bytes] = []
-                lens: list[int] = []
+                lens = array.array("I")
                 seqs_screen: list[bytes] = []
-                sp_entries: list[tuple[int, int, int, bool]] = []
                 all_circ = False
                 acc_found = ""
+                genome_start_off = spool_fh.tell()
 
                 for hdr, seq, width in raw_recs:
                     src_cu = ids.contig_uid(seq)
@@ -1790,6 +1815,7 @@ def stage_bbsag1(
                             trims.append((subcohort, gid, hdr.split()[0], src_cu.hex(), cu.hex(), len(seq), k_trim, k_trim, len(out_seq)))
                         if circ:
                             all_circ = True
+                            shared_circ_any.add(cu)
                     else:
                         out_seq, circ = seq, False
                         cu = src_cu
@@ -1797,9 +1823,12 @@ def stage_bbsag1(
                     first_tok = hdr.split(None, 1)[0] if hdr.strip() else ""
                     prefixed = hdr if first_tok.startswith(gid + "_") or first_tok == gid else f"{gid}|{hdr}"
                     formatted = b"\n".join(fasta.format_record(prefixed, out_seq, width)) + b"\n"
-                    off = spool_fh.tell()
                     spool_fh.write(formatted)
-                    sp_entries.append((off, len(formatted), len(out_seq), circ))
+                    spool_written_since_fadvise += len(formatted)
+                    if spool_written_since_fadvise >= FADVISE_STEP:
+                        spool_fh.flush()
+                        _drop_cache(spool_fh.fileno())
+                        spool_written_since_fadvise = 0
                     cus.append(cu)
                     lens.append(len(out_seq))
                     seqs_screen.append(out_seq)
@@ -1811,7 +1840,7 @@ def stage_bbsag1(
 
                 eff_qual = "complete" if all_circ else quality
                 contigs[gid] = (b"".join(cus), lens)
-                spool_index[gid] = sp_entries
+                spool_index[gid] = (genome_start_off, spool_fh.tell() - genome_start_off)
                 ginfo[gid] = {
                     "subcohort": subcohort,
                     "category": cat,
@@ -1825,6 +1854,12 @@ def stage_bbsag1(
                 }
                 order_gids.append(gid)
                 submit_screen(gid, seqs_screen, tax)
+                if len(order_gids) % 2500 == 0:
+                    print(
+                        f"[bbsag1-stage] ingested {len(order_gids)} genomes (spool={spool_fh.tell() / (1 << 30):.2f} GiB)",
+                        file=sys.stderr,
+                        flush=True,
+                    )
 
             # 1. BBSAG20: *sag.tar.gz + mag.tar.gz
             bb_files = _all_files_in_dirs(bb_roots)
@@ -1943,6 +1978,8 @@ def stage_bbsag1(
                                 cluster_id="",
                                 apply_single_dtr=False,
                             )
+            spool_fh.flush()
+            _drop_cache(spool_fh.fileno())
 
         while pending:
             s, fut = pending.pop(0)
@@ -1961,12 +1998,6 @@ def stage_bbsag1(
         resolved_codes, genome_uids, code_conflicts = c58._resolve_within_stage_code_conflicts(
             kept_all, contigs, gc_results
         )
-        shared_circ_any: set[bytes] = {
-            contigs[g][0][k * 16 : (k + 1) * 16]
-            for g in kept_all
-            for k, (_, _, _, is_c) in enumerate(spool_index[g])
-            if is_c
-        }
 
         part_writer.flush()
         own_all = _duck_ownership_from_parts(
@@ -2038,7 +2069,6 @@ def stage_bbsag1(
                     eff_owners = {**extra_owners_from_earlier_slice, **prior_owners}
                     listing = make_inputs.Listing()
                     genomes_out: list[dict] = []
-                    rec_rows: list[tuple] = []
                     gc_rows: list[tuple] = []
                     status_rows: list[tuple] = []
                     repeated: list[tuple] = []
@@ -2050,77 +2080,94 @@ def stage_bbsag1(
                     status_counts: Counter[str] = Counter()
                     used_cats: set[str] = set()
                     ordinal = 0
+                    spool_read_since_fadvise = 0
 
-                    for g in slice_gids:
-                        info = ginfo[g]
-                        cat = info["category"]
-                        used_cats.add(cat)
-                        raw, lens = contigs[g]
-                        uids = [raw[i : i + 16] for i in range(0, len(raw), 16)]
-                        code = resolved_codes[g]
-                        gc = gc_results[g]
+                    with open(sf.tmp / "records.tsv", "w", encoding="utf-8", buffering=1 << 20) as rec_fh:
+                        rec_fh.write("\t".join(BBSAG1_RECORDS_HEAD) + "\n")
+                        for g in slice_gids:
+                            info = ginfo[g]
+                            cat = info["category"]
+                            used_cats.add(cat)
+                            raw, lens = contigs[g]
+                            uids = [raw[i : i + 16] for i in range(0, len(raw), 16)]
+                            code = resolved_codes[g]
+                            gc = gc_results[g]
+                            tot_bp_g = int(sum(lens))
 
-                        # Copy formatted FASTA bytes from spool into StageFiles BGZF writer
-                        for off, blen, _, _ in spool_index[g]:
+                            # Copy formatted FASTA bytes from spool into StageFiles BGZF writer
+                            off, blen = spool_index[g]
                             spool_rd.seek(off)
-                            sf.fh[cat].write(spool_rd.read(blen))
+                            rem = blen
+                            while rem > 0:
+                                chunk = spool_rd.read(min(1 << 20, rem))
+                                if not chunk:
+                                    raise Refused(f"BBSAG1: unexpected EOF reading spool for {g}")
+                                sf.fh[cat].write(chunk)
+                                rem -= len(chunk)
+                            spool_read_since_fadvise += blen
+                            if spool_read_since_fadvise >= FADVISE_STEP:
+                                _drop_cache(spool_rd.fileno())
+                                spool_read_since_fadvise = 0
 
-                        gc_rows.append((
-                            g, st_name, info["taxonomy"], sum(lens), len(lens), info["quality"], code,
-                            gc["reason"], str(gc["tested_alt"]).lower(),
-                            c58._fmt_opt(gc["cd_11"]), c58._fmt_opt(gc["mean_orf_11"]), c58._fmt_opt(gc["n_genes_11"]),
-                            c58._fmt_opt(gc["cd_25"]), c58._fmt_opt(gc["mean_orf_25"]), c58._fmt_opt(gc["n_genes_25"]),
-                            c58._fmt_opt(gc["cd_4"]), c58._fmt_opt(gc["mean_orf_4"]), c58._fmt_opt(gc["n_genes_4"]),
-                            c58._fmt_opt(gc["tga_per_kb"]),
-                        ))
-
-                        acc = info["accession"]
-                        x = look_map.get(r232_index.nover(acc)) if acc else None
-                        st_lbl = _r232_label(x, bool(acc))
-                        status_counts[st_lbl] += 1
-                        status_rows.append((
-                            g, info["subcohort"], info["genome_kind"], acc, st_lbl,
-                            "yes" if (x and x["in_gtdb_r232"]) else ("no" if acc else ""),
-                            str(x["is_representative"]) if (x and x["in_gtdb_r232"]) else "",
-                            (x["representative"] or "") if x else "",
-                            (x["species"] or "") if x else "",
-                            "yes" if (x and x["in_globdb_r232"]) else ("no" if acc else ""),
-                            (x["globdb_r232_id"] or "") if x else "",
-                            info["taxonomy"], info["completeness"], info["contamination"],
-                            info["cluster_id"], len(lens), sum(lens),
-                        ))
-
-                        g_circ = [u for u in uids if u in shared_circ_any]
-                        for k, (cu, n) in enumerate(zip(uids, lens)):
-                            own = eff_owners.get(cu, "")
-                            lat = "" if own else later_map.get(cu, "")
-                            is_c = cu in shared_circ_any
-                            rec_rows.append((
-                                ordinal, info["subcohort"], g, k, cu.hex(), n,
-                                info["quality"], code, str(is_c).lower(), own, lat,
+                            gc_rows.append((
+                                g, st_name, info["taxonomy"], tot_bp_g, len(lens), info["quality"], code,
+                                gc["reason"], str(gc["tested_alt"]).lower(),
+                                c58._fmt_opt(gc["cd_11"]), c58._fmt_opt(gc["mean_orf_11"]), c58._fmt_opt(gc["n_genes_11"]),
+                                c58._fmt_opt(gc["cd_25"]), c58._fmt_opt(gc["mean_orf_25"]), c58._fmt_opt(gc["n_genes_25"]),
+                                c58._fmt_opt(gc["cd_4"]), c58._fmt_opt(gc["mean_orf_4"]), c58._fmt_opt(gc["n_genes_4"]),
+                                c58._fmt_opt(gc["tga_per_kb"]),
                             ))
-                            if own:
-                                shared.append((ordinal, g, k, cu.hex(), n, own))
-                            elif lat:
-                                held_later.append((ordinal, g, k, cu.hex(), n, lat))
-                            contig_len.setdefault(cu, n)
-                            ordinal += 1
 
-                        e = listing.add(uids, code, "prokaryote", info["quality"])
-                        if e is None:
-                            repeated.append((ordinal - len(uids), g, genome_uids[g].hex(), first_of[genome_uids[g]]))
-                            continue
-                        e["circular"] = [u.hex() for u in dict.fromkeys(g_circ)]
-                        genomes_out.append(e)
-                        first_of[genome_uids[g]] = g
-                        by_subcohort[info["subcohort"]] += 1
+                            acc = info["accession"]
+                            x = look_map.get(r232_index.nover(acc)) if acc else None
+                            st_lbl = _r232_label(x, bool(acc))
+                            status_counts[st_lbl] += 1
+                            status_rows.append((
+                                g, info["subcohort"], info["genome_kind"], acc, st_lbl,
+                                "yes" if (x and x["in_gtdb_r232"]) else ("no" if acc else ""),
+                                str(x["is_representative"]) if (x and x["in_gtdb_r232"]) else "",
+                                (x["representative"] or "") if x else "",
+                                (x["species"] or "") if x else "",
+                                "yes" if (x and x["in_globdb_r232"]) else ("no" if acc else ""),
+                                (x["globdb_r232_id"] or "") if x else "",
+                                info["taxonomy"], info["completeness"], info["contamination"],
+                                info["cluster_id"], len(lens), tot_bp_g,
+                            ))
 
+                            g_circ = [u for u in uids if u in shared_circ_any] if shared_circ_any else []
+                            sub_s = info["subcohort"]
+                            qual_s = info["quality"]
+                            for k, (cu, n) in enumerate(zip(uids, lens)):
+                                own = eff_owners.get(cu, "")
+                                lat = "" if own else later_map.get(cu, "")
+                                is_c_s = "true" if (shared_circ_any and cu in shared_circ_any) else "false"
+                                cu_hex = cu.hex()
+                                rec_fh.write(
+                                    f"{ordinal}\t{sub_s}\t{g}\t{k}\t{cu_hex}\t{n}\t{qual_s}\t{code}\t{is_c_s}\t{own}\t{lat}\n"
+                                )
+                                if own:
+                                    shared.append((ordinal, g, k, cu_hex, n, own))
+                                elif lat:
+                                    held_later.append((ordinal, g, k, cu_hex, n, lat))
+                                contig_len.setdefault(cu, n)
+                                ordinal += 1
+
+                            e = listing.add(uids, code, "prokaryote", info["quality"])
+                            if e is None:
+                                repeated.append((ordinal - len(uids), g, genome_uids[g].hex(), first_of[genome_uids[g]]))
+                                continue
+                            e["circular"] = [u.hex() for u in dict.fromkeys(g_circ)]
+                            genomes_out.append(e)
+                            first_of[genome_uids[g]] = g
+                            by_subcohort[info["subcohort"]] += 1
+
+                    _drop_cache(spool_rd.fileno())
                     sf.close()
                     slice_left = left_out if idx_slice == 0 else []
                     slice_skip = skipped_members if idx_slice == 0 else []
-                    slice_trims = [t for t in trims if t[1] in set(slice_gids)]
+                    slice_gid_set = set(slice_gids)
+                    slice_trims = [t for t in trims if t[1] in slice_gid_set]
 
-                    make_inputs._write_tsv(sf.tmp / "records.tsv", BBSAG1_RECORDS_HEAD, rec_rows)
                     make_inputs._write_tsv(sf.tmp / "genetic_codes.tsv", c58.GC_HEAD, gc_rows)
                     make_inputs._write_tsv(sf.tmp / "r232_status.tsv", BBSAG1_STATUS_HEAD, status_rows)
                     make_inputs._write_tsv(sf.tmp / "left_out.tsv", BBSAG1_LEFT_HEAD, slice_left)
@@ -2234,20 +2281,81 @@ def stage_bbsag1(
 # ==================================================================================================================
 
 
-def _prepare_meta_with_records(meta: Path, work: Path) -> Path:
-    """If `records.tsv` was moved to `/stor` (`>= 64 MiB`), link it into a small work meta view for `c81.split_genomes`."""
-    meta = Path(meta)
-    if (meta / "records.tsv").is_file() or (meta / "records.tsv.gz").is_file():
-        return meta
-    objs = json.loads((meta / "objects_staging.json").read_text())
-    for o in objs:
-        cand = Path(o["path"]).parent / "records.tsv"
-        if cand.is_file():
-            view = work / f"meta_view_{meta.name}"
-            view.mkdir(parents=True, exist_ok=True)
-            (view / "records.tsv").symlink_to(cand)
-            return view
-    raise Refused(f"no records.tsv found in {meta} or its staging directory")
+def _split_genomes_fast(
+    meta: Path,
+    fasta_paths: list[Path] | Path,
+    out_dir: Path,
+    *,
+    keep: set[str] | None = None,
+    unlisted: list[str] | None = None,
+) -> dict[str, Path]:
+    """Low-RAM, block-streamed replacement for `c81.split_genomes` over multi-million-contig SAG stages."""
+    paths = [Path(fasta_paths)] if isinstance(fasta_paths, (str, Path)) else [Path(p) for p in fasta_paths]
+    rec_tsv = c81._records_tsv(Path(meta))
+    first: dict[bytes, str] = {}
+    with _open_gzip_fast(rec_tsv) if str(rec_tsv).endswith(".gz") else open(rec_tsv, "rb") as rraw, io.TextIOWrapper(
+        rraw, encoding="utf-8", errors="replace"
+    ) as fh:
+        hdr_cols = fh.readline().rstrip("\r\n").split("\t")
+        g_idx = hdr_cols.index("genome") if "genome" in hdr_cols else hdr_cols.index("genome_id")
+        cu_idx = hdr_cols.index("contig_uid")
+        for ln in fh:
+            cols = ln.rstrip("\r\n").split("\t")
+            if len(cols) <= max(g_idx, cu_idx):
+                continue
+            g_name = cols[g_idx]
+            if keep is not None and g_name not in keep:
+                continue
+            cu_b = bytes.fromhex(cols[cu_idx])
+            first.setdefault(cu_b, sys.intern(g_name))
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    files: dict[str, Path] = {}
+    used: set[str] = set()
+    handles: dict[str, io.BufferedWriter] = {}
+    try:
+        for p in paths:
+            is_gz = magic_format(p) == "gzip"
+            ctx = _open_gzip_fast(p) if is_gz else open(p, "rb")
+            with ctx as fstream:
+                for acc, _, seq, _ in iter_fasta_fast(fstream):
+                    g = first.get(ids.contig_uid(seq))
+                    if g is None:
+                        if unlisted is None and keep is None:
+                            raise Refused(f"{p}: record {acc} is in no genome of {rec_tsv}")
+                        if unlisted is not None and keep is None:
+                            unlisted.append(acc)
+                        continue
+                    if g not in files:
+                        fname = re.sub(r"[^A-Za-z0-9_.-]", "_", g) + ".fna"
+                        if fname in used:
+                            raise Refused(f"two genomes would share the file {fname}")
+                        used.add(fname)
+                        files[g] = out_dir / fname
+                    fh = handles.get(g)
+                    if fh is None:
+                        fh = handles[g] = open(files[g], "ab", buffering=1 << 18)
+                        if len(handles) > 64:
+                            k0 = next(iter(handles))
+                            old = handles.pop(k0)
+                            old.flush()
+                            if hasattr(os, "posix_fadvise") and hasattr(os, "POSIX_FADV_DONTNEED"):
+                                try:
+                                    os.posix_fadvise(old.fileno(), 0, 0, os.POSIX_FADV_DONTNEED)
+                                except OSError:
+                                    pass
+                            old.close()
+                    fh.write(b">" + acc.encode("utf-8") + b"\n" + seq + b"\n")
+    finally:
+        for fh in handles.values():
+            fh.flush()
+            if hasattr(os, "posix_fadvise") and hasattr(os, "POSIX_FADV_DONTNEED"):
+                try:
+                    os.posix_fadvise(fh.fileno(), 0, 0, os.POSIX_FADV_DONTNEED)
+                except OSError:
+                    pass
+            fh.close()
+    return files
 
 
 def bbsag1_ani(
@@ -2260,79 +2368,100 @@ def bbsag1_ani(
     taxonomy_tsv: Path | None = None,
     archaea: tuple[Path, Path] | None = None,
     threads: int = 4,
+    work_dir: Path | None = None,
 ) -> dict:
     """Record `skani` >= 96% ANI / >= 50% larger AF matches against held stages without removing any genome (DEC-84 (2))."""
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
-    work = out / "work"
+    work = Path(work_dir) if work_dir is not None else (out / "work")
     shutil.rmtree(work, ignore_errors=True)
     work.mkdir(parents=True, exist_ok=True)
 
-    q_meta = _prepare_meta_with_records(Path(meta), work)
-    q_files = c81.split_genomes(q_meta, [Path(x) for x in fasta_paths], work / "Q")
-    (work / "q.txt").write_text("".join(f"{p}\n" for p in sorted(map(str, q_files.values()))))
-    query_of = {str(p): g for g, p in q_files.items()}
-    genera = {c81.genus_of(r["taxonomy"]) for r in c81._rows_tsv(Path(meta) / "r232_status.tsv")} - {""}
+    try:
+        q_files = _split_genomes_fast(Path(meta), [Path(x) for x in fasta_paths], work / "Q")
+        q_raw_txt = work / "q_raw.txt"
+        q_raw_txt.write_text("".join(f"{p}\n" for p in sorted(map(str, q_files.values()))))
+        query_of = {str(p): g for g, p in q_files.items()}
 
-    groups: list[tuple[str, tuple[str, object]]] = [(n, ("whole", v)) for n, v in whole.items()]
-    if by_genus:
-        groups += [(n, ("genus", v)) for n, v in by_genus.items()]
-    if archaea is not None:
-        groups.append(("r226_archaea", ("archaea", archaea)))
-    keep = c81.genus_genomes(taxonomy_tsv, genera) if (by_genus and taxonomy_tsv is not None) else set()
+        q_sketch_dir = work / "Q_sketch"
+        t_sk0 = c39_ani.child_cpu()
+        subprocess.run(
+            [
+                "skani", "sketch", "--separate-sketches", "-t", str(threads),
+                "-l", str(q_raw_txt), "-o", str(q_sketch_dir),
+            ],
+            check=True,
+        )
+        sketch_cpu_s = round(c39_ani.child_cpu() - t_sk0, 1)
+        shutil.rmtree(work / "Q", ignore_errors=True)
+        q_sketches = sorted(map(str, q_sketch_dir.glob("*.sketch"))) if q_sketch_dir.is_dir() else []
+        (work / "q.txt").write_text("".join(f"{p}\n" for p in q_sketches))
 
-    res: dict = {
-        "queries": len(q_files),
-        "genera": len(genera),
-        "threads": threads,
-        "threshold": {"ani_min": c81.ANI_SAG, "af_min_larger_of_two": c81.AF_SAG},
-        "groups": {},
-    }
-    hits_all: list[dict[str, dict]] = []
-    for name, (kind, v) in groups:
-        d = work / f"ref_{name}"
-        unlisted: list[str] = []
-        if kind == "archaea":
-            files = c81.archaea_refs(v[0], v[1], genera, d)
-        else:
-            r_meta = _prepare_meta_with_records(v[0], work) if not (Path(v[0]) / "records.tsv").is_file() else v[0]
-            files = c81.split_genomes(r_meta, v[1], d, keep=keep if kind == "genus" else None, unlisted=unlisted)
-        ref_of = {str(p): (name, g) for g, p in files.items()}
-        entry: dict = {
-            "kind": kind,
-            "references": len(files),
-            "records_in_no_genome": len(unlisted),
+        genera = {c81.genus_of(r["taxonomy"]) for r in c81._rows_tsv(Path(meta) / "r232_status.tsv")} - {""}
+
+        groups: list[tuple[str, tuple[str, object]]] = [(n, ("whole", v)) for n, v in whole.items()]
+        if by_genus:
+            groups += [(n, ("genus", v)) for n, v in by_genus.items()]
+        if archaea is not None:
+            groups.append(("r226_archaea", ("archaea", archaea)))
+        keep = c81.genus_genomes(taxonomy_tsv, genera) if (by_genus and taxonomy_tsv is not None) else set()
+
+        res: dict = {
+            "queries": len(q_files),
+            "queries_sketched": len(q_sketches),
+            "query_sketch_cpu_s": sketch_cpu_s,
+            "genera": len(genera),
+            "threads": threads,
+            "threshold": {"ani_min": c81.ANI_SAG, "af_min_larger_of_two": c81.AF_SAG},
+            "groups": {},
         }
-        if files:
-            rlist = work / f"r_{name}.txt"
-            rlist.write_text("".join(f"{p}\n" for p in sorted(ref_of)))
-            table = work / f"vs_{name}.tsv"
-            t0 = c39_ani.child_cpu()
-            subprocess.run(
-                [
-                    "skani", "dist", "-t", str(threads), "--min-af", str(c81.AF_SAG),
-                    "--ql", str(work / "q.txt"), "--rl", str(rlist), "-o", str(table),
-                ],
-                check=True,
-            )
-            entry["cpu_s"] = round(c39_ani.child_cpu() - t0, 1)
-            h = c81.best_hits(table, query_of, ref_of)
-            entry["meet"] = len(h)
-            hits_all.append(h)
-        shutil.rmtree(d, ignore_errors=True)
-        res["groups"][name] = entry
+        hits_all: list[dict[str, dict]] = []
+        for name, (kind, v) in groups:
+            d = work / f"ref_{name}"
+            unlisted: list[str] = []
+            if kind == "archaea":
+                files = c81.archaea_refs(v[0], v[1], genera, d)
+            else:
+                files = _split_genomes_fast(v[0], v[1], d, keep=keep if kind == "genus" else None, unlisted=unlisted)
+            ref_of = {str(p): (name, g) for g, p in files.items()}
+            entry: dict = {
+                "kind": kind,
+                "references": len(files),
+                "records_in_no_genome": len(unlisted),
+            }
+            if files and q_sketches:
+                rlist = work / f"r_{name}.txt"
+                rlist.write_text("".join(f"{p}\n" for p in sorted(ref_of)))
+                table = work / f"vs_{name}.tsv"
+                t0 = c39_ani.child_cpu()
+                subprocess.run(
+                    [
+                        "skani", "dist", "-t", str(threads), "--min-af", str(c81.AF_SAG),
+                        "--ql", str(work / "q.txt"), "--rl", str(rlist), "-o", str(table),
+                    ],
+                    check=True,
+                )
+                entry["cpu_s"] = round(c39_ani.child_cpu() - t0, 1)
+                h = c81.best_hits(table, query_of, ref_of)
+                entry["meet"] = len(h)
+                hits_all.append(h)
+            else:
+                entry["meet"] = 0
+            shutil.rmtree(d, ignore_errors=True)
+            res["groups"][name] = entry
 
-    best = c81.merge_best(hits_all)
-    make_inputs._write_tsv(
-        out / "ani_hits.tsv",
-        ["genome", "stage", "ref_genome", "ani", "af"],
-        [(g, h["stage"], h["genome"], h["ani"], h["af"]) for g, h in sorted(best.items())],
-    )
-    res["meet"] = len(best)
-    res["meet_by_stage"] = dict(sorted(Counter(h["stage"] for h in best.values()).items()))
-    (out / "ani_summary.json").write_text(json.dumps(res, indent=1, sort_keys=True) + "\n")
-    shutil.rmtree(work, ignore_errors=True)
-    return res
+        best = c81.merge_best(hits_all)
+        make_inputs._write_tsv(
+            out / "ani_hits.tsv",
+            ["genome", "stage", "ref_genome", "ani", "af"],
+            [(g, h["stage"], h["genome"], h["ani"], h["af"]) for g, h in sorted(best.items())],
+        )
+        res["meet"] = len(best)
+        res["meet_by_stage"] = dict(sorted(Counter(h["stage"] for h in best.values()).items()))
+        (out / "ani_summary.json").write_text(json.dumps(res, indent=1, sort_keys=True) + "\n")
+        return res
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
 
 
 # ==================================================================================================================
@@ -2428,6 +2557,7 @@ def main(argv: list[str] | None = None) -> int:
     pba.add_argument("--taxonomy", type=Path, default=None)
     pba.add_argument("--archaea", default="", metavar="FASTA:LIST_TSV")
     pba.add_argument("--threads", type=int, default=4)
+    pba.add_argument("--work", type=Path, default=None)
     pba.add_argument("--report-out", type=Path, default=None)
 
     a = ap.parse_args(argv)
@@ -2455,6 +2585,7 @@ def main(argv: list[str] | None = None) -> int:
                 taxonomy_tsv=a.taxonomy,
                 archaea=arc,
                 threads=a.threads,
+                work_dir=a.work,
             )
             txt = json.dumps(rep, indent=1, sort_keys=True)
             if a.report_out is not None:
