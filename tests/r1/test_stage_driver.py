@@ -2801,3 +2801,165 @@ def test_a30_before_and_after_outside_a_wave_write_no_record(tmp_path):
     assert not (w.c / "before" / "verified.share").exists() and not (w.c / "after" / "verified.share").exists()
     assert _verified(w) == sorted(RELEASES * 2)
     assert "share" not in _driver_log(w).lower()
+
+
+# ==============================================================================================================
+# Card R-25: optional non-/stor SMALL_BACKUP_DIR for stage backups under TAR_FLOOR_BYTES (64 MiB, AGENTS.md §7.3).
+
+R25 = pytest.mark.covers("R-25")
+
+
+@R25
+def test_r25_a_small_backup_unset_or_empty_fails_under_tar_floor(tmp_path):
+    for label, extra in (("unset", {}), ("empty", {"SMALL_BACKUP_DIR": ""})):
+        w = World(tmp_path / label)
+        _backup_ready(w)
+        got = w.drive("backup", **extra)
+        assert got.returncode != 0 and not w.done("backup"), label
+        assert not (w.c / "backup.tsv").exists(), label
+        assert not any(w.stor.iterdir()), label
+
+
+@R25
+def test_r25_b_small_backup_dir_writes_sub_floor_tar_and_leaves_backup_dir_untouched(tmp_path):
+    import tarfile
+
+    w = World(tmp_path / "ok")
+    _backup_ready(w)
+    main_bk = tmp_path / "uncreated_main_backups"
+    small = tmp_path / "small_backups"
+    _ok(w.drive("backup", BACKUP_DIR=str(main_bk), SMALL_BACKUP_DIR=str(small) + "/"), w, "r25-small-backup")
+    assert w.done("backup")
+    tar_path = small / f"added_{w.stage.lower()}.tar"
+    assert tar_path.is_file()
+    raw = tar_path.read_bytes()
+    assert 10240 <= len(raw) < 67108864
+    sha = hashlib.sha256(raw).hexdigest()
+    assert (w.c / "backup.tsv").read_text() == f"{tar_path}\t{len(raw)}\t{sha}\t1\n"
+    assert not list(small.glob(".*")), "no dot-temp left in SMALL_BACKUP_DIR"
+    assert not (w.c / f"added_{w.stage.lower()}.tar").exists(), "local staging tar removed"
+    assert not main_bk.exists() and not any(w.stor.iterdir()), "BACKUP_DIR left untouched"
+    with tarfile.open(tar_path, "r:") as tf:
+        names = tf.getnames()
+        assert names == [f"l0seq/x/stage={w.stage}/part-0.parquet"]
+        extracted = tf.extractfile(names[0])
+        assert extracted is not None and extracted.read() == b"new"
+
+    # Read-back sha256 verification still guards SMALL_BACKUP_DIR writes
+    w_bad = World(tmp_path / "badsha")
+    _backup_ready(w_bad)
+    small_bad = tmp_path / "small_badsha"
+    got_bad = w_bad.drive("backup", SMALL_BACKUP_DIR=str(small_bad), FAKE_SHA_EMPTY="1")
+    assert got_bad.returncode != 0 and not w_bad.done("backup")
+    assert not (small_bad / f"added_{w_bad.stage.lower()}.tar").exists()
+
+
+@R25
+def test_r25_c_small_backup_dir_leaves_tar_at_or_above_floor_in_backup_dir(tmp_path):
+    w = World(tmp_path / "ge")
+    _backup_ready(w)
+    small_uncreated = tmp_path / "small_uncreated"
+    _ok(w.drive("backup", TAR_FLOOR_BYTES="100", SMALL_BACKUP_DIR=str(small_uncreated)))
+    assert w.done("backup")
+    main_tar = w.stor / f"added_{w.stage.lower()}.tar"
+    assert main_tar.is_file() and not list(w.stor.glob(".*"))
+    rec = (w.c / "backup.tsv").read_text().rstrip("\n").split("\t")
+    assert rec[0] == str(main_tar) and rec[2] == hashlib.sha256(main_tar.read_bytes()).hexdigest()
+    assert not small_uncreated.exists(), "SMALL_BACKUP_DIR not created when tar >= TAR_FLOOR_BYTES"
+
+    # Existing empty SMALL_BACKUP_DIR also stays untouched, and rehearse stays isolated from SMALL_BACKUP_DIR
+    w2 = World(tmp_path / "rh")
+    small_existing = tmp_path / "small_existing"
+    small_existing.mkdir()
+    _ok(w2.drive("rehearse", SMALL_BACKUP_DIR=str(small_existing)))
+    assert w2.done("rehearse") and not any(small_existing.iterdir())
+
+
+@R25
+@pytest.mark.parametrize("bad_kind", ["stor-root", "stor-sub", "stor-dotdot", "stor-symlink"])
+def test_r25_d_small_backup_dir_under_stor_is_refused_before_dd(tmp_path, bad_kind):
+    w = World(tmp_path)
+    _backup_ready(w)
+    if bad_kind == "stor-root":
+        bad_dir = "/stor"
+    elif bad_kind == "stor-sub":
+        bad_dir = "/stor/work/Wilke/if2453/all-the-data/small_backups"
+    elif bad_kind == "stor-dotdot":
+        bad_dir = "/tmp/../stor/scratch/Wilke/if2453/small_backups"
+    else:
+        sym = tmp_path / "link_to_stor"
+        sym.symlink_to("/stor/work/Wilke/if2453/all-the-data/small_backups")
+        bad_dir = str(sym)
+    got = w.drive("backup", TAR_FLOOR_BYTES="0", SMALL_BACKUP_DIR=bad_dir)
+    assert got.returncode != 0 and not w.done("backup")
+    assert (w.c / "backup" / "REFUSED").exists()
+    assert "dd " not in _driver_log(w)
+    assert not any(w.stor.iterdir())
+
+
+@R25
+def test_r25_d_small_backup_floor_must_be_numeric_and_enforced(tmp_path):
+    for idx, bad_floor in enumerate(("abc", "-1", "10k")):
+        w = World(tmp_path / f"nan-{idx}")
+        _backup_ready(w)
+        got = w.drive("backup", TAR_FLOOR_BYTES="0", SMALL_BACKUP_DIR=str(tmp_path / f"s-{idx}"),
+                      SMALL_TAR_FLOOR_BYTES=bad_floor)
+        assert got.returncode != 0 and not w.done("backup"), bad_floor
+        assert (w.c / "backup" / "REFUSED").exists(), bad_floor
+        assert "dd " not in _driver_log(w), bad_floor
+
+    w_low = World(tmp_path / "under-small-floor")
+    _backup_ready(w_low)
+    small_low = tmp_path / "small_low"
+    got_low = w_low.drive("backup", SMALL_BACKUP_DIR=str(small_low), SMALL_TAR_FLOOR_BYTES="20480")
+    assert got_low.returncode != 0 and not w_low.done("backup")
+    assert (w_low.c / "backup" / "FAILED").exists()
+    assert not (w_low.c / "backup.tsv").exists()
+    assert not small_low.exists() and not any(w_low.stor.iterdir())
+
+
+@R25
+def test_r25_e_small_backup_dir_second_call_is_idempotent_and_verifies_backup_tsv(tmp_path):
+    w = World(tmp_path)
+    _backup_ready(w)
+    small = tmp_path / "small_backups"
+    _ok(w.drive("backup", SMALL_BACKUP_DIR=str(small)))
+    before_tsv = (w.c / "backup.tsv").read_text()
+    tar_path = small / f"added_{w.stage.lower()}.tar"
+    ino_before = tar_path.stat().st_ino
+    dd_count_before = _driver_log(w).count(" written (")
+
+    small.chmod(0o500)
+    try:
+        _ok(w.drive("backup", SMALL_BACKUP_DIR=str(small)))
+    finally:
+        small.chmod(0o700)
+    assert w.done("backup")
+    assert (w.c / "backup.tsv").read_text() == before_tsv
+    assert tar_path.stat().st_ino == ino_before
+    assert _driver_log(w).count(" written (") == dd_count_before
+    assert not any(w.stor.iterdir())
+
+    # Corrupting the file size on disk makes a subsequent backup call fail verification
+    tar_path.write_bytes(b"truncated")
+    got_bad = w.drive("backup", SMALL_BACKUP_DIR=str(small))
+    assert got_bad.returncode != 0 and not w.done("backup")
+
+
+@R25
+@pytest.mark.parametrize("existing_fmt", ["added_{lc}.tar", ".added_{lc}.tar.tmp"])
+def test_r25_f_small_backup_dir_refuses_existing_tar_or_dot_temp(tmp_path, existing_fmt):
+    w = World(tmp_path)
+    _backup_ready(w)
+    small = tmp_path / "small_backups"
+    small.mkdir()
+    existing = small / existing_fmt.format(lc=w.stage.lower())
+    existing.write_bytes(b"existing copy")
+    got = w.drive("backup", SMALL_BACKUP_DIR=str(small))
+    assert got.returncode != 0 and not w.done("backup")
+    assert (w.c / "backup" / "REFUSED").exists()
+    assert existing.read_bytes() == b"existing copy"
+    assert [p.name for p in small.iterdir()] == [existing.name]
+    assert "dd " not in _driver_log(w)
+    assert not (w.c / "backup.tsv").exists() and not any(w.stor.iterdir())
+

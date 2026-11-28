@@ -827,14 +827,22 @@ refusal writes `<mode>/REFUSED`, a failure `<mode>/FAILED`, a STOP file `<mode>/
 | `run` | `build-stage --profile <dir>/profile.yaml --root <root> --stage S --depth D [--min-contig-len N] [--genecall-mode gv-meta] --genomes ... --objects ... [--library pfam 38.2 <hmm> <cutoff>] [--crispr] --threads 6 --scan-cpus 4` through `pod_run.sh` in the image by digest, unit `<stage>-<n>`, after the inputs' sums again; the unit's `CPUQuota` is the profile's cap of the hour (`runstep.launch_cap`, by the profile's day window and weekday rule) less 2 for the driver's helpers, set again with `systemctl --user set-property --runtime` when the hour's cap changes; every 60 s `r50_watch.py` (a process at 280 CPU-minutes, `/tmp` under 200 GB, scratch over 100 GB), and at each new run record `stage_est.py rates` (DEC-43, DEC-53, DEC-64: a judged step over 1.50 of its estimate, or of a `JUDGE` figure, stops the unit; over 1.20 and at or under 1.50 it is listed under `recorded_over_20pct` and the build goes on); the unit counts as ended only on its exit line or a real inactive answer of systemd (a failed `systemctl` call is not an answer), and a trap stops it if the driver itself exits; at the end the unit's exit 0 and the stage complete at its depth (`stage.stage_incomplete`) | `run/FAILED` of an earlier launch; a missing or other conf's marker (`estimate`, `rehearse`, `before`), inputs that changed, a stage of `AFTER` without `backup/DONE`, an active build unit, `/tmp` under 205 GB, a thread count above the profile's; a guard (any exit but 0) stops the unit, waits to see it gone, and writes `run/FAILED`; a STOP that appears ends the build at a step boundary and the records published are judged before `run/STOPPED` |
 | `after` | the listing and sha256 again; the same releases verified with the same manifest hashes; `bio-box releases` | a release added or gone since `before`, a hash that changed, a verify or listing that fails |
 | `check` | `stage_check.py` on the two snapshots, each run's report kept in `check/<n>/`; writes `root_added.tsv` (every added file with size and sha256). A stage stores a contig when its `contig_index` holds the contig's default variant; a non-default row (new raw bytes of a contig another stage stores, as ingest writes them) is allowed and counted as `variants_of_contigs_held_by_other_stages`, while every contig of the index must have exactly one default variant among all stages and no `(contig_uid, raw_digest)` of another stage (card R-17) | any assertion of the check (it says which; with a library, a missing scan plan; with CRISPR, a producer whose record lists no ledger, or no feature file without a ledger that found no array; a record of 24 CPU-minutes or more that no estimate names); a list that differs from the one a backup was made from |
-| `backup` | one tar of exactly the added files to `$BACKUP_DIR/added_<stage>.tar`: a dot-temporary name, `dd conv=fsync`, read back, sha256 equal, `mv -n`, a line in `backup.tsv` | a tar that exists (never overwritten); a file under 64 MiB onto `/stor`; a copy that fails or reads back different (the temporary file is left for a person) |
+| `backup` | one tar of exactly the added files to `$BACKUP_DIR/added_<stage>.tar` (or, when under `TAR_FLOOR_BYTES` and `SMALL_BACKUP_DIR` names a non-`/stor` directory, to `$SMALL_BACKUP_DIR/added_<stage>.tar` if at least `SMALL_TAR_FLOOR_BYTES`): a dot-temporary name, `dd conv=fsync`, read back, sha256 equal, `mv -n`, a line in `backup.tsv` | a tar or dot-temporary file that exists (never overwritten); a file under 64 MiB onto `/stor`, or `SMALL_BACKUP_DIR` under `/stor` (AGENTS 7.3); a tar under `TAR_FLOOR_BYTES` with `SMALL_BACKUP_DIR` unset, or under `SMALL_TAR_FLOOR_BYTES`; a copy that fails or reads back different (the temporary file is left for a person) |
 
 A stage run by itself (by hand, or by `stage_queue.sh` outside a wave) runs every row above in full. Inside a wave
 (`STAGE_WAVE` set by `stage_wave.sh`, next section), `rehearse` may take another stage's rehearsal and `before` another
 stage's verification, each only on equal recorded facts (card A-30, DEC-81 (3)); `after` always verifies in full.
 
 The real backup directory is the default of `BACKUP_DIR`, `/stor/work/Wilke/if2453/all-the-data/root_backups`; the
-rehearsal sets its own under its scratch directory. A guard's stop is never lifted by the driver: `run` refuses while
+rehearsal sets its own under its scratch directory. When `SMALL_BACKUP_DIR` is unset (the default), a stage whose tar
+is under `TAR_FLOOR_BYTES` (`67108864` bytes, 64 MiB, AGENTS 7.3) fails in `backup` without writing to `/stor`. When
+`SMALL_BACKUP_DIR` names a directory outside `/stor` (for example `/tmp/if2453/stages/root_backups_small`; `/stor` and
+any path resolving under `/stor` are refused before `dd`, card R-25), a tar under `TAR_FLOOR_BYTES` and at least
+`SMALL_TAR_FLOOR_BYTES` (default `10240` bytes, one 20-block GNU tar record, *derived*: `20 × 512`) is written to
+`$SMALL_BACKUP_DIR/added_<stage>.tar` by the same dot-temporary `dd conv=fsync`, read-back sha256 and `mv -n` sequence
+and recorded in `backup.tsv`, leaving `$BACKUP_DIR` untouched, while tars at or above `TAR_FLOOR_BYTES` still go to
+`$BACKUP_DIR`; mirror every tar written to `SMALL_BACKUP_DIR` to `tower` with
+`scripts/orchestrator/relay_to_tower.sh` ("Mirror to tower", DEC-66 `S-1`). A guard's stop is never lifted by the driver: `run` refuses while
 `run/FAILED` is there; a person reads it, and if a decision row accepts the record, adds its `ACCEPTED` line to the
 conf and moves `run/FAILED` aside (`run/FAILED.<unit>`). Any edit of a conf, a comment included, changes its sha256
 and so withdraws every marker made for it: after that procedure the stage needs `estimate`, `rehearse` and `before`
@@ -931,6 +939,14 @@ systemd-run --user --unit=r26-11-4-wave-4 --collect -p MemoryMax=4G -p MemorySwa
 
 A mode run this way still refuses without the markers before it and with a marker made for another conf; the wave does
 not lift that.
+
+When a wave includes a curated replicon or organelle stage whose added files total under 64 MiB (for example `LPL1`,
+whose `added_lpl1.tar` was `2,150,400` bytes, *measured*, `wilkcomp02`, 2026-11-28,
+`/tmp/if2453/stages/lpl1/driver.log`; card R-25), pass `--setenv=SMALL_BACKUP_DIR=/tmp/if2453/stages/root_backups_small`
+to `systemd-run`: the wave passes it to every queue and driver, stages at or above 64 MiB still write to `BACKUP_DIR` on
+`/stor/work`, and stages under 64 MiB write `added_<stage>.tar` to `SMALL_BACKUP_DIR` without stopping the wave or
+writing under 64 MiB onto `/stor` (AGENTS 7.3); mirror any tar in `SMALL_BACKUP_DIR` to `tower` ("Mirror to tower",
+DEC-66 `S-1`).
 
 ### What the stages of one wave share (card A-30, DEC-81 (3))
 
