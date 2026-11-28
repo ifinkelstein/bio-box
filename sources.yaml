@@ -6023,3 +6023,22 @@ sources:
       file at a time), UTC 2026-11-27T22:38:21Z to 2026-11-27T22:42:10Z (card A-32); bytes and sha256 measured on tower
     stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/UNIPROT_RELNOTES/ (SOURCE_URLS.tsv and SHA256SUMS there)
     approved: "by the PI, 2026-11-27 13:57 CST: \"i approve adding uniprot url to sources.yaml\" (DEC-87)"
+  - name: jgi_portal_authenticated_r26_12
+    what: >-
+      JGI Data Portal v2 and IMG/M authenticated harvest under DEC-89 (2): (a) the 532 unrestricted JGI-only IMG/M
+      PacBio/ONT long-read metagenome assemblies enumerated in LR_jgi_batch.tsv.gz (257.48 Gbp measured assembled bases,
+      card C-56, sha256 02df650bdb58be67d0a0a8e8cd1d5a6b8fc206eaa1915619d3f05d442dfce32a), (b) post-2024-02-06
+      unrestricted IMG/M HQ/MQ prokaryotic bins and post-2023-11-10 unrestricted SAGs, and (c) Custom_MPI-SMC_2025 BGC
+      catalog table (source_data_202604150843.csv) if disk-resident on JDP
+    url: https://files-download.jgi.doe.gov/filedownload/
+    url_search: https://files.jgi.doe.gov/search/?api_version=2&q={query}
+    url_restore: https://files.jgi.doe.gov/request_archived_files/
+    url_portal: https://data.jgi.doe.gov/
+    url_img_m: https://img.jgi.doe.gov/cgi-bin/m/main.cgi
+    checksum: JGI Data Portal v2 md5sum per file where published; zip/file sha256 verified on tower at fetch
+    limits: gentle authenticated session on tower (<= 2 concurrent downloads, 1-2 req/s search); session cookies kept only in chmod 600 /root/.jgi_cookies on tower, never in git or logs
+    license: JGI Data Utilization Policy (Unrestricted datasets only; accepted by the PI in JGI Portal on 2026-11-18 and 2026-11-28)
+    redistributable: false
+    fetched: >-
+      nothing yet: listed before querying files.jgi.doe.gov or fetching to tower:/mnt/user/research-bulk/bio-box/sources_incoming/JGI_LR532/
+    approved: "by the PI, 2026-11-28 10:11 and 10:54 CST: \"i can authenticate jgi and other logins now so we have a larger catalogo fothings to dl\" / \"open chrome via browser-tools. i will login to portal 1, then u take over\" (DEC-89 (2))"
