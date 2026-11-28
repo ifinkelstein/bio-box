@@ -7,7 +7,7 @@
 # /stor/scratch/Wilke/if2453/all-the-data (each directory has a MANIFEST.sha256 for its archives).
 # Reference libraries (Pfam, Rfam, NCBIfam) are in refdb.yaml, not here.
 #
-# Last checked against the files on disk: 2026-11-11.
+# Last checked against the files on disk: 2026-11-28 (card R-26).
 version: 1
 sources:
   # Card C-85 (DEC-88 (1), (2), DEC-80, 2026-11-27): next-wave gentle fetch queues on tower for r26.11.6+:
@@ -52,10 +52,8 @@ sources:
       our sha256 recorded on fetch
     license: "not stated in the EBI MGnify catalogue READMEs (EMBL-EBI terms of use; batch-5 job list wrote CC BY 4.0)"
     redistributable: false   # DEC-80 (3): no explicit per-catalogue licence statement in the saved READMEs
-    fetched: >-
-      nothing yet: queued in `scripts/orchestrator/tower_jobs/25_r26_11_6_mgnify_nonhuman_reps.tsv`, listed here before
-      the fetch (card C-85, DEC-88 (1), (2))
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/MGNIFY_REPS/
+    fetched: in progress as of 2026-11-28T18:06:34Z (7,011 of 22,858 files, 6,128,979,288 B landed 2026-11-28, *measured* SOURCE_URLS.tsv on tower; active streaming under DEC-81 (5) / DEC-89)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming_s2/MGNIFY_REPS/
     approved: "by the PI, 2026-11-27 15:18 CST: \"return to card c-84 outputs, start preparing everything you can via  aworker\" and \"mostly stick these downloads on tower, but don't hammer it too much\" (DEC-88 (1), (2); DEC-80 (5))"
   - name: tower_r26_11_6_ncbi_fna
     what: >-
@@ -72,10 +70,21 @@ sources:
     license: INSDC (public)
     redistributable: true
     fetched: >-
-      nothing yet: queued in `23_r26_11_6_asg1_fna.tsv`, `24_r26_11_6_dsv70_prjna1244896.tsv`, and
-      `27_r26_11_6_gtdb_r232_delta.tsv`, listed here before the fetch (card C-85, DEC-88 (1), (2))
+      2026-11-28 (18,275 files, 20,452,328,209 B across ASG1_FNA 403 files / 376,522,191 B (assemblies SHA256SUMS
+      sha256 6330ad1173ee0d19aa2027db532dab9e50a31a325d27935ce39447b02db7c3d6); DSV70_NCBI 2,937 files / 1,966,027,238 B
+      (assemblies SHA256SUMS sha256 70ef5f806ac5481ea64fe24e7a34c71f170b8f018b9434d8f7d920fa7f8caf02); GTDB_R232_DELTA
+      14,935 files / 18,109,778,780 B (110 subdirs SHA256SUMS: gtdb_r232_priority 9,448 files / 10,480,322,939 B across
+      10 subdirs; post_r232_complete 5,487 files / 7,629,455,841 B across 100 subdirs), *measured* SOURCE_URLS.tsv +
+      SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
     stored: >-
-      will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/{ASG1_FNA,DSV70_NCBI,GTDB_R232_DELTA}/
+      tower:/mnt/user/research-bulk/bio-box/sources_incoming_s2/ASG1_FNA/;
+      tower:/mnt/user/research-bulk/bio-box/sources_incoming_s2/DSV70_NCBI/;
+      tower:/mnt/user/research-bulk/bio-box/sources_incoming_s2/GTDB_R232_DELTA/
+    note: >-
+      Stream 2 queues 23, 24, and 27 completed on tower 2026-11-28 (`DEC-88`, `DEC-89`): ASG1_FNA landed 403 of 403
+      assemblies; DSV70_NCBI landed 2,937 of 3,354 assemblies (417 obsolete `.1` GenBank versions superseded on NCBI
+      FTP); GTDB_R232_DELTA landed 14,935 of 14,965 assemblies (9,448 of 9,478 in gtdb_r232_priority with 30
+      suppressed/replaced versions; 5,487 of 5,487 in post_r232_complete)
     approved: "by the PI, 2026-11-27 15:18 CST: \"return to card c-84 outputs, start preparing everything you can via  aworker\" and \"mostly stick these downloads on tower, but don't hammer it too much\" (DEC-88 (1), (2))"
   # Card R-15 (DEC-81 (5), 2026-11-26): batch 7 of tower, the two CNGBdb sets of _batch7_cngb_urls.tsv (written on
   # tower 2026-11-25 21:37 CST; nothing of it was fetched). This supersedes the comment above the batch-6 entries that
@@ -103,11 +112,8 @@ sources:
       compares it before the file is kept); none for the 3 metadata tables; our sha256 is taken after the fetch
     license: CNGBdb-CC-BY-4.0   # as the job list states it
     redistributable: false   # DEC-80 (3): no record states a licence
-    fetched: >-
-      nothing yet: 75,085 files named in _batch7_cngb_urls.tsv on tower; the batch-7 runner was ended at 2026-11-26
-      08:09 CST before it fetched, and tower has no batch7_cngb/ directory (read 2026-11-26 by card R-15); listed here
-      before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch7_cngb/EEMC1/
+    fetched: in progress as of 2026-11-28T18:06:34Z (27,587 of 75,085 files, 20,624,910,975 B landed 2026-11-27..2026-11-28, *measured* SOURCE_URLS.tsv on tower; active streaming under DEC-81 (5) / DEC-89)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch7_cngb/EEMC1/
     note: >-
       CNGBdb-CC-BY-4.0 is the batch-7 worker's label; no provider record of the licence was kept, and card R-15
       requested none. The list's bp column sums to 181,337,158,637 bases for the 75,082 assemblies (derived); no byte
@@ -125,11 +131,8 @@ sources:
       compares it before the file is kept); none for the 2 metadata tables; our sha256 is taken after the fetch
     license: CNGBdb-open   # as the job list states it
     redistributable: false   # DEC-80 (3): no record states a licence
-    fetched: >-
-      nothing yet: 104 files named in _batch7_cngb_urls.tsv on tower; the batch-7 runner was ended at 2026-11-26 08:09
-      CST before it fetched, and tower has no batch7_cngb/ directory (read 2026-11-26 by card R-15); listed here
-      before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch7_cngb/GPB_PHAGE/
+    fetched: 2026-11-27 (104 files, 1,931,266 B, top SHA256SUMS sha256 9a7a7f3c8d8b1aad6aff2dcea05f88db6cc1d3ca46063f9abf6c4c08d2b54374; assemblies SHA256SUMS sha256 7925e286f162854089590f7f2a97602b153c5195c944e244d4b717baf69b0228, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch7_cngb/GPB_PHAGE/
     note: >-
       CNGBdb-open is the batch-7 worker's label, not a licence; no provider record of the licence was kept, and card
       R-15 requested none. The list's bp column sums to 6,518,982 bases for the 102 assemblies (derived); no byte size
@@ -844,6 +847,21 @@ sources:
       - path: /stor/work/Wilke/if2453/all-the-data/jgi_20261118/jgi_img_umag_prok_bins_20261118.zip
         bytes: 408896139104
         sha256: bbbe2fa9b1c7887d661383ce93229390c2f8fe7f913729c9cadea3426a240bfb
+    fetched_pod: >-
+      pod-resident on wilkcomp02 under /stor/work/Wilke/if2453/all-the-data/jgi_20261118/ (card C-48a, 2026-11-18..19);
+      jgi_img_umag_prok_bins_20261118.zip (408,896,139,104 B, sha256
+      bbbe2fa9b1c7887d661383ce93229390c2f8fe7f913729c9cadea3426a240bfb) and jgi_inovirus_umag_iuig_meta_20261118.zip
+      bound read-only inside bio-box-test_faec1f4.sif for card C-87 (2026-11-27, no re-fetch from JGI)
+    staged: >-
+      card C-87, 2026-11-27 (DEC-88 (2)): 192,260 prokaryote bins censused from IMG_prokaryote_binning_files.tar
+      (127,947 HQ/MQ outside GTDB R226/R232 & GlobDB r226/r232); 20,249 top novelty-priority HQ/MQ bins selected (with
+      1,397 IUIG assemblies -> 21,524 distinct genomes [21,205 code 11, 319 code 25], 2,890,974 distinct contigs,
+      34,657,341,931 bp distinct; 2,875,624 contigs / 34,447,066,468 bp net new after 56 prior stages) as stage JGIUG1
+      in /stor/scratch/Wilke/if2453/bio-box-staging/JGIUG1/jgiug1_genomes.fna.gz (11,290,730,624 B) and
+      /tmp/if2453/c87/meta/JGIUG1/, then mirrored to tower:/mnt/user/research-bulk/bio-box/sources/JGIUG1/
+      (SHA256SUMS sha256 8e4e115560ba372541848feccb5f6cb74b43822a14277836457e8845d0ed6888); 107,698 remaining
+      not_in_r232 HQ/MQ bins and 64,313 r232/held bins catalogued in JGIUG_left_for_later.tsv.gz;
+      planning/measurements/2026-11-27_c87_jgi_ug_inputs.md. redistributable: false (JGI Data Utilization Policy)
     approved: by the PI on 2026-11-18 ("enumerate everything they have, and grab the biggest things")
   - name: jgi_iuig
     what: >-
@@ -869,6 +887,22 @@ sources:
       - path: /stor/work/Wilke/if2453/all-the-data/jgi_20261118/jgi_iuig_genomes_20261118.zip
         bytes: 524828206618
         sha256: 397fe93cfc07b7c1187240d796763ec93a4817f20c747d97eb78fdb41e954f7f
+    fetched_pod: >-
+      pod-resident on wilkcomp02 under /stor/work/Wilke/if2453/all-the-data/jgi_20261118/ (card C-48a, 2026-11-18..19);
+      jgi_iuig_genomes_20261118.zip (524,828,206,618 B, sha256
+      397fe93cfc07b7c1187240d796763ec93a4817f20c747d97eb78fdb41e954f7f) and jgi_inovirus_umag_iuig_meta_20261118.zip
+      bound read-only inside bio-box-test_faec1f4.sif for card C-87 (2026-11-27, no re-fetch from JGI; viral subset
+      earlier staged in J1 via card C-48d)
+    staged: >-
+      card C-87, 2026-11-27 (DEC-88 (2)): 126,346 prokaryote assemblies censused from aggregate_tarball.tar (17,450
+      viral/plasmid/eukaryote/unclassified entries recorded in iuig_non_prok_skipped.tsv; 17,406 HQ/MQ outside GTDB
+      R226/R232 & GlobDB r226/r232); 1,397 top novelty-priority HQ/MQ assemblies selected alongside 20,249 IMG-UMAG
+      bins into stage JGIUG1 (21,524 distinct genomes, 2,890,974 distinct contigs, 34,657,341,931 bp distinct; 2,875,624
+      contigs / 34,447,066,468 bp net new) in /stor/scratch/Wilke/if2453/bio-box-staging/JGIUG1/jgiug1_genomes.fna.gz
+      and /tmp/if2453/c87/meta/JGIUG1/, then mirrored to tower:/mnt/user/research-bulk/bio-box/sources/JGIUG1/
+      (SHA256SUMS sha256 8e4e115560ba372541848feccb5f6cb74b43822a14277836457e8845d0ed6888); 295,882 combined UMAG+IUIG
+      HQ/MQ candidates deferred in JGIUG_left_for_later.tsv.gz; planning/measurements/2026-11-27_c87_jgi_ug_inputs.md.
+      redistributable: false (JGI Data Utilization Policy)
     approved: by the PI on 2026-11-18 ("enumerate everything they have, and grab the biggest things")
   - name: jgi_inovirus
     what: >-
@@ -2431,6 +2465,20 @@ sources:
       default User-Agent); bytes and sha256 above measured on tower, copied from SOURCE_URLS.tsv on 2026-11-25 20:12
       CST
     stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/O3_FUNGAL/ (SOURCE_URLS.tsv and SHA256SUMS there)
+    fetched_pod: >-
+      2 of 2 files (137,723,255 B) copied from tower:/mnt/user/research-bulk/bio-box/sources_incoming/O3_FUNGAL/ to
+      wilkcomp02 by scripts/orchestrator/relay_to_pod.sh --streams 1 (cards C-73, C-86), 2026-11-27, sha256 equal to
+      tower's SHA256SUMS: Assembled_fungal_mitochondrial_genomes.fasta (136,853,604 B) to
+      /stor/scratch/Wilke/if2453/bio-box-staging/O4/dl/O3_FUNGAL/ and All_fungal_mitochondrial_genomes_accessions.tsv
+      (869,651 B) to /tmp/if2453/c86/dl/O4/O3_FUNGAL/
+    staged: >-
+      card C-86, 2026-11-27 (DEC-88 (2)): all 2,695 circular fungal mitogenomes (136,297,649 bp, code 4) written to
+      o4_fungal_mitogenomes.fna.gz (37,958,983 B, redistributable: false under DEC-80 (3)) inside stage O4 (combined
+      with tower_batch6b_ncbi_o4_org: 10,944 distinct genomes/contigs, 544,499,955 bp distinct; 9,483 contigs /
+      395,960,372 bp net new after 56 prior stages) in /tmp/if2453/c86/meta/O4/, then mirrored 10/10 to
+      tower:/mnt/user/research-bulk/bio-box/sources/O4/ (SHA256SUMS sha256
+      60938e4eadd1f572c3626f369129f6f5e19b86b70afa527972f9d37a8692ab1e);
+      planning/measurements/2026-11-27_c86_o4_gv2_hrom1_inputs.md
     note: >-
       R-11 (2026-11-26): the figshare record 28750034 as the batch-2 worker read it (api_metadata.json) states CC BY
       4.0; the Antigravity audit wish list flags "CC BY-NC-ND vs CC BY 4.0" without naming its source: not resolved
@@ -2877,10 +2925,7 @@ sources:
       - {file: "Scripts_for_sequence_analysis.docx", bytes: 38806, sha256: a45d05f8823d1298003202cf17feebd7453dfd8f3a80856bda93cf2c2aa4f049, md5: 5adc1aba2e6a5dd0659c312f82228f87}
     checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
     license: CC BY 4.0   # as the job list states it
-    fetched: >-
-      1 of 1 files by curl on tower, UTC 2026-11-26T00:48:16Z to 2026-11-26T00:48:16Z (_fetch_batch2.sh, curl's
-      default User-Agent); bytes and sha256 above measured on tower, copied from SOURCE_URLS.tsv on 2026-11-25 20:12
-      CST
+    fetched: 2026-11-26 (960 files, 699,551,455 B, top SHA256SUMS sha256 d47fdc293c03949bdf5927b156a0e5cf8978ed776bee976bdb7f9fbf5742e8bd; assemblies SHA256SUMS sha256 7d1cf6c8cf1c1edf3fc1d6af09cb6ab1a86fffdfa8e02f240f8dd58d369e98fb, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
     stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/SODA1/ (SOURCE_URLS.tsv and SHA256SUMS there)
     note: >-
       The second form is the NCBI FTP genome form of entry ncbi_ftp_genome; the 959 assemblies of PRJNA857294 are
@@ -2972,11 +3017,7 @@ sources:
       - {file: "y1000p_gff3_files.tar.gz", bytes: 376532012, sha256: 672d7774c2348c7e83854e4ee52ed725ad057caa4facdd975e0f6aab652dca45, md5: 957f2659a60c9ce51e9c9b4f24ef0ff8}
     checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
     license: CC0   # as the job list states it
-    fetched: >-
-      1 of 2 files by curl on tower, UTC 2026-11-26T04:53:16Z to 2026-11-26T04:53:16Z (_fetch_batch2.sh, curl's
-      default User-Agent); bytes and sha256 above measured on tower, copied from SOURCE_URLS.tsv on 2026-11-26 07:33
-      CST (card R-11); not landed: y1000p_genome_files.zip, FAIL_ZIP in _batch3_detached.log (the md5 test comes first
-      in _fetch_batch2.sh, so the file had the provider's md5 and was deleted by the unzip -tq test)
+    fetched: 2026-11-26..2026-11-27 (2 files, 5,107,548,243 B, SHA256SUMS sha256 8a0c663d74d28f268314df599c62f78185529aa5a7e080cfe9c87d001b540616, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
     stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/EUK_Y1000/ (SOURCE_URLS.tsv and SHA256SUMS there)
     note: >-
       R-11 (2026-11-26): only the GFF3 archive landed: y1000p_genome_files.zip (the genomes) was deleted by the
@@ -3106,11 +3147,7 @@ sources:
       - {file: "data.tar.gz", bytes: 3582541187, sha256: 9616bf23a02a70a61096473f4e1492de1fb43b08fdf01dfb3e2ce8b1b963ac8b, md5: 0e04e5b013e8c299fa170ec95971a201}
     checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
     license: "other-open, cc-by-4.0"   # as the job lists state it, per file
-    fetched: >-
-      5 of 6 files by curl on tower, UTC 2026-11-26T05:53:54Z to 2026-11-26T06:19:39Z (_fetch_batch2.sh, curl's
-      default User-Agent); bytes and sha256 above measured on tower, copied from SOURCE_URLS.tsv on 2026-11-26 07:33
-      CST (card R-11); not landed: Benjamin-Lee/viroiddb-2021-06-06.zip, FAIL_CURL in _batch3_detached.log (the / in
-      the file name); _batch6b.tsv queues it again as viroiddb-2021-06-06.zip
+    fetched: 2026-11-26 (6 files, 4,648,462,047 B, SHA256SUMS sha256 339e625eb10f72de87757a1d998a0a0be6235d6a5b819776b389672b8ba7d127, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
     stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/RNA_VIROID/ (SOURCE_URLS.tsv and SHA256SUMS there)
     note: >-
       R-11 (2026-11-26): the job list's comment names zenodo:5202945 and the ViroidDB URL is of record 5202946 (a
@@ -3676,11 +3713,7 @@ sources:
       - {file: "02.BGC_final.tar.xz", bytes: 970947092, sha256: 00158cb4fa72c5f59cb9f5832b4a22a7e9409020780b50f0ce42a22c5bb614d9, md5: e02a9c09e76cdebb620acf8f06622959}
     checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
     license: cc-by-4.0   # as the job list states it
-    fetched: >-
-      1 of 2 files by curl on tower, UTC 2026-11-26T12:30:00Z to 2026-11-26T12:30:00Z (_fetch_batch2.sh, curl's
-      default User-Agent); bytes and sha256 above measured on tower, copied from SOURCE_URLS.tsv on 2026-11-26 07:33
-      CST (card R-11); not landed: 01.MAG.tar.xz, curl was writing .01.MAG.tar.xz.partial (14,159,605,760 bytes at
-      07:32 CST, measured with find)
+    fetched: 2026-11-26 (2 files, 37,329,559,604 B, SHA256SUMS sha256 20fb3d353ec1896cab961b95f78a5f6b988861aaea54528888f7c125458e87d5, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
     stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/SEGC1/ (SOURCE_URLS.tsv and SHA256SUMS there)
     approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25)"
   - name: tower_omd2
@@ -3689,10 +3722,8 @@ sources:
     url: https://sunagawalab.ethz.ch/share/microbiomics/ocean/db/2.0/data/catalogs/{path}
     checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
     license: CC BY 4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 3 files named in _batch4.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
-      the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/OMD2/
+    fetched: 2026-11-26 (3 files, 156,987,216,840 B, SHA256SUMS sha256 8321996f0ddd1567fe5f29bf302ed7a354688616a3d2968aee5c1ad80b0d693c, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/OMD2/
     note: >-
       {path} is a path of one or more segments. R-11 (2026-11-26): the batch-4 worker calls OMDBv2.0_SC_G_NR100.fa.gz
       (145 GB) NR100 genome scaffolds; the Antigravity audit wish list calls SC_G_NR100 an ORF gene catalogue: not
@@ -3705,10 +3736,21 @@ sources:
     url_2: https://ndownloader.figshare.com/files/46079970
     checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
     license: CC BY 4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 2 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
-      the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_gv/GV_POLAR_PITOT/
+    fetched: 2026-11-26 (2 files, 427,163,351 B, SHA256SUMS sha256 5e3b59a0db294b1678b235edfd5c8c782131a9334d0b7a8e3b1d1056ec56bf1c, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_gv/GV_POLAR_PITOT/
+    fetched_pod: >-
+      2 of 2 files (427,163,351 B) relayed from tower to wilkcomp02 by scripts/orchestrator/relay_to_pod.sh --streams 1
+      (cards C-73, C-86), 2026-11-27, sha256 equal to tower's SHA256SUMS: GVMAGs.tar.gz (426,959,039 B) to
+      /stor/scratch/Wilke/if2453/bio-box-staging/GV2/dl/GV_POLAR_PITOT/ and GVMAGs_stats_taxonomy.tsv (204,312 B) to
+      /tmp/if2453/c86/dl/GV2/GV_POLAR_PITOT/
+    staged: >-
+      card C-86, 2026-11-27 (DEC-88 (2)): 3,304 Arctic/Antarctic lake GVMAG bins read into stage GV2 (combined across 6
+      batch5_gv deposits: 10,284 distinct genomes, 689,523 distinct contigs, 3,155,057,728 bp distinct; 644,587 contigs /
+      2,267,601,494 bp net new after 56 prior stages) in /stor/scratch/Wilke/if2453/bio-box-staging/GV2/gv2_giant_viruses.fna.gz
+      (1,018,521,042 B, redistributable: false under DEC-80 (3)) and /tmp/if2453/c86/meta/GV2/, mirrored 11/11 to
+      tower:/mnt/user/research-bulk/bio-box/sources/GV2/ (SHA256SUMS sha256
+      25d990a7fcaf6212c48db64ca18113371ccbd9cec358c9eb74b0c68e18aa6e8c);
+      planning/measurements/2026-11-27_c86_o4_gv2_hrom1_inputs.md
     approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
   - name: tower_gv_polar_2026
     what: >-
@@ -3716,10 +3758,17 @@ sources:
     url: https://ndownloader.figshare.com/files/71316448
     checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
     license: CC BY 4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 1 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
-      the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_gv/GV_POLAR_2026/
+    fetched: 2026-11-26 (1 file, 589,306,100 B, file sha256 22fa983f35088935955456f6ead852010e15ed639288a25717932a53a8a276c0, SHA256SUMS sha256 c08990cd53a40c245d6f6b96ac33d51b1065f74e86cada7042b5915a2514b721, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_gv/GV_POLAR_2026/
+    fetched_pod: >-
+      1 of 1 file (589,306,100 B) relayed from tower to /stor/scratch/Wilke/if2453/bio-box-staging/GV2/dl/GV_POLAR_2026/
+      by scripts/orchestrator/relay_to_pod.sh --streams 1 (cards C-73, C-86), 2026-11-27, sha256 equal to tower's SHA256SUMS
+    staged: >-
+      card C-86, 2026-11-27 (DEC-88 (2)): 5,481 GVMAG nucleotide .fna bins staged in gv2_giant_viruses.fna.gz (1,565
+      .proteins.faa and 2 TSV tables skipped by design; redistributable: false under DEC-80 (3)), mirrored to
+      tower:/mnt/user/research-bulk/bio-box/sources/GV2/ (SHA256SUMS sha256
+      25d990a7fcaf6212c48db64ca18113371ccbd9cec358c9eb74b0c68e18aa6e8c);
+      planning/measurements/2026-11-27_c86_o4_gv2_hrom1_inputs.md
     approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
   - name: tower_gv_polar_marine
     what: >-
@@ -3825,10 +3874,17 @@ sources:
     url_98: https://ndownloader.figshare.com/files/47727625
     checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
     license: CC BY 4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 98 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
-      the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_gv/GV_POLAR_MARINE/
+    fetched: 2026-11-26 (98 files, 22,253,901 B, SHA256SUMS sha256 131362894ea89ecd86991a53d1abe057e147bda947ec64c422365989f7e0e26c, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_gv/GV_POLAR_MARINE/
+    fetched_pod: >-
+      98 of 98 .fa files (22,253,901 B) relayed from tower to /tmp/if2453/c86/dl/GV2/GV_POLAR_MARINE/ by
+      scripts/orchestrator/relay_to_pod.sh --streams 1 (cards C-73, C-86), 2026-11-27, sha256 equal to tower's SHA256SUMS
+    staged: >-
+      card C-86, 2026-11-27 (DEC-88 (2)): 98 low-temperature marine GVMAG bins read into stage GV2
+      (gv2_giant_viruses.fna.gz, redistributable: false under DEC-80 (3)), mirrored to
+      tower:/mnt/user/research-bulk/bio-box/sources/GV2/ (SHA256SUMS sha256
+      25d990a7fcaf6212c48db64ca18113371ccbd9cec358c9eb74b0c68e18aa6e8c);
+      planning/measurements/2026-11-27_c86_o4_gv2_hrom1_inputs.md
     approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
   - name: tower_gv_polar_geve
     what: >-
@@ -3849,10 +3905,20 @@ sources:
     url_13: https://ndownloader.figshare.com/files/56191073
     checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
     license: CC BY 4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 13 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
-      the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_gv/GV_POLAR_GEVE/
+    fetched: 2026-11-26 (13 files, 154,723,944 B, SHA256SUMS sha256 d815b1140e802aa552b4f01c82782f1790fb51b5f7ef38ac1793b93c7a1176dc, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_gv/GV_POLAR_GEVE/
+    fetched_pod: >-
+      13 of 13 files (154,723,944 B) relayed from tower to wilkcomp02 by scripts/orchestrator/relay_to_pod.sh --streams 1
+      (cards C-73, C-86), 2026-11-27, sha256 equal to tower's SHA256SUMS (contigs_of_confirmed_VRs.zip 148,596,216 B to
+      /stor/scratch/Wilke/if2453/bio-box-staging/GV2/dl/GV_POLAR_GEVE/; 12 smaller files under 64 MiB to
+      /tmp/if2453/c86/dl/GV2/GV_POLAR_GEVE/)
+    staged: >-
+      card C-86, 2026-11-27 (DEC-88 (2)): 493 excised confirmed giant endogenous viral regions (VRs) staged in stage GV2
+      (gv2_giant_viruses.fna.gz, redistributable: false under DEC-80 (3)); 170 whole nuclear scaffolds (463,777,451 bp)
+      of Chlamydomonas sp. ICE-L left out in /tmp/if2453/c86/meta/GV2/left_out.tsv for future eukaryotic host stage C-60,
+      mirrored to tower:/mnt/user/research-bulk/bio-box/sources/GV2/ (SHA256SUMS sha256
+      25d990a7fcaf6212c48db64ca18113371ccbd9cec358c9eb74b0c68e18aa6e8c);
+      planning/measurements/2026-11-27_c86_o4_gv2_hrom1_inputs.md
     approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
   - name: tower_gv_gks
     what: >-
@@ -3860,10 +3926,17 @@ sources:
     url: https://zenodo.org/api/records/22834836/files/{file}/content
     checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
     license: cc-by-4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 1 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
-      the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_gv/GV_GKS/
+    fetched: 2026-11-26 (1 file, 72,032,344 B, file sha256 aef1a0865c20bc83035d465d99a6debcd10aa93226981a3e17dca4b5ce6d07b3, SHA256SUMS sha256 70d6a70887d0437740dba2107df515d15b16c31ba7b61ee162a52cfafb2abb03, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_gv/GV_GKS/
+    fetched_pod: >-
+      1 of 1 file (72,032,344 B) relayed from tower to /stor/scratch/Wilke/if2453/bio-box-staging/GV2/dl/GV_GKS/ by
+      scripts/orchestrator/relay_to_pod.sh --streams 1 (cards C-73, C-86), 2026-11-27, sha256 equal to tower's SHA256SUMS
+    staged: >-
+      card C-86, 2026-11-27 (DEC-88 (2)): all 929 GVMAG bins (657 tomas_scMAGs + 272 all_MAGs) staged in stage GV2
+      (gv2_giant_viruses.fna.gz, redistributable: false under DEC-80 (3)), mirrored to
+      tower:/mnt/user/research-bulk/bio-box/sources/GV2/ (SHA256SUMS sha256
+      25d990a7fcaf6212c48db64ca18113371ccbd9cec358c9eb74b0c68e18aa6e8c);
+      planning/measurements/2026-11-27_c86_o4_gv2_hrom1_inputs.md
     approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
   - name: tower_gv_wwtp
     what: >-
@@ -3871,10 +3944,17 @@ sources:
     url: https://zenodo.org/api/records/17735769/files/{file}/content
     checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
     license: cc-by-4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 2 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
-      the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_gv/GV_WWTP/
+    fetched: 2026-11-26 (2 files, 17,382,066 B, SHA256SUMS sha256 8594597588c24154df816a14503646b31ae89c3509ca00194ecbc62e89ba5aa0, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_gv/GV_WWTP/
+    fetched_pod: >-
+      2 of 2 files (17,382,066 B) relayed from tower to /tmp/if2453/c86/dl/GV2/GV_WWTP/ by
+      scripts/orchestrator/relay_to_pod.sh --streams 1 (cards C-73, C-86), 2026-11-27, sha256 equal to tower's SHA256SUMS
+    staged: >-
+      card C-86, 2026-11-27 (DEC-88 (2)): 90 nucleotide genomes (61 NCV + 29 VPH/PLV) staged in stage GV2
+      (gv2_giant_viruses.fna.gz, redistributable: false under DEC-80 (3); 860 Prokka/protein/graph/README files skipped by
+      design), mirrored to tower:/mnt/user/research-bulk/bio-box/sources/GV2/ (SHA256SUMS sha256
+      25d990a7fcaf6212c48db64ca18113371ccbd9cec358c9eb74b0c68e18aa6e8c);
+      planning/measurements/2026-11-27_c86_o4_gv2_hrom1_inputs.md
     approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
   - name: tower_gv_geve_euglena
     what: >-
@@ -3883,10 +3963,11 @@ sources:
     url: https://zenodo.org/api/records/16414468/files/{file}/content
     checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
     license: cc-by-4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 1 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
-      the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_gv/GV_GEVE_EUGLENA/
+    fetched: 2026-11-26 (1 file, 55,543 B, file sha256 795f8c01af3dacb798bfbbaf1647828a4c3191aea5054009978af92543be758a, SHA256SUMS sha256 b46ae2c339f5bff9b76193e864ea321844a03086e7a0495c050dbbe921cd36ed, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_gv/GV_GEVE_EUGLENA/
+    note: >-
+      card C-86 (2026-11-27): Supplementary_Dataset.xlsx (55,543 B) verified spreadsheet-only (no nucleotide FASTA);
+      not relayed or staged in GV2; planning/measurements/2026-11-27_c86_o4_gv2_hrom1_inputs.md
     approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
   - name: tower_gsvc
     what: >-
@@ -3895,10 +3976,8 @@ sources:
     url: https://zenodo.org/api/records/22159188/files/{file}/content
     checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
     license: cc-by-4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 2 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
-      the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_phages/GSVC/
+    fetched: 2026-11-26 (2 files, 3,137,544,434 B, SHA256SUMS sha256 453a531e5beaf997143fe57b10e4039ccc86bbcbf66961fb3e6646eaba1af11e, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_phages/GSVC/
     approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
   - name: tower_ghv
     what: >-
@@ -3906,10 +3985,8 @@ sources:
     url: https://zenodo.org/api/records/21450953/files/{file}/content
     checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
     license: cc-by-4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 1 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
-      the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_phages/GHV/
+    fetched: 2026-11-26 (1 file, 115,642,233 B, file sha256 4e257ea947ed39f4a1b7636c90fc572cc302138503b0dfa2f719d02323412ee4, SHA256SUMS sha256 ddc29f99380971254f3b41521bbcc9124bd5071ee6d8a8ae380d376be02565c2, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_phages/GHV/
     approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
   - name: tower_cgvd
     what: >-
@@ -3917,10 +3994,8 @@ sources:
     url: https://zenodo.org/api/records/14684892/files/{file}/content
     checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
     license: cc-by-4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 2 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
-      the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_phages/CGVD/
+    fetched: 2026-11-26 (2 files, 473,572,633 B, SHA256SUMS sha256 020316381c300c46693ce03be64c2ec0894ce443a05a45ccad4ef30358a19e7a, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_phages/CGVD/
     approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
   - name: tower_tymeflies_v
     what: >-
@@ -3928,10 +4003,8 @@ sources:
     url: https://ndownloader.figshare.com/files/43845801
     checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
     license: CC BY 4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 1 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
-      the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_phages/TYMEFLIES_V/
+    fetched: 2026-11-27 (1 file, 10,515,738,372 B, file sha256 f9ea1709ccd8da7bd411d073a2852f47b9d2689414df376acdad7e3febb971cb, SHA256SUMS sha256 247408bd06a6707a9561432efd4d6f7241a86e79ef8e2f2eef0139be7cf3c486, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_phages/TYMEFLIES_V/
     approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
   - name: tower_bphage
     what: >-
@@ -3939,10 +4012,8 @@ sources:
     url: https://zenodo.org/api/records/23266178/files/{file}/content
     checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
     license: cc-by-4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 2 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
-      the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_phages/BPHAGE/
+    fetched: 2026-11-27 (2 files, 869,239 B, SHA256SUMS sha256 70cf7dffb9cb9ea5a0c2bc4b597cbfc0347437c0592adab24a1c375fad250d4b, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_phages/BPHAGE/
     approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
   - name: tower_hovd
     what: >-
@@ -3951,10 +4022,8 @@ sources:
     url: https://zenodo.org/api/records/17143670/files/{file}/content
     checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
     license: cc-by-4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 4 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
-      the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_phages/HOVD/
+    fetched: 2026-11-27 (4 files, 1,073,278,349 B, SHA256SUMS sha256 77fdaba5cb04a868457a36e2621d801f237113a7e69db138c2863754ef8d4599, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_phages/HOVD/
     approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
   - name: tower_methanogen_v
     what: >-
@@ -3963,10 +4032,8 @@ sources:
     url: https://data.mendeley.com/public-files/datasets/wdyjgcdgbm/files/{file_uuid}/file_downloaded
     checksum: no provider md5 (field -); our sha256 only, and the script's archive test
     license: CC BY 4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 4 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
-      the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_phages/METHANOGEN_V/
+    fetched: 2026-11-27 (4 files, 43,680,581 B, SHA256SUMS sha256 c6030d2cb8a44bbedc0b6fb401a948da1f2e900b609b987abdcec57fd0099b00, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_phages/METHANOGEN_V/
     approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
   - name: tower_sym3
     what: >-
@@ -3975,10 +4042,8 @@ sources:
     url: https://zenodo.org/api/records/20399072/files/{file}/content
     checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
     license: cc-by-4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 1 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
-      the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_proks/SYM3/
+    fetched: 2026-11-27 (1 file, 6,190,500,688 B, file sha256 41e341e58c9abe7164d9875ad1bd9ff1a98881731d9352afc2225e30575f919a, SHA256SUMS sha256 980af498d1cdb9f63238ec5c0f792255c4f4cea4d907a39ab9e992629e0b7ca2, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_proks/SYM3/
     approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
   - name: tower_ehi1
     what: >-
@@ -3988,10 +4053,8 @@ sources:
     url_2: https://zenodo.org/api/records/16784684/files/earthhologenome/EHI_data_release_1-1.0.3.zip/content
     checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
     license: cc-zero   # as the job list states it
-    fetched: >-
-      nothing yet: 3 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
-      the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_proks/EHI1/
+    fetched: 2026-11-27 (3 files, 13,390,126,468 B, SHA256SUMS sha256 46c7a6e0ec1897c78e846fb6dc4113c765d39c6f68f6ae0e23cfe4d8bd8aea98, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_proks/EHI1/
     approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
   - name: tower_emerge
     what: >-
@@ -4000,10 +4063,8 @@ sources:
     url: https://zenodo.org/api/records/17468704/files/{file}/content
     checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
     license: cc-by-4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 2 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
-      the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_proks/EMERGE/
+    fetched: 2026-11-27 (2 files, 41,845,352,681 B, SHA256SUMS sha256 919b22eba1da5dc184dc3215fdd1668b46eb39cfc9c390b477f2c168123dadf3, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_proks/EMERGE/
     approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
   - name: tower_asg2
     what: >-
@@ -4014,10 +4075,8 @@ sources:
     url_2: https://zenodo.org/api/records/12617226/files/{file}/content
     checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
     license: "CC BY 4.0, cc-by-4.0"   # as the job lists state it, per file
-    fetched: >-
-      nothing yet: 23 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
-      the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_proks/ASG2/
+    fetched: 2026-11-27 (23 files, 162,499,285 B, SHA256SUMS sha256 e3e0e921e78de2929d8c511d81da37801fa37c16bc8d22fde97f5f783fb0b660, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_proks/ASG2/
     approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
   - name: tower_desert_qaidam
     what: >-
@@ -4025,10 +4084,8 @@ sources:
     url: https://zenodo.org/api/records/15743210/files/{file}/content
     checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
     license: cc-by-4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 2 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
-      the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_proks/DESERT_QAIDAM/
+    fetched: 2026-11-27 (2 files, 1,678,077,969 B, SHA256SUMS sha256 5b2324e21edb3e55787549ab00c02c7255b8753b621e1d5db6159a31fc69d112, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_proks/DESERT_QAIDAM/
     approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
   - name: tower_desert_mcmurdo
     what: >-
@@ -4037,10 +4094,8 @@ sources:
     url: https://zenodo.org/api/records/7313591/files/{file}/content
     checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
     license: cc-by-4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 3 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
-      the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_proks/DESERT_MCMURDO/
+    fetched: 2026-11-27 (3 files, 2,632,431,922 B, SHA256SUMS sha256 77cbcc209b3219514c815f815549f5453d1e30b6b602329da3f072f6d52342a8, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_proks/DESERT_MCMURDO/
     approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
   - name: tower_desert_monash
     what: >-
@@ -4049,10 +4104,8 @@ sources:
     url: https://ndownloader.figshare.com/files/57783499
     checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
     license: CC BY 4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 1 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
-      the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_proks/DESERT_MONASH/
+    fetched: 2026-11-27 (1 file, 2,280,554,754 B, file sha256 75838a5b7cc6c94e6e615269071130f68dc0701521b1ee4cb94aaa656e3f9549, SHA256SUMS sha256 63d168202e864f1f5b76dbb72ad8563d29d24c31699ff971acc3af071d61bd36, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_proks/DESERT_MONASH/
     approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
   - name: tower_code4_glmc
     what: >-
@@ -4061,10 +4114,20 @@ sources:
     url: https://zenodo.org/api/records/21341769/files/{file}/content
     checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
     license: cc-by-4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 3 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
-      the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_proks/CODE4_GLMC/
+    fetched: 2026-11-27 (3 files, 107,727,903 B, SHA256SUMS sha256 a905d808dd833abaa0835621bccf79cb5c0eec14b1b38f1c759c72549585c4c1, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_proks/CODE4_GLMC/
+    fetched_pod: >-
+      3 of 3 files (107,727,903 B) relayed from tower to wilkcomp02 by scripts/orchestrator/relay_to_pod.sh --streams 1
+      (cards C-73, C-86), 2026-11-27, sha256 equal to tower's SHA256SUMS (MAGs.zip 105,693,759 B to
+      /stor/scratch/Wilke/if2453/bio-box-staging/HROM1/dl/CODE4_GLMC/; 2 TSVs to /tmp/if2453/c86/dl/HROM1/CODE4_GLMC/)
+    staged: >-
+      card C-86, 2026-11-27 (DEC-88 (2)): 272 leafhopper endosymbiont MAGs read -> 271 distinct genomes staged (code 4
+      where annotated, else code 11) in hrom1_oral_glmc.fna.gz (1,900,829,031 B, redistributable: false under DEC-80 (3))
+      inside stage HROM1 (combined: 3,732 distinct genomes, 266,916 distinct contigs, 5,883,730,291 bp distinct; 265,528
+      contigs / 5,653,991,918 bp net new after 56 prior stages; 41 skani >= 96% hits recorded), mirrored 14/14 to
+      tower:/mnt/user/research-bulk/bio-box/sources/HROM1/ (SHA256SUMS sha256
+      1db893c1efdade3b6f6f22a7ec6ea12e242f08437929b5fc53cc7b6715722d4e);
+      planning/measurements/2026-11-27_c86_o4_gv2_hrom1_inputs.md
     approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
   - name: tower_mbgg_tit
     what: >-
@@ -4072,10 +4135,8 @@ sources:
     url: https://zenodo.org/api/records/13643296/files/{file}/content
     checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
     license: cc-by-4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 2 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
-      the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_proks/MBGG_TIT/
+    fetched: 2026-11-27 (2 files, 16,211,017 B, SHA256SUMS sha256 7a03c98bb822662523af554ade3035b4ae780c749d914bd999566c267a604ad7, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_proks/MBGG_TIT/
     approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
   - name: tower_acido_spg
     what: >-
@@ -4089,10 +4150,8 @@ sources:
     url_4: https://zenodo.org/api/records/21135542/files/{file}/content
     checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
     license: "CC BY 4.0, cc-by-4.0"   # as the job lists state it, per file
-    fetched: >-
-      nothing yet: 4 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
-      the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_proks/ACIDO_SPG/
+    fetched: 2026-11-27 (4 files, 8,117,086,143 B, SHA256SUMS sha256 53697a7e42c71ba324b928cb46ee51a5d0704cf316fc62d795d28cf8d0daaf36, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_proks/ACIDO_SPG/
     approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
   - name: tower_subsurf_wt29a
     what: >-
@@ -4100,10 +4159,8 @@ sources:
     url: https://zenodo.org/api/records/22053915/files/{file}/content
     checksum: the provider's md5 for every file (in the job list; checked before the file was kept)
     license: cc-by-4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 1 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
-      the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_proks/SUBSURF_WT29A/
+    fetched: 2026-11-27 (1 file, 13,469,092 B, file sha256 7529f9611b756fdf7c095c96690b9abf2f33a3e09e378df7c80403f2faf38703, SHA256SUMS sha256 eef8078fbaf02eaa7f7e9141c43bd27c744f11e712238b4cbfb94b5b1f86da4e, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_proks/SUBSURF_WT29A/
     approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
   - name: tower_mgnify2
     what: >-
@@ -4112,10 +4169,8 @@ sources:
     url: https://ftp.ebi.ac.uk/pub/databases/metagenomics/mgnify_genomes/{biome}/{version}/genomes-all_metadata.tsv
     checksum: no provider md5 (field -); our sha256 only, and the script's archive test
     license: CC BY 4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 10 files named in _batch5.tsv on tower, none landed at 2026-11-25 20:12 CST; listed here before
-      the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_proks/MGNIFY2/
+    fetched: 2026-11-27 (10 files, 106,365,785 B, SHA256SUMS sha256 7c33f5e410cda0833734421f8407983fa8f3a21c01b18b787fa9b046cd12d524, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch5_proks/MGNIFY2/
     approved: "by the PI, 2026-11-25 19:47 CST: \"draft a card re renting hardware ... make sure to download everything per the plan above ... launch more workers\" (the audit of 2026-11-25); not fetched yet"
   - name: tower_atac1
     what: >-
@@ -4124,10 +4179,8 @@ sources:
     url: https://ftp.ncbi.nlm.nih.gov/genomes/all/{GCA_or_GCF}/{nnn}/{nnn}/{nnn}/{assembly_dir}/{assembly_dir}_genomic.fna.gz
     checksum: none from the provider; our sha256 only (SOURCE_URLS.tsv and SHA256SUMS in ATAC1/assemblies/ on tower)
     license: INSDC   # the licence column _fetch_batch4_ncbi.sh writes for every file
-    fetched: >-
-      nothing yet: the manifest (47 assemblies, base_count sum 37894439 bases, derived from its base_count column)
-      was written 2026-11-25 20:05 CST and no assembly had landed at 20:12 CST; listed here before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/ATAC1/assemblies/
+    fetched: 2026-11-26 (47 files, 11,195,433 B, SHA256SUMS sha256 2bba55ccb3e8876ddba458afeb30b3aea7b3ee878bdff6e8b227a42f487ace2d, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/ATAC1/assemblies/
     note: >-
       The manifest ATAC1/MANIFEST_PRJEB60556.tsv is the job list of _fetch_batch4_ncbi.sh (file
       <accession>_genomic.fna.gz, URL in its last column); it is not in the five-column form of fetch_to_tower.sh and
@@ -4142,10 +4195,8 @@ sources:
     url: https://ftp.ncbi.nlm.nih.gov/genomes/all/{GCA_or_GCF}/{nnn}/{nnn}/{nnn}/{assembly_dir}/{assembly_dir}_genomic.fna.gz
     checksum: none from the provider; our sha256 only (SOURCE_URLS.tsv and SHA256SUMS in PLNT1/assemblies/ on tower)
     license: INSDC   # the licence column _fetch_batch4_ncbi.sh writes for every file
-    fetched: >-
-      nothing yet: the manifest (423 assemblies, base_count sum 1364663067 bases, derived from its base_count
-      column) was written 2026-11-25 20:05 CST and no assembly had landed at 20:12 CST; listed here before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/PLNT1/assemblies/
+    fetched: 2026-11-26 (423 files, 403,545,667 B, SHA256SUMS sha256 b2795239df3ba26492cefa5d90321a5c517a65020813ec5ad58c31a0383e035b, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/PLNT1/assemblies/
     note: >-
       The manifest PLNT1/MANIFEST_PRJEB93989.tsv is the job list of _fetch_batch4_ncbi.sh (file
       <accession>_genomic.fna.gz, URL in its last column); it is not in the five-column form of fetch_to_tower.sh
@@ -4158,10 +4209,8 @@ sources:
     url: https://ftp.ncbi.nlm.nih.gov/genomes/all/{GCA_or_GCF}/{nnn}/{nnn}/{nnn}/{assembly_dir}/{assembly_dir}_genomic.fna.gz
     checksum: none from the provider; our sha256 only (SOURCE_URLS.tsv and SHA256SUMS in NGOM1/assemblies/ on tower)
     license: INSDC   # the licence column _fetch_batch4_ncbi.sh writes for every file
-    fetched: >-
-      nothing yet: the manifest (1313 assemblies, base_count sum 2558619378 bases, derived from its base_count
-      column) was written 2026-11-25 20:05 CST and no assembly had landed at 20:12 CST; listed here before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/NGOM1/assemblies/
+    fetched: 2026-11-26 (1,313 files, 764,657,555 B, SHA256SUMS sha256 f68742c66bc1e54787ffc6ff60b6a1699ecf87c9ea981dd0cdeb8ba3c8346b00, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/NGOM1/assemblies/
     note: >-
       The manifest NGOM1/MANIFEST_PRJNA1171802.tsv is the job list of _fetch_batch4_ncbi.sh (file
       <accession>_genomic.fna.gz, URL in its last column); it is not in the five-column form of fetch_to_tower.sh
@@ -4173,10 +4222,8 @@ sources:
     url: https://ftp.ncbi.nlm.nih.gov/genomes/all/{GCA_or_GCF}/{nnn}/{nnn}/{nnn}/{assembly_dir}/{assembly_dir}_genomic.fna.gz
     checksum: none from the provider; our sha256 only (SOURCE_URLS.tsv and SHA256SUMS in GFS1/assemblies/ on tower)
     license: INSDC   # the licence column _fetch_batch4_ncbi.sh writes for every file
-    fetched: >-
-      nothing yet: the manifest (3387 assemblies, base_count sum 12011030043 bases, derived from its base_count
-      column) was written 2026-11-25 20:05 CST and no assembly had landed at 20:12 CST; listed here before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/GFS1/assemblies/
+    fetched: 2026-11-26 (3,387 files, 3,575,435,807 B, SHA256SUMS sha256 9112eb9874b815f2874a8592b590fcf7fb37f56d6db5b1c91b05b5057856a3bb, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/GFS1/assemblies/
     note: >-
       The manifest GFS1/MANIFEST_PRJNA781406.tsv is the job list of _fetch_batch4_ncbi.sh (file
       <accession>_genomic.fna.gz, URL in its last column); it is not in the five-column form of fetch_to_tower.sh and
@@ -4192,10 +4239,8 @@ sources:
     url: https://ftp.ncbi.nlm.nih.gov/genomes/all/{GCA_or_GCF}/{nnn}/{nnn}/{nnn}/{assembly_dir}/{assembly_dir}_genomic.fna.gz
     checksum: none from the provider; our sha256 only (SOURCE_URLS.tsv and SHA256SUMS in DTOL1/assemblies/ on tower)
     license: INSDC   # the licence column _fetch_batch4_ncbi.sh writes for every file
-    fetched: >-
-      nothing yet: the manifest (5692 assemblies, base_count sum 24073853426 bases, derived from its base_count
-      column) was written 2026-11-25 20:05 CST and no assembly had landed at 20:12 CST; listed here before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/DTOL1/assemblies/
+    fetched: 2026-11-26 (5,692 files, 7,034,691,056 B, SHA256SUMS sha256 2f9d10a5bdef81e48ff8179cfad060964d3af1b0be8358c221ed66e7a6d6d4e3, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/DTOL1/assemblies/
     note: >-
       The manifest DTOL1/MANIFEST_PRJEB43743.tsv is the job list of _fetch_batch4_ncbi.sh (file
       <accession>_genomic.fna.gz, URL in its last column); it is not in the five-column form of fetch_to_tower.sh
@@ -4230,10 +4275,8 @@ sources:
     url_2: https://zenodo.org/api/records/12180083/files/{file}/content
     checksum: the provider's md5 for every file (in the job list; the fetcher compares it before the file is kept)
     license: cc-by-4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 2 files named in _batch6.tsv (written 2026-11-25 20:54 CST) on tower, none landed at 2026-11-26
-      07:33 CST; listed here after the list was written and before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_longread_sags/HIBC/
+    fetched: 2026-11-27 (2 files, 386,139,083 B, SHA256SUMS sha256 3c114bc13f341e5f595d118c9ca97ea2ff56675874c36f27ea3b55ecc0292b94, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_longread_sags/HIBC/
     note: >-
       the zenodo record 12180083 (read by the batch-6 worker on 2026-11-25, batch6_probe.json) states the licence
       cc-by-4.0; the zenodo record 12187897 (read by the batch-6 worker on 2026-11-25, batch6_probe.json) states the
@@ -4248,10 +4291,8 @@ sources:
     url_4: https://ndownloader.figshare.com/files/61743787
     checksum: the provider's md5 for every file (in the job list; the fetcher compares it before the file is kept)
     license: CC BY 4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 4 files named in _batch6.tsv (written 2026-11-25 20:54 CST) on tower, none landed at 2026-11-26
-      07:33 CST; listed here after the list was written and before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_euks_org/C60_NUC/
+    fetched: 2026-11-27 (2 files, 885,443 B, SHA256SUMS sha256 96c97f9eb429d11109f550e53e806a5d673231c7904da8e64cb5f1c9adb6adb6, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_euks_org/C60_NUC/
     note: >-
       the figshare record 31293505 (read by the batch-6 worker on 2026-11-25, batch6_probe.json) states the licence CC
       BY 4.0
@@ -4264,10 +4305,8 @@ sources:
     url_3: https://ndownloader.figshare.com/files/45561465
     checksum: the provider's md5 for every file (in the job list; the fetcher compares it before the file is kept)
     license: CC BY 4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 3 files named in _batch6.tsv (written 2026-11-25 20:54 CST) on tower, none landed at 2026-11-26
-      07:33 CST; listed here after the list was written and before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_symbionts/BTCN_VIR1/
+    fetched: 2026-11-27 (2 files, 3,213,398 B, SHA256SUMS sha256 685d4ac3aace7f541ce05a414f447cf3f2c4d2f2d54d80acf689b076975b36e5, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_symbionts/BTCN_VIR1/
     note: >-
       the figshare record 24515056 (read by the batch-6 worker on 2026-11-25, batch6_probe.json) states the licence CC
       BY 4.0
@@ -4282,10 +4321,8 @@ sources:
     url_5: https://raw.githubusercontent.com/lauberlab/ambivirus_discovery_paper/main/README.md
     checksum: no provider md5 in the job list (field -); our sha256 only, and the archive test of the fetcher
     license: CC BY 4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 5 files named in _batch6.tsv (written 2026-11-25 20:54 CST) on tower, none landed at 2026-11-26
-      07:33 CST; listed here after the list was written and before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_euk_viruses/AMBIRNA/
+    fetched: 2026-11-27 (3 files, 6,427,276 B, SHA256SUMS sha256 873546dde85464d35097a9fdcec3b46424b4f5a84f9c4c921637432e164b395d, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_euk_viruses/AMBIRNA/
     note: >-
       the GitHub URLs name a branch (main or master), not a commit: the file can change between the listing and the
       fetch
@@ -4296,10 +4333,18 @@ sources:
     url: https://ndownloader.figshare.com/files/63940497
     checksum: the provider's md5 for every file (in the job list; the fetcher compares it before the file is kept)
     license: CC BY 4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 1 files named in _batch6.tsv (written 2026-11-25 20:54 CST) on tower, none landed at 2026-11-26
-      07:33 CST; listed here after the list was written and before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_mges/ECE_METH/
+    fetched: 2026-11-27 (1 file, 11,337,910 B, file sha256 688fb95d63969e98b53205e5cdda2fc4f42e1f0b12eb5f1d74c39edd7da1a614, SHA256SUMS sha256 5ac8e53593afd4febd61abc3a7d96c195d139ee658368d69139dd757f6411901, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_mges/ECE_METH/
+    fetched_pod: >-
+      1 of 1 file (11,337,910 B) relayed from tower to /tmp/if2453/c89/dl/ECE_METH/ by
+      scripts/orchestrator/relay_to_pod.sh --streams 1 (cards C-73, C-89), 2026-11-27, sha256 equal to tower's SHA256SUMS
+    staged: >-
+      card C-89, 2026-11-27 (DEC-88 (2)): all 14 jumbo circular Methanoperedens archaeal ECEs (2,276,845 bp) staged in
+      promge1_plasmids_eces.fna.gz (1,083,491,406 B, redistributable: true under CC BY 4.0) inside stage PROMGE1 (12 host
+      Methanoperedens chromosomes, 1,105 contigs, recorded in /tmp/if2453/c89/meta/PROMGE1/left_out.tsv), mirrored 13/13
+      to tower:/mnt/user/research-bulk/bio-box/sources/PROMGE1/ (SHA256SUMS sha256
+      3277dc72c16f54a520a5b0daadb598be267bbdb40b670627c26c43852617c761);
+      planning/measurements/2026-11-27_c89_promge1_bbsag1_inputs.md
     note: >-
       the figshare record 32069694 (read by the batch-6 worker on 2026-11-25, batch6_probe.json) states the licence CC
       BY 4.0
@@ -4313,10 +4358,8 @@ sources:
     url_2: https://zenodo.org/api/records/17251512/files/{file}/content
     checksum: the provider's md5 for every file (in the job list; the fetcher compares it before the file is kept)
     license: "CC BY 4.0, cc-by-4.0"   # as the job list states it
-    fetched: >-
-      nothing yet: 4 files named in _batch6.tsv (written 2026-11-25 20:54 CST) on tower, none landed at 2026-11-26
-      07:33 CST; listed here after the list was written and before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_euks_org/C60_MICRO/
+    fetched: 2026-11-27 (3 files, 243,297,749 B, SHA256SUMS sha256 56a4fad6a0d52440450ef33fdbaa5a48525002c339ba3865e442ce361a4592a8, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_euks_org/C60_MICRO/
     note: >-
       the figshare record 24711323 (read by the batch-6 worker on 2026-11-25, batch6_probe.json) states the licence CC
       BY 4.0; the zenodo record 17251512 (read by the batch-6 worker on 2026-11-25, batch6_probe.json) states the
@@ -4328,10 +4371,19 @@ sources:
     url: https://zenodo.org/api/records/21729218/files/{file}/content
     checksum: the provider's md5 for every file (in the job list; the fetcher compares it before the file is kept)
     license: open-zenodo-verify   # as the job list states it
-    fetched: >-
-      nothing yet: 1 files named in _batch6.tsv (written 2026-11-25 20:54 CST) on tower, none landed at 2026-11-26
-      07:33 CST; listed here after the list was written and before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_longread_sags/DEATHVALLEY_SAG/
+    fetched: 2026-11-27 (1 file, 31,356,721 B, file sha256 6424413ec56203b81af62feb7a196aa02702f8df46713db106ed7826e0cdf971, SHA256SUMS sha256 418b53903fa57081859fe611d4a579dda7b1eee6685e0543d057bd8ee0722626, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_longread_sags/DEATHVALLEY_SAG/
+    fetched_pod: >-
+      1 of 1 file (31,356,721 B) relayed from tower to /tmp/if2453/c89/dl/DEATHVALLEY_SAG/ by
+      scripts/orchestrator/relay_to_pod.sh --streams 1 (cards C-73, C-89), 2026-11-27, sha256 equal to tower's SHA256SUMS
+    staged: >-
+      card C-89, 2026-11-27 (DEC-88 (2)): all 57 Death Valley deep tectonic aquifer BLM1 MAGs + Bigelow SCGC SAGs
+      (97,620,692 bp) staged in bbsag1_deathvalley.fna.gz (31,760,498 B, redistributable: false under DEC-80 (3)) inside
+      stage BBSAG1 (combined: 23,078 distinct genomes, 9,738,658 distinct contigs, 39,968,467,080 bp distinct; 9,738,622
+      contigs / 39,968,407,467 bp net new; 5,487 skani >= 96% hits recorded), mirrored 16/16 to
+      tower:/mnt/user/research-bulk/bio-box/sources/BBSAG1/ (SHA256SUMS sha256
+      118307574b1af0bd6af32a48304396cbeddea8eef4dd1436752792c503659977);
+      planning/measurements/2026-11-27_c89_promge1_bbsag1_inputs.md
     note: >-
       the zenodo record 21729218 (read by the batch-6 worker on 2026-11-25, batch6_probe.json) states the licence as
       none (an empty field)
@@ -4343,10 +4395,8 @@ sources:
     url_2: https://ndownloader.figshare.com/files/66985175
     checksum: the provider's md5 for every file (in the job list; the fetcher compares it before the file is kept)
     license: CC BY 4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 2 files named in _batch6.tsv (written 2026-11-25 20:54 CST) on tower, none landed at 2026-11-26
-      07:33 CST; listed here after the list was written and before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_euk_viruses/WRVIRDB/
+    fetched: 2026-11-27 (2 files, 42,405,149 B, SHA256SUMS sha256 b8c5b7d71a08c43c61e8ebfadcc9fe671ecdca0183e276943cffb23ae5957508, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_euk_viruses/WRVIRDB/
     note: >-
       the figshare record 33088094 (read by the batch-6 worker on 2026-11-25, batch6_probe.json) states the licence CC
       BY 4.0
@@ -4358,10 +4408,17 @@ sources:
     url_2: https://ndownloader.figshare.com/files/63058162
     checksum: the provider's md5 for every file (in the job list; the fetcher compares it before the file is kept)
     license: CC BY 4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 2 files named in _batch6.tsv (written 2026-11-25 20:54 CST) on tower, none landed at 2026-11-26
-      07:33 CST; listed here after the list was written and before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_mges/SAT_P4P2/
+    fetched: 2026-11-27 (1 file, 55,549,395 B, file sha256 49e68b08ad8d47be89f158385717a87dd40d634da6e29e1c3687bace9b4fab13, SHA256SUMS sha256 314e86a3f93ac1650bcd0e40467422574843efd86a9e57a52376ff70161c387b, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_mges/SAT_P4P2/
+    fetched_pod: >-
+      1 of 1 file (55,549,395 B) relayed from tower to /tmp/if2453/c89/dl/SAT_P4P2/ by
+      scripts/orchestrator/relay_to_pod.sh --streams 1 (cards C-73, C-89), 2026-11-27, sha256 equal to tower's SHA256SUMS
+    staged: >-
+      card C-89, 2026-11-27 (DEC-88 (2)): all 4,596 att-delimited P4 satellite and P2 prophage nucleotide replicons
+      (90,948,096 bp; 4,596 .prt protein files skipped) staged in promge1_plasmids_eces.fna.gz (redistributable: true
+      under CC BY 4.0) inside stage PROMGE1, mirrored to tower:/mnt/user/research-bulk/bio-box/sources/PROMGE1/
+      (SHA256SUMS sha256 3277dc72c16f54a520a5b0daadb598be267bbdb40b670627c26c43852617c761);
+      planning/measurements/2026-11-27_c89_promge1_bbsag1_inputs.md
     note: >-
       the figshare record 31843870 (read by the batch-6 worker on 2026-11-25, batch6_probe.json) states the licence CC
       BY 4.0
@@ -4372,10 +4429,8 @@ sources:
     url: https://zenodo.org/api/records/8328078/files/{file}/content
     checksum: the provider's md5 for every file (in the job list; the fetcher compares it before the file is kept)
     license: open-zenodo-verify   # as the job list states it
-    fetched: >-
-      nothing yet: 1 files named in _batch6.tsv (written 2026-11-25 20:54 CST) on tower, none landed at 2026-11-26
-      07:33 CST; listed here after the list was written and before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_extremes/PALEO_HELIUS/
+    fetched: 2026-11-27 (1 file, 58,519,131 B, file sha256 2fd15054f778dbba3c0eb505231abfe281ca4f0aa06fd00e10c976ae925dc3d3, SHA256SUMS sha256 679a4c2578745fc5a6f0ef1c2c7a1aae88aed462966e3bb88e19af55affae0d0, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_extremes/PALEO_HELIUS/
     note: >-
       the zenodo record 8328078 (read by the batch-6 worker on 2026-11-25, batch6_probe.json) states the licence as
       none (an empty field)
@@ -4386,10 +4441,8 @@ sources:
     url: https://zenodo.org/api/records/21517772/files/{file}/content
     checksum: the provider's md5 for every file (in the job list; the fetcher compares it before the file is kept)
     license: cc-by-4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 30 files named in _batch6.tsv (written 2026-11-25 20:54 CST) on tower, none landed at 2026-11-26
-      07:33 CST; listed here after the list was written and before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_longread_sags/BBMO_HIFI/
+    fetched: 2026-11-27 (30 files, 67,175,215 B, SHA256SUMS sha256 4eff32ba246aeacba0badcb94510a31d1b5dbb3543a5bb3f2a26d463664a748a, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_longread_sags/BBMO_HIFI/
     note: >-
       the zenodo record 21517772 (read by the batch-6 worker on 2026-11-25, batch6_probe.json) states the licence
       cc-by-4.0
@@ -4404,10 +4457,8 @@ sources:
     url_5: https://raw.githubusercontent.com/martinez-zacharya/MOP-UP/master/README.md
     checksum: no provider md5 in the job list (field -); our sha256 only, and the archive test of the fetcher
     license: open-github-verify   # as the job list states it
-    fetched: >-
-      nothing yet: 5 files named in _batch6.tsv (written 2026-11-25 20:54 CST) on tower, none landed at 2026-11-26
-      07:33 CST; listed here after the list was written and before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_euk_viruses/MOPUP_MICRO/
+    fetched: 2026-11-27 (4 files, 68,223,371 B, SHA256SUMS sha256 d441d515d2ca8d57be9b0dc12d743d31b8fe81689cddb8a8adab2d3404b9fe74, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_euk_viruses/MOPUP_MICRO/
     note: >-
       the GitHub URLs name a branch (main or master), not a commit: the file can change between the listing and the
       fetch
@@ -4419,10 +4470,8 @@ sources:
     url: https://zenodo.org/api/records/21381023/files/{file}/content
     checksum: the provider's md5 for every file (in the job list; the fetcher compares it before the file is kept)
     license: cc-by-4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 1 files named in _batch6.tsv (written 2026-11-25 20:54 CST) on tower, none landed at 2026-11-26
-      07:33 CST; listed here after the list was written and before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_longread_sags/WWB_HIC/
+    fetched: 2026-11-27 (1 file, 69,713,703 B, file sha256 cfb0653c897c0733630f1bff86d32687e9ea00c738fe022d3a43b1dd1271a28c, SHA256SUMS sha256 bc91d176aab205e3312fea749f3c6269707e4a48cf288235e3edf66285291878, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_longread_sags/WWB_HIC/
     note: >-
       the zenodo record 21381023 (read by the batch-6 worker on 2026-11-25, batch6_probe.json) states the licence
       cc-by-4.0; a CSV table only (ALL_CITIES_anonymized.csv); the MAGs are fetched by _fetch_batch6b_ncbi.sh (entry
@@ -4463,10 +4512,8 @@ sources:
     url: https://ndownloader.figshare.com/files/42649519
     checksum: the provider's md5 for every file (in the job list; the fetcher compares it before the file is kept)
     license: CC BY 4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 1 files named in _batch6.tsv (written 2026-11-25 20:54 CST) on tower, none landed at 2026-11-26
-      07:33 CST; listed here after the list was written and before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_extremes/OILV1/
+    fetched: 2026-11-27 (1 file, 91,737,863 B, file sha256 76d44f8fcc9f412bc16dc728a9c764bebc62a592e2f0bb8fc8fb98f75d195cf8, SHA256SUMS sha256 89d99c3fa54c4abcfa819cfb810b8e54b6daf395c49556c35c7929ddbd4eef4a, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_extremes/OILV1/
     note: >-
       the figshare record 24298258 (read by the batch-6 worker on 2026-11-25, batch6_probe.json) states the licence CC
       BY 4.0
@@ -4478,10 +4525,8 @@ sources:
     url: https://ndownloader.figshare.com/files/34872915
     checksum: the provider's md5 for every file (in the job list; the fetcher compares it before the file is kept)
     license: CC BY 4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 1 files named in _batch6.tsv (written 2026-11-25 20:54 CST) on tower, none landed at 2026-11-26
-      07:33 CST; listed here after the list was written and before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_euk_viruses/RHIZO_SSRNA/
+    fetched: 2026-11-27 (1 file, 96,839,680 B, file sha256 53c56d7640195e13d781008af2ee52d3488e58ec362f119f090625f4d502f980, SHA256SUMS sha256 78add0972087a21cefa28f1cf4b45002822db6f6c4271ae1ec587cba477bef8c, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_euk_viruses/RHIZO_SSRNA/
     note: >-
       the figshare record 19635336 (read by the batch-6 worker on 2026-11-25, batch6_probe.json) states the licence CC
       BY 4.0
@@ -4494,10 +4539,8 @@ sources:
     url_3: https://ndownloader.figshare.com/files/54607427
     checksum: the provider's md5 for every file (in the job list; the fetcher compares it before the file is kept)
     license: CC BY 4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 3 files named in _batch6.tsv (written 2026-11-25 20:54 CST) on tower, none landed at 2026-11-26
-      07:33 CST; listed here after the list was written and before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_longread_sags/EMCG_MAR/
+    fetched: 2026-11-27 (3 files, 98,169,911 B, SHA256SUMS sha256 ed6d06e3c00f55ea36698bec2173bc081901bae736fb0f28e75b8f1abf23db7d, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_longread_sags/EMCG_MAR/
     note: >-
       the figshare record 29087720 (read by the batch-6 worker on 2026-11-25, batch6_probe.json) states the licence CC
       BY 4.0
@@ -4508,10 +4551,8 @@ sources:
     url: https://zenodo.org/api/records/18216013/files/{file}/content
     checksum: the provider's md5 for every file (in the job list; the fetcher compares it before the file is kept)
     license: cc-by-4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 39 files named in _batch6.tsv (written 2026-11-25 20:54 CST) on tower, none landed at 2026-11-26
-      07:33 CST; listed here after the list was written and before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_symbionts/PROT_FUNG_SYM1/
+    fetched: 2026-11-27 (39 files, 128,825,226 B, SHA256SUMS sha256 9aa36397ae9fe922e97a8a4b3286e07f270a0a38b016aae4f715165deca3a0b6, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_symbionts/PROT_FUNG_SYM1/
     note: >-
       the zenodo record 18216013 (read by the batch-6 worker on 2026-11-25, batch6_probe.json) states the licence
       cc-by-4.0
@@ -4522,10 +4563,8 @@ sources:
     url: https://portal.nersc.gov/cfs/nelli/eukcensus/{file}
     checksum: no provider md5 in the job list (field -); our sha256 only, and the archive test of the fetcher
     license: CC BY 4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 2 files named in _batch6.tsv (written 2026-11-25 20:54 CST) on tower, none landed at 2026-11-26
-      07:33 CST; listed here after the list was written and before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_euks_org/C60_EUKCEN/
+    fetched: 2026-11-27 (2 files, 164,106,254 B, SHA256SUMS sha256 d8c553d3916aec7312c88e733f26ec9795eb04aaea3b5eb4b8bada5c25021c29, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_euks_org/C60_EUKCEN/
     note: >-
       no provider record of the licence was kept (portal.nersc.gov)
     approved: "by the PI, 2026-11-25 19:47 CST, in general words only: \"make sure to download everything per the plan above\" (the plan of 19:47 was batches 4 and 5). No PI message names batch 6 or a source in it: the orchestrator wrote _batch6.tsv at 20:54 CST from its scouts, after the PI asked at 20:05 (\"run even more diversity scouts ... really want to go deep on high quality data, no matter where you can find it\") and at 20:26 (\"... add those to the wish list as well\") for scouts and a wish list, not for a fetch (the Antigravity transcript, steps 7345 to 7461). Held for the PI by card R-11"
@@ -4538,10 +4577,8 @@ sources:
     url_3: https://ndownloader.figshare.com/files/57552088
     checksum: the provider's md5 for every file (in the job list; the fetcher compares it before the file is kept)
     license: CC BY 4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 3 files named in _batch6.tsv (written 2026-11-25 20:54 CST) on tower, none landed at 2026-11-26
-      07:33 CST; listed here after the list was written and before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_extremes/KERM1/
+    fetched: 2026-11-27 (2 files, 332,023,936 B, SHA256SUMS sha256 65a412ca925c337135ae8758c64f7a93ee4c43ffca3071409ccccdb18154c938, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_extremes/KERM1/
     note: >-
       the figshare record 28253495 (read by the batch-6 worker on 2026-11-25, batch6_probe.json) states the licence CC
       BY 4.0; the figshare record 30020233 (read by the batch-6 worker on 2026-11-25, batch6_probe.json) states the
@@ -4570,10 +4607,8 @@ sources:
     url_2: https://ndownloader.figshare.com/files/69686319
     checksum: the provider's md5 for every file (in the job list; the fetcher compares it before the file is kept)
     license: CC BY 4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 2 files named in _batch6.tsv (written 2026-11-25 20:54 CST) on tower, none landed at 2026-11-26
-      07:33 CST; listed here after the list was written and before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_longread_sags/RPGUTDB/
+    fetched: 2026-11-27 (2 files, 193,294,015 B, SHA256SUMS sha256 0a1adcc09fbc718efe025e2f311ca3862cfd396560bd1e3ccbf6617fac1afea7, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_longread_sags/RPGUTDB/
     note: >-
       the figshare record 31136686 (read by the batch-6 worker on 2026-11-25, batch6_probe.json) states the licence CC
       BY 4.0
@@ -4584,10 +4619,8 @@ sources:
     url: https://zenodo.org/api/records/15637204/files/{file}/content
     checksum: the provider's md5 for every file (in the job list; the fetcher compares it before the file is kept)
     license: cc-by-4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 1 files named in _batch6.tsv (written 2026-11-25 20:54 CST) on tower, none landed at 2026-11-26
-      07:33 CST; listed here after the list was written and before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_extremes/PF_VLP1/
+    fetched: 2026-11-27 (1 file, 207,511,291 B, file sha256 0b17714ecc23efd905b2297c6cdaa398545781b73500758965311af72d9ed40b, SHA256SUMS sha256 2d818f08ac06452e4b13af0c9e18707da9f3b4b28e31ae61d93b45820bffddd3, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_extremes/PF_VLP1/
     note: >-
       the zenodo record 15637204 (read by the batch-6 worker on 2026-11-25, batch6_probe.json) states the licence
       cc-by-4.0
@@ -4598,10 +4631,8 @@ sources:
     url: https://zenodo.org/api/records/20544493/files/{file}/content
     checksum: the provider's md5 for every file (in the job list; the fetcher compares it before the file is kept)
     license: cc-by-4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 2 files named in _batch6.tsv (written 2026-11-25 20:54 CST) on tower, none landed at 2026-11-26
-      07:33 CST; listed here after the list was written and before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_symbionts/WRGV1/
+    fetched: 2026-11-27 (2 files, 213,676,134 B, SHA256SUMS sha256 3b65ef51a548b21888712f9c7150b9205488a26240721b7d626bfbde326c5505, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_symbionts/WRGV1/
     note: >-
       the zenodo record 20544493 (read by the batch-6 worker on 2026-11-25, batch6_probe.json) states the licence
       cc-by-4.0
@@ -4617,10 +4648,20 @@ sources:
     url_6: https://ndownloader.figshare.com/files/62498968
     checksum: the provider's md5 for every file (in the job list; the fetcher compares it before the file is kept)
     license: CC BY 4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 6 files named in _batch6.tsv (written 2026-11-25 20:54 CST) on tower, none landed at 2026-11-26
-      07:33 CST; listed here after the list was written and before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_mges/ECE_HODOR/
+    fetched: 2026-11-27 (6 files, 340,910,359 B, SHA256SUMS sha256 84f5e3527c668e22aee141b2a8a1d3684a60c80d8cf4c55ab0fe3aee7544cfc3, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_mges/ECE_HODOR/
+    fetched_pod: >-
+      6 of 6 files (340,910,359 B) relayed from tower to wilkcomp02 by scripts/orchestrator/relay_to_pod.sh --streams 1
+      (cards C-73, C-89), 2026-11-27, sha256 equal to tower's SHA256SUMS (all_cleaned_prophages.fa.gz 164,877,156 B and
+      megaplasmids_gt300kb.fa.gz 162,487,642 B to /stor/scratch/Wilke/if2453/bio-box-staging/PROMGE1/dl/ECE_HODOR/; 4 TSVs
+      to /tmp/if2453/c89/dl/ECE_HODOR/)
+    staged: >-
+      card C-89, 2026-11-27 (DEC-88 (2)): 38,995 records (5,876 megaplasmids >300 kb + 33,119 CheckV-cleaned prophages,
+      2,681,819,708 bp) -> 11,658 distinct genomes staged in promge1_plasmids_eces.fna.gz (1,083,491,406 B,
+      redistributable: true under CC BY 4.0) inside stage PROMGE1, mirrored 13/13 to
+      tower:/mnt/user/research-bulk/bio-box/sources/PROMGE1/ (SHA256SUMS sha256
+      3277dc72c16f54a520a5b0daadb598be267bbdb40b670627c26c43852617c761);
+      planning/measurements/2026-11-27_c89_promge1_bbsag1_inputs.md
     note: >-
       the figshare record 31385365 (read by the batch-6 worker on 2026-11-25, batch6_probe.json) states the licence CC
       BY 4.0
@@ -4631,10 +4672,20 @@ sources:
     url: https://zenodo.org/api/records/22944851/files/{file}/content
     checksum: the provider's md5 for every file (in the job list; the fetcher compares it before the file is kept)
     license: cc-by-4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 4 files named in _batch6.tsv (written 2026-11-25 20:54 CST) on tower, none landed at 2026-11-26
-      07:33 CST; listed here after the list was written and before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_mges/MFD_PLAS/
+    fetched: 2026-11-27 (3 files, 311,735,530 B, SHA256SUMS sha256 929e24fa36215fdc622f79d03e18fb9336d5b3b31f2fffde7fe7fc229115f622, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_mges/MFD_PLAS/
+    fetched_pod: >-
+      3 of 3 files (311,735,530 B) relayed from tower to wilkcomp02 by scripts/orchestrator/relay_to_pod.sh --streams 1
+      (cards C-73, C-89), 2026-11-27, sha256 equal to tower's SHA256SUMS (all_plasmids_meta.tar.gz 187,708,334 B and
+      circ_plasmids_gt1500bp.tar.gz 103,646,120 B to /stor/scratch/Wilke/if2453/bio-box-staging/PROMGE1/dl/MFD_PLAS/;
+      plasmid_metadata.tsv.gz to /tmp/if2453/c89/dl/MFD_PLAS/)
+    staged: >-
+      card C-89, 2026-11-27 (DEC-88 (2)): 9,265 circular plasmid records (464,113,261 bp; Prodigal ORF .ffn
+      MFD01716.bin.1.47.fasta skipped) -> 9,133 distinct plasmids staged in promge1_plasmids_eces.fna.gz
+      (redistributable: true under cc-by-4.0) inside stage PROMGE1, mirrored to
+      tower:/mnt/user/research-bulk/bio-box/sources/PROMGE1/ (SHA256SUMS sha256
+      3277dc72c16f54a520a5b0daadb598be267bbdb40b670627c26c43852617c761);
+      planning/measurements/2026-11-27_c89_promge1_bbsag1_inputs.md
     note: >-
       the zenodo record 22944851 (read by the batch-6 worker on 2026-11-25, batch6_probe.json) states the licence
       cc-by-4.0
@@ -4645,10 +4696,8 @@ sources:
     url: https://ndownloader.figshare.com/files/63040780
     checksum: the provider's md5 for every file (in the job list; the fetcher compares it before the file is kept)
     license: CC BY 4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 1 files named in _batch6.tsv (written 2026-11-25 20:54 CST) on tower, none landed at 2026-11-26
-      07:33 CST; listed here after the list was written and before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_longread_sags/FELMGDB_CULT/
+    fetched: 2026-11-27 (1 file, 376,344,464 B, file sha256 17b7cfbdf106bebee839014b46a78ee031e0925c39d330e8617e4906da96686a, SHA256SUMS sha256 a901c23b6220e66736502cfe3050bf37087503f1e88e43f7e804a811d3005883, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_longread_sags/FELMGDB_CULT/
     note: >-
       the figshare record 31841092 (read by the batch-6 worker on 2026-11-25, batch6_probe.json) states the licence CC
       BY 4.0
@@ -4673,10 +4722,8 @@ sources:
     url: https://zenodo.org/api/records/20629959/files/{file}/content
     checksum: the provider's md5 for every file (in the job list; the fetcher compares it before the file is kept)
     license: cc-by-4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 2 files named in _batch6.tsv (written 2026-11-25 20:54 CST) on tower, none landed at 2026-11-26
-      07:33 CST; listed here after the list was written and before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_extremes/CCZ1/
+    fetched: 2026-11-27 (2 files, 543,130,820 B, SHA256SUMS sha256 15477ea64b81fda8a17693a1b56cbc269989a967f78e7cbfcf99e7f161aca3af, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_extremes/CCZ1/
     note: >-
       the zenodo record 20629959 (read by the batch-6 worker on 2026-11-25, batch6_probe.json) states the licence
       cc-by-4.0
@@ -4701,10 +4748,8 @@ sources:
     url: https://zenodo.org/api/records/17935607/files/{file}/content
     checksum: the provider's md5 for every file (in the job list; the fetcher compares it before the file is kept)
     license: cc-by-4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 2 files named in _batch6.tsv (written 2026-11-25 20:54 CST) on tower, none landed at 2026-11-26
-      07:33 CST; listed here after the list was written and before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_symbionts/WILDBOAR1/
+    fetched: 2026-11-27 (2 files, 607,585,010 B, SHA256SUMS sha256 1064c91e6f9d305a8005902c966d63107cea5adbb9bd9c458791522ca0f60963, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_symbionts/WILDBOAR1/
     note: >-
       the zenodo record 17935607 (read by the batch-6 worker on 2026-11-25, batch6_probe.json) states the licence
       cc-by-4.0
@@ -4718,10 +4763,8 @@ sources:
     url_4: https://ndownloader.figshare.com/files/62623690
     checksum: the provider's md5 for every file (in the job list; the fetcher compares it before the file is kept)
     license: CC BY 4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 4 files named in _batch6.tsv (written 2026-11-25 20:54 CST) on tower, none landed at 2026-11-26
-      07:33 CST; listed here after the list was written and before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_extremes/WUS_HS1/
+    fetched: 2026-11-27 (4 files, 676,567,716 B, SHA256SUMS sha256 6750e2ae44a216e8af958ab31fe92f4bceb19247983e65142588201a33abffe9, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_extremes/WUS_HS1/
     note: >-
       the figshare record 30284068 (read by the batch-6 worker on 2026-11-25, batch6_probe.json) states the licence CC
       BY 4.0
@@ -5193,10 +5236,8 @@ sources:
     url_461: https://edmond.mpg.de/api/access/datafile/195947
     checksum: the provider's md5 for every file (in the job list; the fetcher compares it before the file is kept)
     license: CC0-1.0   # as the job list states it
-    fetched: >-
-      nothing yet: 461 files named in _batch6.tsv (written 2026-11-25 20:54 CST) on tower, none landed at 2026-11-26
-      07:33 CST; listed here after the list was written and before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_extremes/PALEO_CALC1/
+    fetched: 2026-11-27 (461 files, 892,223,436 B, SHA256SUMS sha256 6f42ef278130a6b20417a483fa5a8430394ccaca84a152884395e3f870cefd39, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_extremes/PALEO_CALC1/
     note: >-
       the Edmond dataset 10.17617/3.COCL7R (read by the batch-6 worker) states the licence CC0-1.0
     approved: "by the PI, 2026-11-25 19:47 CST, in general words only: \"make sure to download everything per the plan above\" (the plan of 19:47 was batches 4 and 5). No PI message names batch 6 or a source in it: the orchestrator wrote _batch6.tsv at 20:54 CST from its scouts, after the PI asked at 20:05 (\"run even more diversity scouts ... really want to go deep on high quality data, no matter where you can find it\") and at 20:26 (\"... add those to the wish list as well\") for scouts and a wish list, not for a fetch (the Antigravity transcript, steps 7345 to 7461). Held for the PI by card R-11"
@@ -5206,10 +5247,8 @@ sources:
     url: https://ndownloader.figshare.com/files/66851042
     checksum: the provider's md5 for every file (in the job list; the fetcher compares it before the file is kept)
     license: CC BY 4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 1 files named in _batch6.tsv (written 2026-11-25 20:54 CST) on tower, none landed at 2026-11-26
-      07:33 CST; listed here after the list was written and before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_euks_org/ET2_PARABAS/
+    fetched: 2026-11-27 (1 file, 903,442,183 B, file sha256 b90b777975c497758f1e1b54467d589b240630469ed6a9d271abc8c476e1d827, SHA256SUMS sha256 deb7decd09c5ab8af8bc2e5d65e3107a9e59a1a65121c03083fa84a2e26058e1, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_euks_org/ET2_PARABAS/
     note: >-
       the figshare record 33029675 (read by the batch-6 worker on 2026-11-25, batch6_probe.json) states the licence CC
       BY 4.0
@@ -5221,10 +5260,8 @@ sources:
     url: https://zenodo.org/api/records/16782139/files/{file}/content
     checksum: the provider's md5 for every file (in the job list; the fetcher compares it before the file is kept)
     license: cc-by-sa-4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 3 files named in _batch6.tsv (written 2026-11-25 20:54 CST) on tower, none landed at 2026-11-26
-      07:33 CST; listed here after the list was written and before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_longread_sags/SOIL_TBP_ONT/
+    fetched: 2026-11-27 (3 files, 1,240,879,375 B, SHA256SUMS sha256 178446f9ba7af5129fadcb1b9dc15d72a8d1a8c5543c0800e39f4fe9092f4d5f, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_longread_sags/SOIL_TBP_ONT/
     note: >-
       the zenodo record 16782139 (read by the batch-6 worker on 2026-11-25, batch6_probe.json) states the licence
       cc-by-sa-4.0
@@ -5236,10 +5273,18 @@ sources:
     url: https://zenodo.org/api/records/17136302/files/{file}/content
     checksum: the provider's md5 for every file (in the job list; the fetcher compares it before the file is kept)
     license: cc-by-4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 3 files named in _batch6.tsv (written 2026-11-25 20:54 CST) on tower, none landed at 2026-11-26
-      07:33 CST; listed here after the list was written and before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_mges/GSPR/
+    fetched: 2026-11-27 (3 files, 1,608,120,333 B, SHA256SUMS sha256 8d089abbec591c82ca55fec6cce7ab8eab2df246cb4ca097cd0de09b58196453, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_mges/GSPR/
+    fetched_pod: >-
+      3 of 3 files (1,608,120,333 B) relayed from tower to wilkcomp02 by scripts/orchestrator/relay_to_pod.sh --streams 1
+      (cards C-73, C-89), 2026-11-27, sha256 equal to tower's SHA256SUMS (GSPR_derep_plasmid.fasta 1,568,448,187 B to
+      /stor/scratch/Wilke/if2453/bio-box-staging/PROMGE1/dl/GSPR/; 2 parquet metadata tables to /tmp/if2453/c89/dl/GSPR/)
+    staged: >-
+      card C-89, 2026-11-27 (DEC-88 (2)): 98,281 soil plasmid records (1,546,277,114 bp) -> 98,277 distinct plasmids
+      staged in promge1_plasmids_eces.fna.gz (1,083,491,406 B, redistributable: true under cc-by-4.0) inside stage
+      PROMGE1, mirrored to tower:/mnt/user/research-bulk/bio-box/sources/PROMGE1/ (SHA256SUMS sha256
+      3277dc72c16f54a520a5b0daadb598be267bbdb40b670627c26c43852617c761);
+      planning/measurements/2026-11-27_c89_promge1_bbsag1_inputs.md
     note: >-
       the zenodo record 17136302 (read by the batch-6 worker on 2026-11-25, batch6_probe.json) states the licence
       cc-by-4.0
@@ -5252,10 +5297,19 @@ sources:
     url_3: https://ndownloader.figshare.com/files/64110814
     checksum: the provider's md5 for every file (in the job list; the fetcher compares it before the file is kept)
     license: MIT   # as the job list states it
-    fetched: >-
-      nothing yet: 3 files named in _batch6.tsv (written 2026-11-25 20:54 CST) on tower, none landed at 2026-11-26
-      07:33 CST; listed here after the list was written and before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_longread_sags/HAIMA_LR_SAG/
+    fetched: 2026-11-27 (3 files, 1,612,093,240 B, SHA256SUMS sha256 2ecee47c73ca8a639392bf9a4858391aac6bee0bd1bc1cbb800ca9758716a4f0, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_longread_sags/HAIMA_LR_SAG/
+    fetched_pod: >-
+      3 of 3 files (1,612,093,240 B) relayed from tower to wilkcomp02 by scripts/orchestrator/relay_to_pod.sh --streams 1
+      (cards C-73, C-89), 2026-11-27, sha256 equal to tower's SHA256SUMS (Haima_SAGs.tar.gz 1,073,098,492 B,
+      Haima_LR_MAGs.tar.gz 373,777,610 B, and Haima_SR_MAGs.tar.gz 165,217,138 B to
+      /stor/scratch/Wilke/if2453/bio-box-staging/BBSAG1/dl/HAIMA_LR_SAG/)
+    staged: >-
+      card C-89, 2026-11-27 (DEC-88 (2)): all 4,950 Haima cold-seep genomes (4,069 SAGs + 568 LR-MAGs [130 cMAGs] + 313
+      SR-MAGs; 6,297,876,668 bp) staged in bbsag1_sags_mags.fna.gz (13,686,495,129 B, redistributable: true under MIT)
+      inside stage BBSAG1, mirrored 16/16 to tower:/mnt/user/research-bulk/bio-box/sources/BBSAG1/ (SHA256SUMS sha256
+      118307574b1af0bd6af32a48304396cbeddea8eef4dd1436752792c503659977);
+      planning/measurements/2026-11-27_c89_promge1_bbsag1_inputs.md
     note: >-
       the figshare record 32084286 (read by the batch-6 worker on 2026-11-25, batch6_probe.json) states the licence
       MIT
@@ -5266,10 +5320,8 @@ sources:
     url: https://zenodo.org/api/records/15866786/files/{file}/content
     checksum: the provider's md5 for every file (in the job list; the fetcher compares it before the file is kept)
     license: cc-zero   # as the job list states it
-    fetched: >-
-      nothing yet: 3 files named in _batch6.tsv (written 2026-11-25 20:54 CST) on tower, none landed at 2026-11-26
-      07:33 CST; listed here after the list was written and before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_longread_sags/SCHONBUCH_ONT/
+    fetched: 2026-11-27 (2 files, 1,635,151,644 B, SHA256SUMS sha256 a7148dec1de34df68eeef954b6ccfa03c2889f582aa0bfbda4fae7f381624cf4, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_longread_sags/SCHONBUCH_ONT/
     note: >-
       the zenodo record 15866786 (read by the batch-6 worker on 2026-11-25, batch6_probe.json) states the licence
       cc-zero
@@ -5280,10 +5332,8 @@ sources:
     url: https://zenodo.org/api/records/15327299/files/{file}/content
     checksum: the provider's md5 for every file (in the job list; the fetcher compares it before the file is kept)
     license: cc-by-4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 5 files named in _batch6.tsv (written 2026-11-25 20:54 CST) on tower, none landed at 2026-11-26
-      07:33 CST; listed here after the list was written and before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_longread_sags/MLW_CMAG/
+    fetched: 2026-11-27 (4 files, 1,809,532,994 B, SHA256SUMS sha256 033f024b5277a1da62f81e36af4f3bc7e5aa30b8651a3ff379d9e79acddb4ab3, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_longread_sags/MLW_CMAG/
     note: >-
       the zenodo record 15327299 (read by the batch-6 worker on 2026-11-25, batch6_probe.json) states the licence
       cc-by-4.0
@@ -5294,10 +5344,8 @@ sources:
     url: https://zenodo.org/api/records/14929430/files/{file}/content
     checksum: the provider's md5 for every file (in the job list; the fetcher compares it before the file is kept)
     license: cc-by-4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 4 files named in _batch6.tsv (written 2026-11-25 20:54 CST) on tower, none landed at 2026-11-26
-      07:33 CST; listed here after the list was written and before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_longread_sags/AWIGEN2_AFR/
+    fetched: 2026-11-27 (4 files, 2,422,708,736 B, SHA256SUMS sha256 f37e941a5e0a1023f83273d32bff7b04162d35cc3dc24b8fcdebebdb951b78e4, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_longread_sags/AWIGEN2_AFR/
     note: >-
       the zenodo record 14929430 (read by the batch-6 worker on 2026-11-25, batch6_probe.json) states the licence
       cc-by-4.0
@@ -5339,10 +5387,8 @@ sources:
     url: https://zenodo.org/api/records/18786764/files/{file}/content
     checksum: the provider's md5 for every file (in the job list; the fetcher compares it before the file is kept)
     license: cc-by-4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 3 files named in _batch6.tsv (written 2026-11-25 20:54 CST) on tower, none landed at 2026-11-26
-      07:33 CST; listed here after the list was written and before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_euks_org/C60_BBMO/
+    fetched: 2026-11-27 (3 files, 7,240,961,535 B, SHA256SUMS sha256 c3dd958d92520af853dff26bc00756902d4f4c67a271e2cc9e55e83ca56f224b, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_euks_org/C60_BBMO/
     note: >-
       the zenodo record 18786764 (read by the batch-6 worker on 2026-11-25, batch6_probe.json) states the licence
       cc-by-4.0
@@ -5354,10 +5400,8 @@ sources:
     url: https://zenodo.org/api/records/22077545/files/{file}/content
     checksum: the provider's md5 for every file (in the job list; the fetcher compares it before the file is kept)
     license: cc-by-4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 6 files named in _batch6.tsv (written 2026-11-25 20:54 CST) on tower, none landed at 2026-11-26
-      07:33 CST; listed here after the list was written and before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_longread_sags/RHIZO_HIFI/
+    fetched: 2026-11-27 (5 files, 7,736,393,326 B, SHA256SUMS sha256 65a4906b04c4c86a04a5504ffca42aab9875b123324ac3574a2dce74b7b8ce96, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_longread_sags/RHIZO_HIFI/
     note: >-
       the zenodo record 22077545 (read by the batch-6 worker on 2026-11-25, batch6_probe.json) states the licence
       cc-by-4.0
@@ -5368,10 +5412,8 @@ sources:
     url: https://www.genoscope.cns.fr/tara/localdata/data/SMAGs-v1/{file}
     checksum: no provider md5 in the job list (field -); our sha256 only, and the archive test of the fetcher
     license: CC BY 4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 4 files named in _batch6.tsv (written 2026-11-25 20:54 CST) on tower, none landed at 2026-11-26
-      07:33 CST; listed here after the list was written and before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_euks_org/C60_SMAG/
+    fetched: 2026-11-27 (1 file, 68,777,672 B, file sha256 8de5a3e531900dcbb1d8e229bfd1b502da96267eb79d26a5241e3b01cf281344, SHA256SUMS sha256 9ed8be6b6ae9a440a7644560e4ab62e6d6d9d468392767bf5f082f87963fc3dc, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_euks_org/C60_SMAG/
     note: >-
       no provider record of the licence was kept (www.genoscope.cns.fr)
     approved: "by the PI, 2026-11-25 19:47 CST, in general words only: \"make sure to download everything per the plan above\" (the plan of 19:47 was batches 4 and 5). No PI message names batch 6 or a source in it: the orchestrator wrote _batch6.tsv at 20:54 CST from its scouts, after the PI asked at 20:05 (\"run even more diversity scouts ... really want to go deep on high quality data, no matter where you can find it\") and at 20:26 (\"... add those to the wish list as well\") for scouts and a wish list, not for a fetch (the Antigravity transcript, steps 7345 to 7461). Held for the PI by card R-11"
@@ -5382,10 +5424,8 @@ sources:
     url_2: https://ndownloader.figshare.com/files/53589167
     checksum: the provider's md5 for every file (in the job list; the fetcher compares it before the file is kept)
     license: CC BY 4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 2 files named in _batch6.tsv (written 2026-11-25 20:54 CST) on tower, none landed at 2026-11-26
-      07:33 CST; listed here after the list was written and before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_symbionts/WRGM1/
+    fetched: 2026-11-27 (2 files, 11,392,221,131 B, SHA256SUMS sha256 e20a08da8ded1aff0d9a61dc8eaca14c796980f2b44cda0d0d7d70095c7d9e22, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_symbionts/WRGM1/
     note: >-
       the figshare record 28752050 (read by the batch-6 worker on 2026-11-25, batch6_probe.json) states the licence CC
       BY 4.0
@@ -5397,10 +5437,21 @@ sources:
     url: https://promge.embl.de/data/{file}
     checksum: the provider's md5 for every file (in the job list; the fetcher compares it before the file is kept)
     license: CC BY-SA 4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 7 files named in _batch6.tsv (written 2026-11-25 20:54 CST) on tower, none landed at 2026-11-26
-      07:33 CST; listed here after the list was written and before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_mges/PROMGE2/
+    fetched: 2026-11-27 (5 files, 34,478,242,470 B, SHA256SUMS sha256 e41cf7095a475c8f206e79563eabd1b420fb8d93d093106e51194bfb5dc10ef9, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_mges/PROMGE2/
+    fetched_pod: >-
+      5 of 5 files (34,478,242,470 B) relayed from tower to wilkcomp02 by scripts/orchestrator/relay_to_pod.sh --streams 1
+      (cards C-73, C-89), 2026-11-27, sha256 equal to tower's SHA256SUMS (mge100.fna.gz 29,636,389,520 B and 4 metadata
+      tables to /stor/scratch/Wilke/if2453/bio-box-staging/PROMGE1/dl/PROMGE2/ and /tmp/if2453/c89/dl/PROMGE2/)
+    staged: >-
+      card C-89, 2026-11-27 (DEC-88 (2)): 1,915,224 non-cellular, non-nested MGE100 representatives (28,998,050,623 bp)
+      staged in promge1_promge2.fna.gz (9,719,767,929 B, redistributable: false under DEC-80 (3)) inside stage PROMGE1
+      (combined across 8 MGE deposits: 2,038,920 distinct genomes, 2,063,640 distinct contigs, 33,663,421,208 bp distinct;
+      2,030,020 contigs / 32,168,295,400 bp net new after 56 prior stages; 3,750,680 cellular_only/nested/non-rep records
+      summarized in /tmp/if2453/c89/meta/PROMGE1/left_out.tsv), mirrored 13/13 to
+      tower:/mnt/user/research-bulk/bio-box/sources/PROMGE1/ (SHA256SUMS sha256
+      3277dc72c16f54a520a5b0daadb598be267bbdb40b670627c26c43852617c761);
+      planning/measurements/2026-11-27_c89_promge1_bbsag1_inputs.md
     note: >-
       no provider record of the licence was kept (the worker read only HTTP headers of promge.embl.de)
     approved: "by the PI, 2026-11-25 19:47 CST, in general words only: \"make sure to download everything per the plan above\" (the plan of 19:47 was batches 4 and 5). No PI message names batch 6 or a source in it: the orchestrator wrote _batch6.tsv at 20:54 CST from its scouts, after the PI asked at 20:05 (\"run even more diversity scouts ... really want to go deep on high quality data, no matter where you can find it\") and at 20:26 (\"... add those to the wish list as well\") for scouts and a wish list, not for a fetch (the Antigravity transcript, steps 7345 to 7461). Held for the PI by card R-11"
@@ -5517,10 +5568,20 @@ sources:
     url_87: https://ndownloader.figshare.com/files/44869819
     checksum: the provider's md5 for every file (in the job list; the fetcher compares it before the file is kept)
     license: CC BY 4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 87 files named in _batch6.tsv (written 2026-11-25 20:54 CST) on tower, none landed at 2026-11-26
-      07:33 CST; listed here after the list was written and before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_longread_sags/BBSAG20/
+    fetched: 2026-11-27 (86 files, 75,877,683,870 B, SHA256SUMS sha256 0eb0934bc0528078ba96381408712c66983e851b1a331bb686607f043fc412e0, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6_longread_sags/BBSAG20/
+    fetched_pod: >-
+      86 of 86 files (75,877,683,870 B: 83 SAG sample tarballs, MAG tarball, plasmid FASTA, and summary.tsv) relayed from
+      tower to /stor/scratch/Wilke/if2453/bio-box-staging/BBSAG1/dl/BBSAG20/ and /tmp/if2453/c89/dl/BBSAG20/ by
+      scripts/orchestrator/relay_to_pod.sh --streams 1 (cards C-73, C-89), 2026-11-27, sha256 equal to tower's SHA256SUMS
+    staged: >-
+      card C-89, 2026-11-27 (DEC-88 (2)): 18,071 MIMAG MQ/HQ human oral and gut SAGs/MAGs (completeness >= 50%,
+      contamination < 10%; 33,572,979,320 bp) staged in bbsag1_sags_mags.fna.gz (13,686,495,129 B, redistributable: true
+      under CC BY 4.0) inside stage BBSAG1 (14,324 LQ SAGs/MAGs recorded in /tmp/if2453/c89/meta/BBSAG1/left_out.tsv and
+      bbsag20_plasmid.fna.gz skipped because parent assemblies are staged), mirrored 16/16 to
+      tower:/mnt/user/research-bulk/bio-box/sources/BBSAG1/ (SHA256SUMS sha256
+      118307574b1af0bd6af32a48304396cbeddea8eef4dd1436752792c503659977);
+      planning/measurements/2026-11-27_c89_promge1_bbsag1_inputs.md
     note: >-
       the figshare record 24473008 (read by the batch-6 worker on 2026-11-25, batch6_probe.json) states the licence CC
       BY 4.0
@@ -5551,10 +5612,22 @@ sources:
     url_3: https://www.decodebiome.org/HROM/data/genome_catalog/HROM_representative_genomes/HROM_Genome.All.tar.gz
     checksum: no provider md5 in the job list (field -); our sha256 only, and the archive test of the fetcher
     license: cc-by-4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 3 files named in _batch6b.tsv (written 2026-11-25 21:26 CST) on tower, none landed at 2026-11-26
-      07:33 CST; listed here after the list was written and before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6b_oral/HROM_ORAL/
+    fetched: 2026-11-27 (2 files, 2,285,109,613 B, SHA256SUMS sha256 896b9c385d21ddf28a013b3bde35a1ea8dd8e5f1959222075f87ce1082a6e40c, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6b_oral/HROM_ORAL/
+    fetched_pod: >-
+      2 of 2 files (2,285,109,613 B) relayed from tower to wilkcomp02 by scripts/orchestrator/relay_to_pod.sh --streams 1
+      (cards C-73, C-86), 2026-11-27, sha256 equal to tower's SHA256SUMS (HROM_Genome.All.tar.gz 2,284,487,316 B to
+      /stor/scratch/Wilke/if2453/bio-box-staging/HROM1/dl/HROM_ORAL/; HROM-Species-metadata.tsv 622,297 B to
+      /tmp/if2453/c86/dl/HROM1/HROM_ORAL/)
+    staged: >-
+      card C-86, 2026-11-27 (DEC-88 (2)): 3,426 NC/HQ human oral species representatives (including 1,137 novel CPR; code
+      25 for Gracilibacteria/Absconditabacteria, else code 11) staged in hrom1_oral_glmc.fna.gz (1,900,829,031 B,
+      redistributable: false under DEC-80 (3)) inside stage HROM1 (1,687 MQ species reps recorded in
+      /tmp/if2453/c86/meta/HROM1/left_out.tsv; combined stage HROM1: 3,732 distinct genomes, 266,916 distinct contigs,
+      5,883,730,291 bp distinct; 265,528 contigs / 5,653,991,918 bp net new), mirrored 14/14 to
+      tower:/mnt/user/research-bulk/bio-box/sources/HROM1/ (SHA256SUMS sha256
+      1db893c1efdade3b6f6f22a7ec6ea12e242f08437929b5fc53cc7b6715722d4e);
+      planning/measurements/2026-11-27_c86_o4_gv2_hrom1_inputs.md
     note: >-
       no provider record of the licence was kept
     approved: "by the PI, 2026-11-25 21:01 CST: \"1. y, 2. decide based on novelty, maybe coral\", in answer to the orchestrator's question of 20:58 CST \"Queue a small detached Batch 6b on tower? Fixes the / filename crash caught on Batch 3's RNA_VIROID, pulls the rescued CANDI1 bulk DB (gandi-classifier-db.tar.gz), and pulls the newly found open NCBI/ENA BioProjects (O4-PROT/O4-WEIRD organelles ..., MARSUPIAL1, TERMITE1, NHP-GUT1, AMD-CPRV1, CAVE-AERO1, GBAT-RNA, RMD1 coral genomes)\" (the Antigravity transcript, steps 7461 and 7462). HROM_ORAL is not named in that question"
@@ -5565,10 +5638,8 @@ sources:
     url: https://zenodo.org/api/records/14091751/files/{file}/content
     checksum: the provider's md5 for every file (in the job list; the fetcher compares it before the file is kept)
     license: cc-by-4.0   # as the job list states it
-    fetched: >-
-      nothing yet: 4 files named in _batch6b.tsv (written 2026-11-25 21:26 CST) on tower, none landed at 2026-11-26
-      07:33 CST; listed here after the list was written and before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6b_plant/CRBC_ISO/
+    fetched: 2026-11-27 (4 files, 9,160,668,732 B, SHA256SUMS sha256 1415a39daf272a2d7506d218a2fc1bde1b1495232222705c1c49fbab91c3bfd0, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6b_plant/CRBC_ISO/
     note: >-
       not named in the question the PI answered at 21:01 CST; added by the batch-6b worker after it
     approved: "by the PI, 2026-11-25 21:01 CST: \"1. y, 2. decide based on novelty, maybe coral\", in answer to the orchestrator's question of 20:58 CST \"Queue a small detached Batch 6b on tower? Fixes the / filename crash caught on Batch 3's RNA_VIROID, pulls the rescued CANDI1 bulk DB (gandi-classifier-db.tar.gz), and pulls the newly found open NCBI/ENA BioProjects (O4-PROT/O4-WEIRD organelles ..., MARSUPIAL1, TERMITE1, NHP-GUT1, AMD-CPRV1, CAVE-AERO1, GBAT-RNA, RMD1 coral genomes)\" (the Antigravity transcript, steps 7461 and 7462). CRBC_ISO is not named in that question"
@@ -5632,10 +5703,18 @@ sources:
     url: https://ftp.ncbi.nlm.nih.gov/genomes/all/{GCA_or_GCF}/{nnn}/{nnn}/{nnn}/{assembly_dir}/{assembly_dir}_genomic.fna.gz
     checksum: none from the provider; our sha256 only and gzip -t (SOURCE_URLS.tsv and SHA256SUMS in BORG_ONT/assemblies/ on tower)
     license: INSDC   # the licence column _fetch_batch6b_ncbi.sh writes for every file
-    fetched: >-
-      nothing yet: the manifest(s) were written 2026-11-25 21:24 to 21:26 CST and no assembly had landed at 2026-11-26
-      07:33 CST; listed here before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6b_ncbi/BORG_ONT/assemblies/
+    fetched: 2026-11-26 (1 file, 721,427 B, file sha256 0b054b2730e356893e799720a38927cbb29ae25273333eb3b1f2f596735dbb07, SHA256SUMS sha256 1ae21d644f5c42c10eadaabba26e9570a4d388e5ec505301d374e250196b1f61, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6b_ncbi/BORG_ONT/assemblies/
+    fetched_pod: >-
+      1 of 1 .fna.gz assembly (721,427 B) + MANIFEST_BORG_ONT_PRJNA1119519.tsv relayed from tower to
+      /tmp/if2453/c89/dl/BORG_ONT/ by scripts/orchestrator/relay_to_pod.sh --streams 1 (cards C-73, C-89), 2026-11-27,
+      sha256 equal to tower's SHA256SUMS
+    staged: >-
+      card C-89, 2026-11-27 (DEC-88 (2)): 1 INSDC Borg assembly (4 contigs, 2,426,186 bp) staged byte-identically in
+      promge1_plasmids_eces.fna.gz (redistributable: true under INSDC) inside stage PROMGE1, mirrored to
+      tower:/mnt/user/research-bulk/bio-box/sources/PROMGE1/ (SHA256SUMS sha256
+      3277dc72c16f54a520a5b0daadb598be267bbdb40b670627c26c43852617c761);
+      planning/measurements/2026-11-27_c89_promge1_bbsag1_inputs.md
     note: >-
       the manifest is the job list of _fetch_batch6b_ncbi.sh (file <accession>_genomic.fna.gz, URL in its last
       column); it is not in the five-column form of fetch_to_tower.sh and has no md5
@@ -5648,10 +5727,8 @@ sources:
     url: https://ftp.ncbi.nlm.nih.gov/genomes/all/{GCA_or_GCF}/{nnn}/{nnn}/{nnn}/{assembly_dir}/{assembly_dir}_genomic.fna.gz
     checksum: none from the provider; our sha256 only and gzip -t (SOURCE_URLS.tsv and SHA256SUMS in AZOAMIC_SYM/assemblies/ on tower)
     license: INSDC   # the licence column _fetch_batch6b_ncbi.sh writes for every file
-    fetched: >-
-      nothing yet: the manifest(s) were written 2026-11-25 21:24 to 21:26 CST and no assembly had landed at 2026-11-26
-      07:33 CST; listed here before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6b_ncbi/AZOAMIC_SYM/assemblies/
+    fetched: 2026-11-26 (3 files, 281,857 B, SHA256SUMS sha256 5ccd41b1370a8309a3764d9d32c4078423d9c78b10e701640aadb1d236f46385, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6b_ncbi/AZOAMIC_SYM/assemblies/
     note: >-
       the manifest is the job list of _fetch_batch6b_ncbi.sh (file <accession>_genomic.fna.gz, URL in its last
       column); it is not in the five-column form of fetch_to_tower.sh and has no md5
@@ -5663,10 +5740,8 @@ sources:
     url: https://ftp.ncbi.nlm.nih.gov/genomes/all/{GCA_or_GCF}/{nnn}/{nnn}/{nnn}/{assembly_dir}/{assembly_dir}_genomic.fna.gz
     checksum: none from the provider; our sha256 only and gzip -t (SOURCE_URLS.tsv and SHA256SUMS in AMD_CPRV1/assemblies/ on tower)
     license: INSDC   # the licence column _fetch_batch6b_ncbi.sh writes for every file
-    fetched: >-
-      nothing yet: the manifest(s) were written 2026-11-25 21:24 to 21:26 CST and no assembly had landed at 2026-11-26
-      07:33 CST; listed here before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6b_ncbi/AMD_CPRV1/assemblies/
+    fetched: 2026-11-26 (1 file, 86,904,520 B, file sha256 2713b2d4e7f9fd6442e7d6fc18f138b01459acfe6b7e7fa8408aac43345ad105, SHA256SUMS sha256 2d5c3573593bf80ecf6c4e4b516dd7b32e49954bd86f68360902f453ef029d32, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6b_ncbi/AMD_CPRV1/assemblies/
     note: >-
       the manifest is the job list of _fetch_batch6b_ncbi.sh (file <accession>_genomic.fna.gz, URL in its last
       column); it is not in the five-column form of fetch_to_tower.sh and has no md5
@@ -5678,10 +5753,18 @@ sources:
     url: https://ftp.ncbi.nlm.nih.gov/genomes/all/{GCA_or_GCF}/{nnn}/{nnn}/{nnn}/{assembly_dir}/{assembly_dir}_genomic.fna.gz
     checksum: none from the provider; our sha256 only and gzip -t (SOURCE_URLS.tsv and SHA256SUMS in PICJI_SAT/assemblies/ on tower)
     license: INSDC   # the licence column _fetch_batch6b_ncbi.sh writes for every file
-    fetched: >-
-      nothing yet: the manifest(s) were written 2026-11-25 21:24 to 21:26 CST and no assembly had landed at 2026-11-26
-      07:33 CST; listed here before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6b_ncbi/PICJI_SAT/assemblies/
+    fetched: 2026-11-26 (6 files, 8,753,605 B, SHA256SUMS sha256 3ee9e93b7330bc38c88adb1777aeda1ea8372b1fdd48bd09f5d6290b07f22ad7, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6b_ncbi/PICJI_SAT/assemblies/
+    fetched_pod: >-
+      6 of 6 .fna.gz assemblies (8,753,605 B) + MANIFEST_PICJI_SAT_PRJNA1424553.tsv relayed from tower to
+      /tmp/if2453/c89/dl/PICJI_SAT/ by scripts/orchestrator/relay_to_pod.sh --streams 1 (cards C-73, C-89), 2026-11-27,
+      sha256 equal to tower's SHA256SUMS
+    staged: >-
+      card C-89, 2026-11-27 (DEC-88 (2)): 17 INSDC replicons across 6 assemblies (29,450,714 bp) staged byte-identically
+      in promge1_plasmids_eces.fna.gz (redistributable: true under INSDC) inside stage PROMGE1, mirrored to
+      tower:/mnt/user/research-bulk/bio-box/sources/PROMGE1/ (SHA256SUMS sha256
+      3277dc72c16f54a520a5b0daadb598be267bbdb40b670627c26c43852617c761);
+      planning/measurements/2026-11-27_c89_promge1_bbsag1_inputs.md
     note: >-
       the manifest is the job list of _fetch_batch6b_ncbi.sh (file <accession>_genomic.fna.gz, URL in its last
       column); it is not in the five-column form of fetch_to_tower.sh and has no md5
@@ -5694,10 +5777,18 @@ sources:
     url: https://ftp.ncbi.nlm.nih.gov/genomes/all/{GCA_or_GCF}/{nnn}/{nnn}/{nnn}/{assembly_dir}/{assembly_dir}_genomic.fna.gz
     checksum: none from the provider; our sha256 only and gzip -t (SOURCE_URLS.tsv and SHA256SUMS in CODE4_ACTINO1/assemblies/ on tower)
     license: INSDC   # the licence column _fetch_batch6b_ncbi.sh writes for every file
-    fetched: >-
-      nothing yet: the manifest(s) were written 2026-11-25 21:24 to 21:26 CST and no assembly had landed at 2026-11-26
-      07:33 CST; listed here before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6b_ncbi/CODE4_ACTINO1/assemblies/
+    fetched: 2026-11-26 (35 files, 13,096,180 B, SHA256SUMS sha256 0c20ccb76aae1b5ae8e55749dbcffd514a0be71216fd8ea46f5b075a65914c29, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6b_ncbi/CODE4_ACTINO1/assemblies/
+    fetched_pod: >-
+      35 of 35 .fna.gz assemblies (13,096,180 B) + MANIFEST_CODE4_ACTINO1_PRJNA1366607.tsv (8,151 B) relayed from tower
+      to /tmp/if2453/c86/dl/HROM1/CODE4_ACTINO1/ by scripts/orchestrator/relay_to_pod.sh --streams 1 (cards C-73, C-86),
+      2026-11-27, sha256 equal to tower's SHA256SUMS
+    staged: >-
+      card C-86, 2026-11-27 (DEC-88 (2)): all 35 Candidatus Absconditicoccus (code 4) Actinobacteria-associated
+      assemblies (44,091,220 bp) staged in hrom1_code4_actino1.fna.gz (13,835,044 B, redistributable: true under INSDC)
+      inside stage HROM1, mirrored 14/14 to tower:/mnt/user/research-bulk/bio-box/sources/HROM1/ (SHA256SUMS sha256
+      1db893c1efdade3b6f6f22a7ec6ea12e242f08437929b5fc53cc7b6715722d4e);
+      planning/measurements/2026-11-27_c86_o4_gv2_hrom1_inputs.md
     note: >-
       the manifest is the job list of _fetch_batch6b_ncbi.sh (file <accession>_genomic.fna.gz, URL in its last
       column); it is not in the five-column form of fetch_to_tower.sh and has no md5
@@ -5709,10 +5800,8 @@ sources:
     url: https://ftp.ncbi.nlm.nih.gov/genomes/all/{GCA_or_GCF}/{nnn}/{nnn}/{nnn}/{assembly_dir}/{assembly_dir}_genomic.fna.gz
     checksum: none from the provider; our sha256 only and gzip -t (SOURCE_URLS.tsv and SHA256SUMS in TICK_RNA/assemblies/ on tower)
     license: INSDC   # the licence column _fetch_batch6b_ncbi.sh writes for every file
-    fetched: >-
-      nothing yet: the manifest(s) were written 2026-11-25 21:24 to 21:26 CST and no assembly had landed at 2026-11-26
-      07:33 CST; listed here before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6b_ncbi/TICK_RNA/assemblies/
+    fetched: 2026-11-26 (68 files, 161,802 B, SHA256SUMS sha256 2664e6af2866a4df92efd4aedcea7881385bc64178192266ce7215424b1dd8ce, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6b_ncbi/TICK_RNA/assemblies/
     note: >-
       the manifest is the job list of _fetch_batch6b_ncbi.sh (file <accession>_genomic.fna.gz, URL in its last
       column); it is not in the five-column form of fetch_to_tower.sh and has no md5
@@ -5725,10 +5814,8 @@ sources:
     url: https://ftp.ncbi.nlm.nih.gov/genomes/all/{GCA_or_GCF}/{nnn}/{nnn}/{nnn}/{assembly_dir}/{assembly_dir}_genomic.fna.gz
     checksum: none from the provider; our sha256 only and gzip -t (SOURCE_URLS.tsv and SHA256SUMS in WWB_HIC/assemblies/ on tower)
     license: INSDC   # the licence column _fetch_batch6b_ncbi.sh writes for every file
-    fetched: >-
-      nothing yet: the manifest(s) were written 2026-11-25 21:24 to 21:26 CST and no assembly had landed at 2026-11-26
-      07:33 CST; listed here before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6b_ncbi/WWB_HIC/assemblies/
+    fetched: 2026-11-26 (552 files, 3,015,702,504 B, SHA256SUMS sha256 35ab852a9e43c25b8f5b7e263c25d9f44fe99189d9634df89bd1e2032361a811, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6b_ncbi/WWB_HIC/assemblies/
     note: >-
       the manifest is the job list of _fetch_batch6b_ncbi.sh (file <accession>_genomic.fna.gz, URL in its last
       column); it is not in the five-column form of fetch_to_tower.sh and has no md5
@@ -5740,10 +5827,8 @@ sources:
     url: https://ftp.ncbi.nlm.nih.gov/genomes/all/{GCA_or_GCF}/{nnn}/{nnn}/{nnn}/{assembly_dir}/{assembly_dir}_genomic.fna.gz
     checksum: none from the provider; our sha256 only and gzip -t (SOURCE_URLS.tsv and SHA256SUMS in CAVE_AERO1/assemblies/ on tower)
     license: INSDC   # the licence column _fetch_batch6b_ncbi.sh writes for every file
-    fetched: >-
-      nothing yet: the manifest(s) were written 2026-11-25 21:24 to 21:26 CST and no assembly had landed at 2026-11-26
-      07:33 CST; listed here before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6b_ncbi/CAVE_AERO1/assemblies/
+    fetched: 2026-11-26 (1,457 files, 1,403,518,130 B, SHA256SUMS sha256 896aa0c1d922a8e58e0486da47b5116ee9f7574354d07949ee21bb50b2e2276b, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6b_ncbi/CAVE_AERO1/assemblies/
     note: >-
       the manifest is the job list of _fetch_batch6b_ncbi.sh (file <accession>_genomic.fna.gz, URL in its last
       column); it is not in the five-column form of fetch_to_tower.sh and has no md5
@@ -5756,10 +5841,8 @@ sources:
     url: https://ftp.ncbi.nlm.nih.gov/genomes/all/{GCA_or_GCF}/{nnn}/{nnn}/{nnn}/{assembly_dir}/{assembly_dir}_genomic.fna.gz
     checksum: none from the provider; our sha256 only and gzip -t (SOURCE_URLS.tsv and SHA256SUMS in TERMITE1/assemblies/ on tower)
     license: INSDC   # the licence column _fetch_batch6b_ncbi.sh writes for every file
-    fetched: >-
-      nothing yet: the manifest(s) were written 2026-11-25 21:24 to 21:26 CST and no assembly had landed at 2026-11-26
-      07:33 CST; listed here before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6b_ncbi/TERMITE1/assemblies/
+    fetched: 2026-11-26 (2,312 files, 1,410,933,201 B, SHA256SUMS sha256 ff1fae9ec164689cb5461013efdc55ea237b73b9d0acd97c09ac776dd47bc8dd, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6b_ncbi/TERMITE1/assemblies/
     note: >-
       the manifest is the job list of _fetch_batch6b_ncbi.sh (file <accession>_genomic.fna.gz, URL in its last
       column); it is not in the five-column form of fetch_to_tower.sh and has no md5
@@ -5771,10 +5854,8 @@ sources:
     url: https://ftp.ncbi.nlm.nih.gov/genomes/all/{GCA_or_GCF}/{nnn}/{nnn}/{nnn}/{assembly_dir}/{assembly_dir}_genomic.fna.gz
     checksum: none from the provider; our sha256 only and gzip -t (SOURCE_URLS.tsv and SHA256SUMS in MARSUPIAL1/assemblies/ on tower)
     license: INSDC   # the licence column _fetch_batch6b_ncbi.sh writes for every file
-    fetched: >-
-      nothing yet: the manifest(s) were written 2026-11-25 21:24 to 21:26 CST and no assembly had landed at 2026-11-26
-      07:33 CST; listed here before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6b_ncbi/MARSUPIAL1/assemblies/
+    fetched: 2026-11-26 (6,853 files, 4,299,638,095 B, SHA256SUMS sha256 8348301eb5913d844f7547f3b8d8dcab7138bdfa8ec5b02cf4969bfebdbd2365, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6b_ncbi/MARSUPIAL1/assemblies/
     note: >-
       the manifest is the job list of _fetch_batch6b_ncbi.sh (file <accession>_genomic.fna.gz, URL in its last
       column); it is not in the five-column form of fetch_to_tower.sh and has no md5
@@ -5810,10 +5891,22 @@ sources:
     url_2: https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=nuccore&rettype=gbwithparts&retmode=text&id={ids}
     checksum: none from the provider; our sha256 only, gzip -t and a first-line test (> or LOCUS)
     license: INSDC   # the licence column _fetch_batch6b_ncbi.sh writes for every file
-    fetched: >-
-      nothing yet: the chunk manifests were written 2026-11-25 21:24 CST and nothing had landed at 2026-11-26 07:33
-      CST; listed here before the fetch
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6b_ncbi/O4_ORG/ and .../TICK_RNA/nuccore/
+    fetched: 2026-11-26 (134 files, 1,299,749,909 B across batch6b_ncbi/O4_ORG 114 files / 1,264,640,948 B (O4_CRYP SHA256SUMS sha256 5c380c2b802030763d62a480f28c9499e7f1bbd2edaf74f3cf9873aa72e10fad; O4_PROT_MT SHA256SUMS sha256 b8c5cc5835c2cc9c50d7a660f590b30d6c01f3bfb2bfbc2a4022ff7430be26bc; O4_PROT_PT SHA256SUMS sha256 6dbff78223627f40bfcba97b194299131f7b7d0933cd34d1d073d94666fe896e; O4_WEIRD_MT SHA256SUMS sha256 f9524f3ac53fd2d8f16d15bf8da383973dbeea8c68a1092adfc646d59a1aaea2); batch6b_ncbi/TICK_RNA/nuccore 20 files / 35,108,961 B (SHA256SUMS sha256 22fdd63cdf6a8fa8cd8dfa37fc5dc1dd544a5101e43b40ed173a710b3e7b6245), *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6b_ncbi/O4_ORG/; tower:/mnt/user/research-bulk/bio-box/sources_incoming/batch6b_ncbi/TICK_RNA/nuccore/
+    fetched_pod: >-
+      114 of 114 O4_ORG files (1,264,640,948 B across O4_CRYP 8, O4_PROT_MT 42, O4_PROT_PT 22, O4_WEIRD_MT 42) relayed
+      from tower to /tmp/if2453/c86/dl/O4/ by scripts/orchestrator/relay_to_pod.sh --streams 1 (cards C-73, C-86),
+      2026-11-27, sha256 equal to tower's SHA256SUMS (the 20 TICK_RNA/nuccore files, 35,108,961 B, remain on tower for
+      RNA virus stage C-50)
+    staged: >-
+      card C-86, 2026-11-27 (DEC-88 (2)): 10,332 qualifying INSDC DNA organelle/nucleomorph records staged in
+      o4_ncbi_organelles.fna.gz (125,375,557 B, redistributable: true under INSDC; 431 records left out in
+      /tmp/if2453/c86/meta/O4/left_out.tsv: 411 RNA/mRNA records, 18 transl_table=32 Balanophoraceae plastomes pending a
+      schema card, 2 synthetic constructs) inside stage O4 (combined with tower_o3_fungal: 10,944 distinct
+      genomes/contigs, 544,499,955 bp distinct; 9,483 contigs / 395,960,372 bp net new after 56 prior stages), mirrored
+      10/10 to tower:/mnt/user/research-bulk/bio-box/sources/O4/ (SHA256SUMS sha256
+      60938e4eadd1f572c3626f369129f6f5e19b86b70afa527972f9d37a8692ab1e);
+      planning/measurements/2026-11-27_c86_o4_gv2_hrom1_inputs.md
     note: >-
       _fetch_batch6b_ncbi.sh sends these as HTTP POST to https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi
       with the same four fields (db, rettype, retmode, id), and writes the URL above with &chunk= and &n= into
@@ -5855,9 +5948,8 @@ sources:
       - {file: "GWVC.vOTUs.fna.gz", bytes: 1166850604, md5: d249dd5821d411e195178bf1749c525a}
     checksum: the provider's md5 for every file (in the job list; the fetcher compares it before the file is kept); our sha256 is taken after the fetch
     license: cc-by-4.0   # as the Zenodo record states it
-    fetched: >-
-      nothing yet: 3 files named in 2026-11-26_c72_part1.tsv, listed here before the fetch (card C-72, part 1)
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/GWV1/
+    fetched: 2026-11-26 (3 files, 1,288,480,440 B, SHA256SUMS sha256 6e651f5e656ebb6cd228e1f1d29b6aa6298d8fc5062fb0ce32dfd786010bc2a0, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/GWV1/
     fetched_pod: >-
       3 of 3 files copied from tower:/mnt/user/research-bulk/bio-box/sources_incoming/GWV1/ to wilkcomp02 by
       scripts/orchestrator/relay_to_pod.sh (card C-73), 2026-11-26 18:53 to 18:56 CST, each sha256 equal to tower's
@@ -5890,9 +5982,8 @@ sources:
       - {file: "OMZ_Compendium_SAGs_Full.tar.gz", bytes: 747416178, md5: 49e76ad707b718cd4e804e43b6d0cb94}
     checksum: the provider's md5 for every file (in the job list; the fetcher compares it before the file is kept); our sha256 is taken after the fetch
     license: CC BY 4.0   # as the figshare articles state it
-    fetched: >-
-      nothing yet: 2 files named in 2026-11-26_c72_part1.tsv, listed here before the fetch (card C-72, part 1)
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/SAG3/
+    fetched: 2026-11-26 (2 files, 751,850,083 B, SHA256SUMS sha256 1a07d89e3f9429829c2b551822617c624dd32a4d5b6652541fa98a6dd7254123, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/SAG3/
     fetched_pod: >-
       2 of 2 files copied from tower:/mnt/user/research-bulk/bio-box/sources_incoming/SAG3/ to wilkcomp02 by
       scripts/orchestrator/relay_to_pod.sh (card C-73), 2026-11-26 18:56 to 18:57 CST, each sha256 equal to tower's
@@ -5921,9 +6012,8 @@ sources:
       - {file: "Dereplicated genomes.zip", bytes: 3885785718, md5: c2c471cb64ee73a223bfcef33277fe6d}
     checksum: the provider's md5 for every file (in the job list; the fetcher compares it before the file is kept); our sha256 is taken after the fetch
     license: cc-by-4.0   # as the Zenodo record states it
-    fetched: >-
-      nothing yet: 2 files named in 2026-11-26_c72_part1.tsv, listed here before the fetch (card C-72, part 1)
-    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/WET1/
+    fetched: 2026-11-26 (2 files, 3,886,592,482 B, SHA256SUMS sha256 77cd10bca3f0474b26433c1f07e21c5250c1afce07e399cd38c0e25b4cb163aa, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/WET1/
     fetched_pod: >-
       2 of 2 files copied from tower:/mnt/user/research-bulk/bio-box/sources_incoming/WET1/ to wilkcomp02 by
       scripts/orchestrator/relay_to_pod.sh (cards C-73, R-18), 2026-11-26 22:55 to 22:59 CST, each sha256 equal to
@@ -5962,8 +6052,7 @@ sources:
       fetcher compares it before the file is kept); the md5 list and the dataset list have none; our sha256 is taken
       after the fetch
     license: CC BY-SA 4.0   # as globdb.org states it (as planning/measurements/2026-11-26_missed_diversity_sources.md section 2.1 quotes globdb.org, read 2026-11-26 by the survey of card C-72; this card did not read globdb.org again)
-    fetched: >-
-      nothing yet: 5 files named in 2026-11-26_c72_part1.tsv, listed here before the fetch (card C-72, part 1)
+    fetched: 2026-11-26 (5 files, 24,239,347 B, SHA256SUMS sha256 64effd1fdf0cf55980c8c57a9690ad881d85bd3d2cacbb4a820e85d9fdd9a1e1, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
     files:
       - {file: "globdb_r232_md5sum.txt", bytes: 519, sha256: 5fb4ac152fffb3c7470378bfc411491d68366684d64ba939089fb885e0d207e9}
       - {file: "globdb_r232_dataset_list.tsv", bytes: 4358, sha256: df3dce800080e43f2b4795b7dd9308304b9d40ffcd9cc6e58f5e254289ca65e3}
@@ -5991,8 +6080,7 @@ sources:
       compares it before the file is kept); MD5SUM.txt lists its own md5, which cannot be checked, so the job list
       gives it none; our sha256 is taken after the fetch
     license: CC BY-SA 4.0   # as entry gtdb_metadata records it (GTDB's stated licence; not re-verified)
-    fetched: >-
-      nothing yet: 3 files named in 2026-11-26_c72_part1.tsv, listed here before the fetch (card C-72, part 1)
+    fetched: 2026-11-26 (3 files, 296,063,620 B, SHA256SUMS sha256 9298fc3aa3d547a0a8b4da13e53710de46ca670f22d87cb7a344fd3f69b58bf9, *measured* SOURCE_URLS.tsv + SHA256SUMS on tower as of 2026-11-28T18:06:34Z)
     files:
       - {file: "MD5SUM.txt", bytes: 3950, sha256: 292c0dc4c5249786213e88ea3b2ccc553bb0a745d61d1d6fa005ee6882dcbbf8}
       - {file: "ar53_metadata_r232.tsv.gz", bytes: 7015869, sha256: d6ddc0f95d269a6e31af8329e0c3c2af0d90d5dad48f5b3e9d820f340951d8c3, md5: 0f51fe6f01b4ccbf0d9bab6c07df87af}
@@ -6039,6 +6127,66 @@ sources:
     limits: gentle authenticated session on tower (<= 2 concurrent downloads, 1-2 req/s search); session cookies kept only in chmod 600 /root/.jgi_cookies on tower, never in git or logs
     license: JGI Data Utilization Policy (Unrestricted datasets only; accepted by the PI in JGI Portal on 2026-11-18 and 2026-11-28)
     redistributable: false
-    fetched: >-
-      nothing yet: listed before querying files.jgi.doe.gov or fetching to tower:/mnt/user/research-bulk/bio-box/sources_incoming/JGI_LR532/
+    fetched: in progress as of 2026-11-28T18:06:34Z (4 of 532 files, 761,883,993 B landed 2026-11-28, *measured* SOURCE_URLS.tsv on tower; active streaming under DEC-81 (5) / DEC-89)
     approved: "by the PI, 2026-11-28 10:11 and 10:54 CST: \"i can authenticate jgi and other logins now so we have a larger catalogo fothings to dl\" / \"open chrome via browser-tools. i will login to portal 1, then u take over\" (DEC-89 (2))"
+    stored: tower:/mnt/user/research-bulk/bio-box/sources_incoming/JGI_LR532/
+
+  # Card R-26 (DEC-89 (2), DEC-80 (3), 2026-11-28): pre-fetch entries for Portal 2 — Biosino NODE (`www.biosino.org/node`).
+  # Listed before the fetch per AGENTS.md §8; `redistributable: false` under DEC-80 (3) until a saved provider record
+  # confirms an explicit open licence on each project.
+  - name: biosino_node_meer_oep004067
+    what: >-
+      MEER — Mariana Trench environmental microbial genome catalogue (`OEP004067` on Biosino National Omics Data
+      Encyclopedia, ~26,162 hadal trench MAGs); Portal 2 under DEC-89 (2)
+    url: https://www.biosino.org/node/project/detail/OEP004067
+    url_download: https://download.node.ac.cn/{path}
+    url_ftps: ftps://fms.biosino.org:2122/{path}
+    checksum: provider checksum where listed on NODE, else archive test (`gzip -t` / `tar -tf`) and our sha256 on tower at fetch
+    limits: gentle authenticated session on tower (`<= 2` concurrent streams); credentials/cookies never stored in git or logs
+    license: "Biosino NODE terms of use (redistributable: false under DEC-80 (3) until a saved provider record states an open licence)"
+    redistributable: false
+    fetched: "nothing yet: listed before the fetch under DEC-89 (2) (awaiting Portal 2 Biosino NODE login)"
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/BIOSINO_MEER/
+    approved: "by the PI, 2026-11-28 10:11 CST: \"i can authenticate jgi and other logins now so we have a larger catalogo fothings to dl\" (DEC-89 (2))"
+  - name: biosino_node_cpr1_oez00021651
+    what: >-
+      CPR1 — Global Patescibacteria / Candidate Phyla Radiation genome catalogue (`OEZ00021651` / analysis `OED842740`
+      on Biosino NODE, ~4,598 global CPR MAGs); Portal 2 under DEC-89 (2)
+    url: https://www.biosino.org/node/project/detail/OEZ00021651
+    url_analysis: https://www.biosino.org/node/analysis/detail/OED842740
+    url_download: https://download.node.ac.cn/{path}
+    url_ftps: ftps://fms.biosino.org:2122/{path}
+    checksum: provider checksum where listed on NODE, else archive test (`gzip -t` / `tar -tf`) and our sha256 on tower at fetch
+    limits: gentle authenticated session on tower (`<= 2` concurrent streams); credentials/cookies never stored in git or logs
+    license: "Biosino NODE terms of use (redistributable: false under DEC-80 (3) until a saved provider record states an open licence)"
+    redistributable: false
+    fetched: "nothing yet: listed before the fetch under DEC-89 (2) (awaiting Portal 2 Biosino NODE login)"
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/BIOSINO_CPR1/
+    approved: "by the PI, 2026-11-28 10:11 CST: \"i can authenticate jgi and other logins now so we have a larger catalogo fothings to dl\" (DEC-89 (2))"
+  - name: biosino_node_gdsv2_oep003844
+    what: >-
+      GDSV 2.0 — Global Deep-Sea Virome v2.0 (`OEP003844` on Biosino NODE, deep-sea viral contigs and vOTUs); Portal 2
+      under DEC-89 (2)
+    url: https://www.biosino.org/node/project/detail/OEP003844
+    url_download: https://download.node.ac.cn/{path}
+    url_ftps: ftps://fms.biosino.org:2122/{path}
+    checksum: provider checksum where listed on NODE, else archive test (`gzip -t` / `tar -tf`) and our sha256 on tower at fetch
+    limits: gentle authenticated session on tower (`<= 2` concurrent streams); credentials/cookies never stored in git or logs
+    license: "Biosino NODE terms of use (redistributable: false under DEC-80 (3) until a saved provider record states an open licence)"
+    redistributable: false
+    fetched: "nothing yet: listed before the fetch under DEC-89 (2) (awaiting Portal 2 Biosino NODE login)"
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/BIOSINO_GDSV2/
+    approved: "by the PI, 2026-11-28 10:11 CST: \"i can authenticate jgi and other logins now so we have a larger catalogo fothings to dl\" (DEC-89 (2))"
+  - name: biosino_node_dsrrna_oep002537
+    what: >-
+      DSR-RNA — Deep-sea sediment RNA virome (`OEP002537` on Biosino NODE); Portal 2 under DEC-89 (2)
+    url: https://www.biosino.org/node/project/detail/OEP002537
+    url_download: https://download.node.ac.cn/{path}
+    url_ftps: ftps://fms.biosino.org:2122/{path}
+    checksum: provider checksum where listed on NODE, else archive test (`gzip -t` / `tar -tf`) and our sha256 on tower at fetch
+    limits: gentle authenticated session on tower (`<= 2` concurrent streams); credentials/cookies never stored in git or logs
+    license: "Biosino NODE terms of use (redistributable: false under DEC-80 (3) until a saved provider record states an open licence)"
+    redistributable: false
+    fetched: "nothing yet: listed before the fetch under DEC-89 (2) (awaiting Portal 2 Biosino NODE login)"
+    stored: will be tower:/mnt/user/research-bulk/bio-box/sources_incoming/BIOSINO_DSRRNA/
+    approved: "by the PI, 2026-11-28 10:11 CST: \"i can authenticate jgi and other logins now so we have a larger catalogo fothings to dl\" (DEC-89 (2))"

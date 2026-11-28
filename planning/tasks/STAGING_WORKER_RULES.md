@@ -79,3 +79,10 @@ with their scripts under `scripts/stress/build_stage_pod/`.
 End with the report format of AGENTS.md section 10. Before it, at most six lines for the orchestrating session: per
 stage, genomes, contigs, bp, bp new against held stages, counts by r232 status, and what was left out and why; where
 the files are on the pod and on the NAS; pod compute used; anything that differed from the card.
+
+## Ledger synchronization at fetch completion and merge (DEC-59, DEC-88, DEC-89)
+- At every `tower` fetch completion and every staging-card merge, the orchestrating session (or the ledger card it
+  assigns) synchronizes `sources.yaml` (`fetched:`, `stored:`, `fetched_pod:`, and `staged:`) and
+  `planning/CATALOG_GOAL.md` (§2 order, §3 stage row matching every `.conf` in `stages/` and `stages/templates/`, §4.1
+  `left_out.tsv` / deferred remainder, and §4.3 source status), and checks both files with
+  `python scripts/orchestrator/r26_sync_sources_ledger.py verify` before closing the merge.
