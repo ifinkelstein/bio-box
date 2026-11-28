@@ -39,16 +39,20 @@
 #             releases`.
 #   check     `stage_check.py` on the two snapshots, its report in check/<n>/: root_added.tsv (every added file with
 #             size and sha256).
-#   backup    One tar of exactly the added files, written to $BACKUP_DIR under a dot-temporary name with dd conv=fsync,
-#             read back, sha256 equal, mv -n; never over an existing file; at least 64 MiB under /stor.
+#   backup    One tar of exactly the added files, written to $BACKUP_DIR (or, when under $TAR_FLOOR_BYTES and
+#             $SMALL_BACKUP_DIR names a non-/stor directory, to $SMALL_BACKUP_DIR if at least $SMALL_TAR_FLOOR_BYTES)
+#             under a dot-temporary name with dd conv=fsync, read back, sha256 equal, mv -n; never over an existing
+#             file; at least 64 MiB under /stor.
 #   info      (for stage_queue.sh) the stages this one comes after and the active build units; writes no marker.
 #
 # Environment (defaults are the pod's): STAGES_HOME (/tmp/if2453/stages; the stage's directory is <home>/<stage in
 # lower case>, override STAGE_DIR), STAGE_ROOT (the data root), STAGE_CONF (not in the data root), TREE, PROFILE,
 # IMAGE, DIGEST, BACKUP_DIR (/stor/work/Wilke/if2453/all-the-data/root_backups; the rehearsal sets its own scratch
-# one), T (6) and CPUS (4) (build-stage --threads and --scan-cpus, at most the profile's smaller cap), Q (lowers the
-# unit's quota), MEM (the profile's mem_scope, at most 750G in the data root), CPU_MAX (280, never above),
-# START_MIN_GB (205), TMP_MIN_GB (200) and SCRATCH_MAX_GB (100), which the data root never loosens.
+# one), SMALL_BACKUP_DIR (unset by default; optional non-/stor directory for tars under TAR_FLOOR_BYTES and at least
+# SMALL_TAR_FLOOR_BYTES, default 10240, card R-25), T (6) and CPUS (4) (build-stage --threads and --scan-cpus, at most
+# the profile's smaller cap), Q (lowers the unit's quota), MEM (the profile's mem_scope, at most 750G in the data root),
+# CPU_MAX (280, never above), START_MIN_GB (205), TMP_MIN_GB (200) and SCRATCH_MAX_GB (100), which the data root never
+# loosens.
 # Unit names: <stage in lower case>-<n> for the builds, <stage>-rh-* for the rehearsal, <stage>-queue for the queue.
 #
 # A wave (card A-30, DEC-81 (3)): STAGE_WAVE, a name stage_wave.sh makes anew for each wave and passes to every stage it
@@ -103,6 +107,8 @@ PFAM=$PFAMDIR/Pfam-A.hmm.gz
 STOR_RO=/stor/scratch/Wilke/if2453/all-the-data
 BACKUP_DIR=${BACKUP_DIR:-/stor/work/Wilke/if2453/all-the-data/root_backups}
 TAR_FLOOR_BYTES=${TAR_FLOOR_BYTES:-67108864}
+SMALL_BACKUP_DIR=${SMALL_BACKUP_DIR:-}
+SMALL_TAR_FLOOR_BYTES=${SMALL_TAR_FLOOR_BYTES:-10240}
 STOR_FLOOR=67108864  # AGENTS §7.3: no file under 64 MB onto /stor
 T=${T:-6}
 CPUS=${CPUS:-4}
@@ -870,28 +876,58 @@ check() {  # its report in check/<n>/, one numbered directory per run, kept
 
 backup() {
   local name=added_$LC.tar
-  local tar=$BACKUP_DIR/$name tmp=$BACKUP_DIR/.$name.tmp local_tar=$C/$name sz sha1 sha2 n
+  local dst_dir tar tmp local_tar=$C/$name rec_tar want_tar backup_real small_real sz sha1 sha2 n
   withdraw backup
   read_conf
   need check
   [ -s "$C/root_added.tsv" ] || refuse "no $C/root_added.tsv"
+  while [[ "$SMALL_BACKUP_DIR" == ?*/ ]]; do SMALL_BACKUP_DIR=${SMALL_BACKUP_DIR%/}; done
+  [[ "$TAR_FLOOR_BYTES" =~ ^[0-9]+$ ]] || refuse "TAR_FLOOR_BYTES=$TAR_FLOOR_BYTES: not a number"
+  [[ "$SMALL_TAR_FLOOR_BYTES" =~ ^[0-9]+$ ]] || refuse "SMALL_TAR_FLOOR_BYTES=$SMALL_TAR_FLOOR_BYTES: not a number"
+  if [ -n "$SMALL_BACKUP_DIR" ]; then
+    small_real=$(realpath -m -- "$SMALL_BACKUP_DIR") || refuse "could not resolve SMALL_BACKUP_DIR=$SMALL_BACKUP_DIR"
+    case "$SMALL_BACKUP_DIR" in
+      /stor|/stor/*) refuse "SMALL_BACKUP_DIR=$SMALL_BACKUP_DIR: a file under 64 MiB is never written onto /stor (AGENTS §7.3)" ;;
+    esac
+    case "$small_real" in
+      /stor|/stor/*) refuse "SMALL_BACKUP_DIR=$SMALL_BACKUP_DIR ($small_real): a file under 64 MiB is never written onto /stor (AGENTS §7.3)" ;;
+    esac
+  fi
   if [ -s "$C/backup.tsv" ]; then  # written before: checked, never written again
+    rec_tar=$(cut -f1 "$C/backup.tsv")
     sz=$(cut -f2 "$C/backup.tsv")
-    [ "$(cut -f1 "$C/backup.tsv")" = "$tar" ] && [ -f "$tar" ] && [ "$(stat -c %s "$tar")" = "$sz" ] \
-      || fail "$C/backup.tsv names a copy that is not at $tar with its size"
-    log "backup: $tar was written before ($(tr '\t' ' ' < "$C/backup.tsv")); nothing written"
+    want_tar=$BACKUP_DIR/$name
+    if [ -n "$SMALL_BACKUP_DIR" ] && [ "$rec_tar" = "$SMALL_BACKUP_DIR/$name" ]; then
+      want_tar=$SMALL_BACKUP_DIR/$name
+    fi
+    [[ "$sz" =~ ^[0-9]+$ ]] && [ "$rec_tar" = "$want_tar" ] && [ -f "$want_tar" ] \
+      && [ "$(stat -c %s "$want_tar")" = "$sz" ] \
+      || fail "$C/backup.tsv names a copy that is not at $want_tar with its size"
+    log "backup: $want_tar was written before ($(tr '\t' ' ' < "$C/backup.tsv")); nothing written"
     mark_done backup
     return 0
   fi
-  [[ "$TAR_FLOOR_BYTES" =~ ^[0-9]+$ ]] || refuse "TAR_FLOOR_BYTES=$TAR_FLOOR_BYTES: not a number"
+  backup_real=$(realpath -m -- "$BACKUP_DIR") || refuse "could not resolve BACKUP_DIR=$BACKUP_DIR"
   case "$BACKUP_DIR" in
     /stor|/stor/*)
       [ "$TAR_FLOOR_BYTES" -ge "$STOR_FLOOR" ] || refuse "a file under 64 MiB is never written onto /stor (AGENTS §7.3)"
       [ -d "$BACKUP_DIR" ] || refuse "$BACKUP_DIR does not exist (nothing is made under /stor)" ;;
-    *) mkdir -p "$BACKUP_DIR" || fail "could not make $BACKUP_DIR" ;;
   esac
-  [ ! -e "$tar" ] || refuse "$tar already exists; it is never overwritten"
-  [ ! -e "$tmp" ] || refuse "$tmp exists (an earlier copy that did not finish; a person reads it)"
+  case "$backup_real" in
+    /stor|/stor/*)
+      [ "$TAR_FLOOR_BYTES" -ge "$STOR_FLOOR" ] || refuse "a file under 64 MiB is never written onto /stor (AGENTS §7.3)"
+      [ -d "$BACKUP_DIR" ] || refuse "$BACKUP_DIR does not exist (nothing is made under /stor)" ;;
+  esac
+  [ ! -e "$BACKUP_DIR/$name" ] && [ ! -L "$BACKUP_DIR/$name" ] \
+    || refuse "$BACKUP_DIR/$name already exists; it is never overwritten"
+  [ ! -e "$BACKUP_DIR/.$name.tmp" ] && [ ! -L "$BACKUP_DIR/.$name.tmp" ] \
+    || refuse "$BACKUP_DIR/.$name.tmp exists (an earlier copy that did not finish; a person reads it)"
+  if [ -n "$SMALL_BACKUP_DIR" ]; then
+    [ ! -e "$SMALL_BACKUP_DIR/$name" ] && [ ! -L "$SMALL_BACKUP_DIR/$name" ] \
+      || refuse "$SMALL_BACKUP_DIR/$name already exists; it is never overwritten"
+    [ ! -e "$SMALL_BACKUP_DIR/.$name.tmp" ] && [ ! -L "$SMALL_BACKUP_DIR/.$name.tmp" ] \
+      || refuse "$SMALL_BACKUP_DIR/.$name.tmp exists (an earlier copy that did not finish; a person reads it)"
+  fi
   awk -F '\t' 'NR > 1 {print $1}' "$C/root_added.tsv" > "$C/added_paths.txt" || fail "could not read root_added.tsv"
   n=$(wc -l < "$C/added_paths.txt")
   [ "$n" -gt 0 ] || fail "root_added.tsv lists no file"
@@ -899,10 +935,34 @@ backup() {
   tar -C "$ROOT" -cf "$local_tar" -T "$C/added_paths.txt" || fail "tar of the added files failed"
   [ "$(tar -tf "$local_tar" | wc -l)" = "$n" ] || fail "the tar does not hold the $n added files"
   sz=$(stat -c %s "$local_tar")
-  [ "$sz" -ge "$TAR_FLOOR_BYTES" ] || fail "$local_tar is $sz bytes, under the floor of $TAR_FLOOR_BYTES"
+  if [ "$sz" -ge "$TAR_FLOOR_BYTES" ]; then
+    dst_dir=$BACKUP_DIR
+    case "$backup_real" in
+      /stor|/stor/*) ;;
+      *)
+        case "$BACKUP_DIR" in
+          /stor|/stor/*) ;;
+          *) mkdir -p "$dst_dir" || fail "could not make $dst_dir" ;;
+        esac ;;
+    esac
+  elif [ -n "$SMALL_BACKUP_DIR" ]; then
+    [ "$sz" -ge "$SMALL_TAR_FLOOR_BYTES" ] \
+      || fail "$local_tar is $sz bytes, under the small-backup floor of $SMALL_TAR_FLOOR_BYTES"
+    dst_dir=$SMALL_BACKUP_DIR
+    mkdir -p "$dst_dir" || fail "could not make $dst_dir"
+    case "$(realpath -e -- "$dst_dir")" in
+      /stor|/stor/*) fail "SMALL_BACKUP_DIR=$dst_dir resolved under /stor (AGENTS §7.3)" ;;
+    esac
+  else
+    fail "$local_tar is $sz bytes, under the floor of $TAR_FLOOR_BYTES"
+  fi
+  tar=$dst_dir/$name
+  tmp=$dst_dir/.$name.tmp
+  [ ! -e "$tar" ] && [ ! -L "$tar" ] || refuse "$tar already exists; it is never overwritten"
+  [ ! -e "$tmp" ] && [ ! -L "$tmp" ] || refuse "$tmp exists (an earlier copy that did not finish; a person reads it)"
   sha1=$(sha256sum "$local_tar" | cut -d' ' -f1)
   [[ "$sha1" =~ ^[0-9a-f]{64}$ ]] || fail "the sha256 of $local_tar is not 64 hex digits: '$sha1'"
-  log "backup: local tar $local_tar: $n files, $sz bytes, sha256 $sha1"
+  log "backup: local tar $local_tar: $n files, $sz bytes, sha256 $sha1 -> $tar"
   dd if="$local_tar" of="$tmp" bs=16M conv=fsync 2>> "$LOG" || fail "the copy to $tmp failed (left for a person)"
   sha2=$(sha256sum "$tmp" | cut -d' ' -f1)
   [[ "$sha2" =~ ^[0-9a-f]{64}$ ]] || fail "the sha256 read back from $tmp is not 64 hex digits: '$sha2' (left for a person)"
@@ -983,8 +1043,8 @@ rehearse() {  # the fixture, in scratch: E and a release over it, then the stage
   } > "$rh/$rs.conf" || fail "could not write $rh/$rs.conf"
   for m in $CHAIN; do
     STAGE_ROOT="$rh/root" STAGE_DIR="$rh/drv" STAGE_CONF="$rh/$rs.conf" PROFILE="$rh/profile.yaml" \
-      BACKUP_DIR="$rh/backups" TAR_FLOOR_BYTES=0 STAGE_REHEARSAL=1 STAGE_UNIT_STEM="$LC-rh" T="$RH_T" CPUS="$RH_T" \
-      SCAN_JOBS=1 Q="$rq" STAGE_WAVE= bash "$SELF" "$rs" "$m" >> "$LOG" 2>&1
+      BACKUP_DIR="$rh/backups" TAR_FLOOR_BYTES=0 SMALL_BACKUP_DIR= STAGE_REHEARSAL=1 STAGE_UNIT_STEM="$LC-rh" \
+      T="$RH_T" CPUS="$RH_T" SCAN_JOBS=1 Q="$rq" STAGE_WAVE= bash "$SELF" "$rs" "$m" >> "$LOG" 2>&1
     rc=$?
     [ "$rc" = 0 ] || fail "rehearse: mode $m of the rehearsal's stage exited $rc (read $rh/drv/driver.log)"
     [ -e "$rh/drv/$m/DONE" ] || fail "rehearse: mode $m exited 0 and left no $rh/drv/$m/DONE"
